@@ -10,6 +10,7 @@ from functools import wraps
 import threading
 from flask import Flask, request, Response, session, redirect, url_for, render_template_string
 from werkzeug.wrappers.response import Response as BaseResponse
+from prometheus_client import Counter, Histogram, Gauge, generate_latest, CONTENT_TYPE_LATEST
 import initialize
 from python.helpers import files, git, mcp_server, fasta2a_server
 from python.helpers.files import get_abs_path
@@ -43,6 +44,31 @@ webapp.config.update(
 )
 
 lock = threading.Lock()
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Prometheus Metrics
+# ─────────────────────────────────────────────────────────────────────────────
+AGENT_REQUESTS = Counter(
+    "agent_zero_requests_total",
+    "Total API requests",
+    labelnames=("endpoint", "status")
+)
+AGENT_REQUEST_LATENCY = Histogram(
+    "agent_zero_request_latency_seconds",
+    "Request latency",
+    labelnames=("endpoint",),
+    buckets=(0.1, 0.5, 1.0, 2.0, 5.0, 10.0, 30.0)
+)
+AGENT_ACTIVE_SESSIONS = Gauge(
+    "agent_zero_active_sessions",
+    "Active chat sessions"
+)
+AGENT_MCP_REQUESTS = Counter(
+    "agent_zero_mcp_requests_total",
+    "MCP tool requests",
+    labelnames=("tool",)
+)
+# ─────────────────────────────────────────────────────────────────────────────
 
 # Set up basic authentication for UI and API but not MCP
 # basic_auth = BasicAuth(webapp)
@@ -166,6 +192,24 @@ async def login_handler():
 async def logout_handler():
     session.pop('authentication', None)
     return redirect(url_for('login_handler'))
+
+
+@webapp.route("/healthz", methods=["GET"])
+def healthz():
+    """Health check endpoint for Kubernetes probes and monitoring."""
+    gitinfo = None
+    try:
+        gitinfo = git.get_git_info()
+    except Exception:
+        gitinfo = {"version": "unknown"}
+    return {"ok": True, "service": "agent-zero", "version": gitinfo.get("version", "unknown")}
+
+
+@webapp.route("/metrics", methods=["GET"])
+def metrics():
+    """Prometheus metrics endpoint."""
+    return Response(generate_latest(), mimetype=CONTENT_TYPE_LATEST)
+
 
 # handle default address, load index
 @webapp.route("/", methods=["GET"])
