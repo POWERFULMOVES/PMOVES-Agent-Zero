@@ -1390,8 +1390,8 @@ def normalize_settings(settings: Settings) -> Settings:
             except (ValueError, TypeError):
                 copy[key] = value  # make default instead
 
-    # mcp server token is set automatically
-    copy["mcp_server_token"] = create_auth_token()
+    # mcp server token - use env var if set, otherwise generate one
+    copy["mcp_server_token"] = os.environ.get("MCP_SERVER_TOKEN") or create_auth_token()
 
     return copy
 
@@ -1526,8 +1526,8 @@ def get_default_settings() -> Settings:
         mcp_servers='{\n    "mcpServers": {}\n}',
         mcp_client_init_timeout=10,
         mcp_client_tool_timeout=120,
-        mcp_server_enabled=False,
-        mcp_server_token=create_auth_token(),
+        mcp_server_enabled=os.environ.get("MCP_SERVER_ENABLED", "false").lower() in ("true", "1", "yes"),
+        mcp_server_token=os.environ.get("MCP_SERVER_TOKEN") or create_auth_token(),
         a2a_server_enabled=False,
         variables="",
         secrets="",
