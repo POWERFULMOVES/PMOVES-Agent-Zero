@@ -27,19 +27,31 @@ try:
         PersonaAgentRequest,
         PersonaIntegrationService,
         create_agent_from_persona,
-        list_available_personas
+        list_available_personas,
+        SupabaseConnectionError,
+        PersonaNotFoundError
     )
 except ImportError:
-    # Fallback for direct testing - use portable relative path
+    # Only fall back for relative import errors (when running as script directly)
+    # Let other import errors propagate to surface real issues
     import sys
     sys.path.insert(0, str(Path(__file__).parent.parent))
-    from helpers.persona_integration import (
-        PersonaConfig,
-        PersonaAgentRequest,
-        PersonaIntegrationService,
-        create_agent_from_persona,
-        list_available_personas
-    )
+    try:
+        from helpers.persona_integration import (
+            PersonaConfig,
+            PersonaAgentRequest,
+            PersonaIntegrationService,
+            create_agent_from_persona,
+            list_available_personas,
+            SupabaseConnectionError,
+            PersonaNotFoundError
+        )
+    except ImportError as e:
+        # Re-raise with clearer error message if fallback also fails
+        raise ImportError(
+            f"Failed to import persona_integration module. "
+            f"Ensure the module is in the correct location: {e}"
+        ) from e
 
 router = APIRouter(prefix="/api/persona", tags=["persona"])
 
@@ -214,6 +226,9 @@ async def create_agent_from_persona_endpoint(request: CreateAgentFromPersonaRequ
 
     except HTTPException:
         raise
+    except SupabaseConnectionError as e:
+        # Supabase connectivity issues - 503 Service Unavailable
+        raise HTTPException(status_code=503, detail=f"Supabase connection error: {e!s}") from e
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error creating agent from persona: {e!s}") from e
     finally:
@@ -276,6 +291,9 @@ async def list_personas(
             count=len(personas)
         )
 
+    except SupabaseConnectionError as e:
+        # Supabase connectivity issues - 503 Service Unavailable
+        raise HTTPException(status_code=503, detail=f"Supabase connection error: {e!s}") from e
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error listing personas: {e!s}") from e
     finally:
@@ -351,6 +369,9 @@ async def get_persona(persona_id: str):
 
     except HTTPException:
         raise
+    except SupabaseConnectionError as e:
+        # Supabase connectivity issues - 503 Service Unavailable
+        raise HTTPException(status_code=503, detail=f"Supabase connection error: {e!s}") from e
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error getting persona: {e!s}") from e
     finally:
@@ -388,6 +409,9 @@ async def get_persona_enhancements(persona_id: str):
 
     except HTTPException:
         raise
+    except SupabaseConnectionError as e:
+        # Supabase connectivity issues - 503 Service Unavailable
+        raise HTTPException(status_code=503, detail=f"Supabase connection error: {e!s}") from e
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error getting enhancements: {e!s}") from e
     finally:

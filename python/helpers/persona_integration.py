@@ -32,6 +32,25 @@ logger = logging.getLogger(__name__)
 
 
 # ============================================================================
+# Exceptions
+# ============================================================================
+
+class PersonaIntegrationError(Exception):
+    """Base exception for persona integration errors."""
+    pass
+
+
+class PersonaNotFoundError(PersonaIntegrationError):
+    """Raised when a persona is not found in Supabase."""
+    pass
+
+
+class SupabaseConnectionError(PersonaIntegrationError):
+    """Raised when Supabase connection fails or returns an error."""
+    pass
+
+
+# ============================================================================
 # Data Models
 # ============================================================================
 
@@ -268,6 +287,9 @@ class PersonaIntegrationService:
 
         Returns:
             PersonaConfig if found, None otherwise
+
+        Raises:
+            SupabaseConnectionError: If Supabase connection or query fails
         """
         try:
             response = await self.client.get(
@@ -284,9 +306,18 @@ class PersonaIntegrationService:
                 return None
 
             return PersonaConfig.from_supabase_row(data[0])
+        except httpx.HTTPStatusError as e:
+            # HTTP errors indicate Supabase issues
+            logger.error("Supabase HTTP error fetching persona %s: %s", persona_id, e)
+            raise SupabaseConnectionError(f"Failed to fetch persona from Supabase: {e}") from e
+        except (json.JSONDecodeError, ValueError) as e:
+            # Data parsing errors
+            logger.error("Invalid JSON response fetching persona %s: %s", persona_id, e)
+            raise SupabaseConnectionError(f"Invalid response from Supabase: {e}") from e
         except Exception as e:
-            logger.error("Error fetching persona %s: %s", persona_id, e)
-            return None
+            # Other unexpected errors
+            logger.error("Unexpected error fetching persona %s: %s", persona_id, e)
+            raise SupabaseConnectionError(f"Unexpected error fetching persona: {e}") from e
 
     async def get_persona_by_name(self, name: str, version: str = "1.0") -> Optional[PersonaConfig]:
         """
@@ -298,6 +329,9 @@ class PersonaIntegrationService:
 
         Returns:
             PersonaConfig if found, None otherwise
+
+        Raises:
+            SupabaseConnectionError: If Supabase connection or query fails
         """
         try:
             response = await self.client.get(
@@ -315,9 +349,15 @@ class PersonaIntegrationService:
                 return None
 
             return PersonaConfig.from_supabase_row(data[0])
+        except httpx.HTTPStatusError as e:
+            logger.error("Supabase HTTP error fetching persona %s@%s: %s", name, version, e)
+            raise SupabaseConnectionError(f"Failed to fetch persona from Supabase: {e}") from e
+        except (json.JSONDecodeError, ValueError) as e:
+            logger.error("Invalid JSON response fetching persona %s@%s: %s", name, version, e)
+            raise SupabaseConnectionError(f"Invalid response from Supabase: {e}") from e
         except Exception as e:
-            logger.error("Error fetching persona %s@%s: %s", name, version, e)
-            return None
+            logger.error("Unexpected error fetching persona %s@%s: %s", name, version, e)
+            raise SupabaseConnectionError(f"Unexpected error fetching persona: {e}") from e
 
     async def list_personas(self, active_only: bool = True) -> List[PersonaConfig]:
         """
@@ -328,6 +368,9 @@ class PersonaIntegrationService:
 
         Returns:
             List of PersonaConfig
+
+        Raises:
+            SupabaseConnectionError: If Supabase connection or query fails
         """
         try:
             params = {"select": "*"}
@@ -342,9 +385,15 @@ class PersonaIntegrationService:
             data = response.json()
 
             return [PersonaConfig.from_supabase_row(row) for row in data]
+        except httpx.HTTPStatusError as e:
+            logger.error("Supabase HTTP error listing personas: %s", e)
+            raise SupabaseConnectionError(f"Failed to list personas from Supabase: {e}") from e
+        except (json.JSONDecodeError, ValueError) as e:
+            logger.error("Invalid JSON response listing personas: %s", e)
+            raise SupabaseConnectionError(f"Invalid response from Supabase: {e}") from e
         except Exception as e:
-            logger.error("Error listing personas: %s", e)
-            return []
+            logger.error("Unexpected error listing personas: %s", e)
+            raise SupabaseConnectionError(f"Unexpected error listing personas: {e}") from e
 
     async def get_enhancements(
         self,
@@ -362,6 +411,9 @@ class PersonaIntegrationService:
 
         Returns:
             List of PersonaEnhancement, sorted by priority (desc)
+
+        Raises:
+            SupabaseConnectionError: If Supabase connection or query fails
         """
         try:
             params = {
@@ -385,9 +437,15 @@ class PersonaIntegrationService:
             data = response.json()
 
             return [PersonaEnhancement.from_supabase_row(row) for row in data]
+        except httpx.HTTPStatusError as e:
+            logger.error("Supabase HTTP error fetching enhancements for persona %s: %s", persona_id, e)
+            raise SupabaseConnectionError(f"Failed to fetch enhancements from Supabase: {e}") from e
+        except (json.JSONDecodeError, ValueError) as e:
+            logger.error("Invalid JSON response fetching enhancements for persona %s: %s", persona_id, e)
+            raise SupabaseConnectionError(f"Invalid response from Supabase: {e}") from e
         except Exception as e:
-            logger.error("Error fetching enhancements for persona %s: %s", persona_id, e)
-            return []
+            logger.error("Unexpected error fetching enhancements for persona %s: %s", persona_id, e)
+            raise SupabaseConnectionError(f"Unexpected error fetching enhancements: {e}") from e
 
     def apply_enhancements(
         self,
