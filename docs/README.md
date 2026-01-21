@@ -8,6 +8,7 @@ To begin with Agent Zero, follow the links below for detailed guides on various 
 - **[Extensibility](extensibility.md):** Learn how to create custom extensions for Agent Zero.
 - **[Connectivity](connectivity.md):** Learn how to connect to Agent Zero from other applications.
 - **[Architecture Overview](architecture.md):** Understand the internal workings of the framework.
+- **[Branching Strategy](branching-strategy.md):** Learn about PMOVES branch variants and merge workflows.
 - **[Contributing](contribution.md):** Learn how to contribute to the Agent Zero project.
 - **[Troubleshooting and FAQ](troubleshooting.md):** Find answers to common issues and questions.
 

@@ -10,10 +10,12 @@ from functools import wraps
 import threading
 from flask import Flask, request, Response, session, redirect, url_for, render_template_string
 from werkzeug.wrappers.response import Response as BaseResponse
+from prometheus_client import Counter, Histogram, Gauge, generate_latest, CONTENT_TYPE_LATEST
 import initialize
 from python.helpers import files, git, mcp_server, fasta2a_server
 from python.helpers.files import get_abs_path
 from python.helpers import runtime, dotenv, process
+from fastapi import FastAPI
 from python.helpers.extract_tools import load_classes_from_folder
 from python.helpers.api import ApiHandler
 from python.helpers.print_style import PrintStyle
@@ -43,6 +45,31 @@ webapp.config.update(
 )
 
 lock = threading.Lock()
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Prometheus Metrics
+# ─────────────────────────────────────────────────────────────────────────────
+AGENT_REQUESTS = Counter(
+    "agent_zero_requests_total",
+    "Total API requests",
+    labelnames=("endpoint", "status")
+)
+AGENT_REQUEST_LATENCY = Histogram(
+    "agent_zero_request_latency_seconds",
+    "Request latency",
+    labelnames=("endpoint",),
+    buckets=(0.1, 0.5, 1.0, 2.0, 5.0, 10.0, 30.0)
+)
+AGENT_ACTIVE_SESSIONS = Gauge(
+    "agent_zero_active_sessions",
+    "Active chat sessions"
+)
+AGENT_MCP_REQUESTS = Counter(
+    "agent_zero_mcp_requests_total",
+    "MCP tool requests",
+    labelnames=("tool",)
+)
+# ─────────────────────────────────────────────────────────────────────────────
 
 # Set up basic authentication for UI and API but not MCP
 # basic_auth = BasicAuth(webapp)
@@ -167,6 +194,24 @@ async def logout_handler():
     session.pop('authentication', None)
     return redirect(url_for('login_handler'))
 
+
+@webapp.route("/healthz", methods=["GET"])
+def healthz():
+    """Health check endpoint for Kubernetes probes and monitoring."""
+    gitinfo = None
+    try:
+        gitinfo = git.get_git_info()
+    except Exception:
+        gitinfo = {"version": "unknown"}
+    return {"ok": True, "service": "agent-zero", "version": gitinfo.get("version", "unknown")}
+
+
+@webapp.route("/metrics", methods=["GET"])
+def metrics():
+    """Prometheus metrics endpoint."""
+    return Response(generate_latest(), mimetype=CONTENT_TYPE_LATEST)
+
+
 # handle default address, load index
 @webapp.route("/", methods=["GET"])
 @requires_auth
@@ -237,11 +282,25 @@ def run():
     for handler in handlers:
         register_api_handler(webapp, handler)
 
-    # add the webapp, mcp, and a2a to the app
+    # Import and setup persona API (FastAPI sidecar for interoperability with Archon)
+    # This enables Agent Zero to expose persona creation endpoints via A2A protocol
+    try:
+        from python.api.persona_agent_create import router as persona_router
+        persona_app = FastAPI(title="Agent Zero Persona API", version="1.0.0")
+        persona_app.include_router(persona_router)
+    except ImportError:
+        # Persona integration not available, skip
+        persona_app = None
+
+    # add the webapp, mcp, a2a, and persona API to the app
     middleware_routes = {
         "/mcp": ASGIMiddleware(app=mcp_server.DynamicMcpProxy.get_instance()),  # type: ignore
         "/a2a": ASGIMiddleware(app=fasta2a_server.DynamicA2AProxy.get_instance()),  # type: ignore
     }
+
+    # Add persona API if available (enables /api/persona endpoints)
+    if persona_app:
+        middleware_routes["/api"] = ASGIMiddleware(app=persona_app)  # type: ignore
 
     app = DispatcherMiddleware(webapp, middleware_routes)  # type: ignore
 

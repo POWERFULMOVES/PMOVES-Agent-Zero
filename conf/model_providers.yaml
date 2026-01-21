@@ -17,6 +17,11 @@
 #                     This is useful for `api_base`, `extra_headers`, etc.
 
 chat:
+  tensorzero:
+    name: TensorZero (PMOVES)
+    litellm_provider: openai
+    kwargs:
+      api_base: http://tensorzero-gateway:3000/v1
   a0_venice:
     name: Agent Zero Venice.ai
     litellm_provider: openai
@@ -89,6 +94,11 @@ chat:
     litellm_provider: openai
 
 embedding:
+  tensorzero:
+    name: TensorZero (PMOVES)
+    litellm_provider: openai
+    kwargs:
+      api_base: http://tensorzero-gateway:3000/v1
   huggingface:
     name: HuggingFace
     litellm_provider: huggingface
