@@ -13,7 +13,8 @@ Endpoints:
 
 import asyncio
 import json
-from datetime import datetime
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException, Query
@@ -29,9 +30,9 @@ try:
         list_available_personas
     )
 except ImportError:
-    # Fallback for direct testing
+    # Fallback for direct testing - use portable relative path
     import sys
-    sys.path.insert(0, "/home/pmoves/PMOVES.AI/PMOVES-Agent-Zero/python")
+    sys.path.insert(0, str(Path(__file__).parent.parent))
     from helpers.persona_integration import (
         PersonaConfig,
         PersonaAgentRequest,
@@ -120,31 +121,7 @@ async def create_agent_from_persona_endpoint(request: CreateAgentFromPersonaRequ
     service = PersonaIntegrationService()
 
     try:
-        # Fetch persona
-        persona = await service.get_persona(request.persona_id)
-        if not persona:
-            raise HTTPException(status_code=404, detail=f"Persona {request.persona_id} not found")
-
-        # Fetch enhancements
-        if request.enhancement_ids:
-            all_enhancements = await service.get_enhancements(request.persona_id)
-            enhancements = [e for e in all_enhancements if e.enhancement_id in request.enhancement_ids]
-        else:
-            enhancements = await service.get_enhancements(request.persona_id)
-
-        # Apply enhancements
-        enhanced_persona = service.apply_enhancements(persona, enhancements)
-
-        # Apply overrides
-        if request.overrides:
-            if "model" in request.overrides:
-                enhanced_persona.model_preference = request.overrides["model"]
-            if "temperature" in request.overrides:
-                enhanced_persona.temperature = request.overrides["temperature"]
-            if "max_tokens" in request.overrides:
-                enhanced_persona.max_tokens = request.overrides["max_tokens"]
-
-        # Build agent config
+        # Build agent config (handles persona fetch, enhancement application, and overrides internally)
         config = await service.create_agent_config(
             PersonaAgentRequest(
                 persona_id=request.persona_id,
@@ -157,6 +134,30 @@ async def create_agent_from_persona_endpoint(request: CreateAgentFromPersonaRequ
 
         if not config:
             raise HTTPException(status_code=500, detail="Failed to create agent config")
+
+        # Fetch persona for response and event publishing
+        persona = await service.get_persona(request.persona_id)
+        if not persona:
+            raise HTTPException(status_code=404, detail=f"Persona {request.persona_id} not found")
+
+        # Fetch enhancements for response
+        if request.enhancement_ids:
+            all_enhancements = await service.get_enhancements(request.persona_id)
+            enhancements = [e for e in all_enhancements if e.enhancement_id in request.enhancement_ids]
+        else:
+            enhancements = await service.get_enhancements(request.persona_id)
+
+        # Apply enhancements for persona details
+        enhanced_persona = service.apply_enhancements(persona, enhancements)
+
+        # Apply overrides for persona details
+        if request.overrides:
+            if "model" in request.overrides:
+                enhanced_persona.model_preference = request.overrides["model"]
+            if "temperature" in request.overrides:
+                enhanced_persona.temperature = request.overrides["temperature"]
+            if "max_tokens" in request.overrides:
+                enhanced_persona.max_tokens = request.overrides["max_tokens"]
 
         # Create subordinate agent if requested
         agent_id = None
@@ -214,7 +215,7 @@ async def create_agent_from_persona_endpoint(request: CreateAgentFromPersonaRequ
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error creating agent from persona: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error creating agent from persona: {e!s}") from e
     finally:
         await service.close()
 
@@ -276,7 +277,7 @@ async def list_personas(
         )
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error listing personas: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error listing personas: {e!s}") from e
     finally:
         await service.close()
 
@@ -351,7 +352,7 @@ async def get_persona(persona_id: str):
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error getting persona: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error getting persona: {e!s}") from e
     finally:
         await service.close()
 
@@ -388,7 +389,7 @@ async def get_persona_enhancements(persona_id: str):
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error getting enhancements: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error getting enhancements: {e!s}") from e
     finally:
         await service.close()
 
@@ -398,7 +399,7 @@ async def add_persona_enhancement(
     persona_id: str,
     enhancement_type: str = Query(..., description="Enhancement type"),
     enhancement_name: str = Query(..., description="Enhancement name"),
-    enhancement_value: Dict[str, Any] = None,
+    enhancement_value: Optional[Dict[str, Any]] = None,
     priority: int = 0
 ):
     """Add an enhancement to a persona."""
@@ -427,7 +428,7 @@ async def persona_health():
             "status": "healthy",
             "supabase_connected": True,
             "total_personas": len(personas),
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
 
     except Exception as e:
@@ -435,7 +436,7 @@ async def persona_health():
             "status": "unhealthy",
             "supabase_connected": False,
             "error": str(e),
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
     finally:
         await service.close()

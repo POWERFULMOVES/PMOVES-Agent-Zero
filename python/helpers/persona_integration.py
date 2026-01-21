@@ -17,21 +17,28 @@ Integration Points:
 
 import asyncio
 import json
+import logging
 import os
-from dataclasses import dataclass, field
-from datetime import datetime
+from copy import copy
+from dataclasses import dataclass, field, replace
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 from uuid import UUID, uuid4
 
 import httpx
 from pydantic import BaseModel, Field
 
+logger = logging.getLogger(__name__)
+
 
 # ============================================================================
 # Data Models
 # ============================================================================
 
-class ThreadType(str):
+from enum import StrEnum
+
+
+class ThreadType(StrEnum):
     """Agent orchestration pattern types."""
     BASE = "base"
     PARALLEL = "parallel"
@@ -88,6 +95,12 @@ class PersonaConfig:
     @classmethod
     def from_supabase_row(cls, row: Dict[str, Any]) -> "PersonaConfig":
         """Create PersonaConfig from Supabase row data."""
+        # Validate required fields
+        required_fields = ("persona_id", "name", "version")
+        for field_name in required_fields:
+            if field_name not in row:
+                raise ValueError(f"Missing required field '{field_name}' in persona row: {row}")
+
         # Parse runtime JSONB if present (v5.12 compatibility)
         runtime = row.get("runtime", {}) or {}
 
@@ -206,10 +219,20 @@ class PersonaIntegrationService:
             supabase_url: Supabase API URL (from SUPABASE_URL env var)
             supabase_key: Supabase service key (from SUPABASE_SERVICE_ROLE_KEY env var)
             nats_url: NATS connection URL (from NATS_URL env var)
+
+        Raises:
+            ValueError: If Supabase credentials are not configured
         """
         self.supabase_url = supabase_url or os.getenv("SUPABASE_URL", "")
         self.supabase_key = supabase_key or os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
         self.nats_url = nats_url or os.getenv("NATS_URL", "nats://localhost:4222")
+
+        # Validate Supabase configuration
+        if not self.supabase_url or not self.supabase_key:
+            raise ValueError(
+                "SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be configured "
+                "(via environment variables or constructor parameters)"
+            )
 
         # HTTP client for Supabase
         self._client: Optional[httpx.AsyncClient] = None
@@ -248,7 +271,7 @@ class PersonaIntegrationService:
         """
         try:
             response = await self.client.get(
-                f"/rest/v1/personas",
+                "/rest/v1/personas",
                 params={
                     "persona_id": f"eq.{persona_id}",
                     "select": "*"
@@ -262,7 +285,7 @@ class PersonaIntegrationService:
 
             return PersonaConfig.from_supabase_row(data[0])
         except Exception as e:
-            print(f"Error fetching persona {persona_id}: {e}")
+            logger.error("Error fetching persona %s: %s", persona_id, e)
             return None
 
     async def get_persona_by_name(self, name: str, version: str = "1.0") -> Optional[PersonaConfig]:
@@ -278,7 +301,7 @@ class PersonaIntegrationService:
         """
         try:
             response = await self.client.get(
-                f"/rest/v1/personas",
+                "/rest/v1/personas",
                 params={
                     "name": f"eq.{name}",
                     "version": f"eq.{version}",
@@ -293,7 +316,7 @@ class PersonaIntegrationService:
 
             return PersonaConfig.from_supabase_row(data[0])
         except Exception as e:
-            print(f"Error fetching persona {name}@{version}: {e}")
+            logger.error("Error fetching persona %s@%s: %s", name, version, e)
             return None
 
     async def list_personas(self, active_only: bool = True) -> List[PersonaConfig]:
@@ -312,7 +335,7 @@ class PersonaIntegrationService:
                 params["is_active"] = "eq.true"
 
             response = await self.client.get(
-                f"/rest/v1/personas",
+                "/rest/v1/personas",
                 params=params
             )
             response.raise_for_status()
@@ -320,13 +343,14 @@ class PersonaIntegrationService:
 
             return [PersonaConfig.from_supabase_row(row) for row in data]
         except Exception as e:
-            print(f"Error listing personas: {e}")
+            logger.error("Error listing personas: %s", e)
             return []
 
     async def get_enhancements(
         self,
         persona_id: str,
-        enhancement_types: Optional[List[str]] = None
+        enhancement_types: Optional[List[str]] = None,
+        enhancement_ids: Optional[List[str]] = None
     ) -> List[PersonaEnhancement]:
         """
         Fetch enhancements for a persona.
@@ -334,6 +358,7 @@ class PersonaIntegrationService:
         Args:
             persona_id: Persona ID
             enhancement_types: Optional filter by enhancement types
+            enhancement_ids: Optional filter by specific enhancement IDs
 
         Returns:
             List of PersonaEnhancement, sorted by priority (desc)
@@ -348,8 +373,12 @@ class PersonaIntegrationService:
             if enhancement_types:
                 params["enhancement_type"] = f"in.({','.join(enhancement_types)})"
 
+            # Server-side filtering by enhancement_ids for efficiency
+            if enhancement_ids:
+                params["enhancement_id"] = f"in.({','.join(enhancement_ids)})"
+
             response = await self.client.get(
-                f"/rest/v1/persona_enhancements",
+                "/rest/v1/persona_enhancements",
                 params=params
             )
             response.raise_for_status()
@@ -357,7 +386,7 @@ class PersonaIntegrationService:
 
             return [PersonaEnhancement.from_supabase_row(row) for row in data]
         except Exception as e:
-            print(f"Error fetching enhancements for persona {persona_id}: {e}")
+            logger.error("Error fetching enhancements for persona %s: %s", persona_id, e)
             return []
 
     def apply_enhancements(
@@ -376,12 +405,19 @@ class PersonaIntegrationService:
             enhancements: List of enhancements to apply
 
         Returns:
-            Enhanced PersonaConfig
+            Enhanced PersonaConfig (a copy, original is not mutated)
         """
         # Sort by priority (desc)
         sorted_enhancements = sorted(enhancements, key=lambda e: e.priority, reverse=True)
 
-        enhanced = persona
+        # Create a copy to avoid mutating the original persona
+        enhanced = replace(persona)
+        # Clone mutable fields to avoid shared references
+        enhanced.tools_access = list(persona.tools_access)
+        enhanced.nats_subjects = list(persona.nats_subjects)
+        enhanced.behavior_weights = dict(persona.behavior_weights)
+        if persona.system_prompt_template:
+            enhanced.system_prompt_template = persona.system_prompt_template
 
         for enhancement in sorted_enhancements:
             value = enhancement.enhancement_value
@@ -470,14 +506,11 @@ When generating text to be spoken:
         if not persona:
             return None
 
-        # Fetch enhancements if IDs provided or fetch all for persona
-        if request.enhancement_ids:
-            # Fetch specific enhancements
-            all_enhancements = await self.get_enhancements(request.persona_id)
-            enhancements = [e for e in all_enhancements if e.enhancement_id in request.enhancement_ids]
-        else:
-            # Fetch all enhancements for persona
-            enhancements = await self.get_enhancements(request.persona_id)
+        # Fetch enhancements with server-side filtering if IDs provided
+        enhancements = await self.get_enhancements(
+            request.persona_id,
+            enhancement_ids=request.enhancement_ids
+        )
 
         # Apply enhancements to persona
         enhanced_persona = self.apply_enhancements(persona, enhancements)
@@ -599,10 +632,10 @@ Apply these filters to retrieved content:
             "version": persona.version,
             "thread_type": persona.thread_type,
             "model": persona.model_preference,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             **(metadata or {})
         }
-        print(f"Persona Event: {event_type}", json.dumps(event, indent=2))
+        logger.info("Persona Event: %s\n%s", event_type, json.dumps(event, indent=2))
 
 
 # ============================================================================
@@ -685,7 +718,7 @@ async def main():
                     persona_id = sys.argv[2]
                     persona = await service.get_persona(persona_id)
                     if persona:
-                        print(f"Persona: {persona.name}@{p.version}")
+                        print(f"Persona: {persona.name}@{persona.version}")
                         print(f"  Thread Type: {persona.thread_type}")
                         print(f"  Model: {persona.model_preference}")
                         print(f"  Tools: {', '.join(persona.tools_access)}")

@@ -15,6 +15,7 @@ import initialize
 from python.helpers import files, git, mcp_server, fasta2a_server
 from python.helpers.files import get_abs_path
 from python.helpers import runtime, dotenv, process
+from fastapi import FastAPI
 from python.helpers.extract_tools import load_classes_from_folder
 from python.helpers.api import ApiHandler
 from python.helpers.print_style import PrintStyle
@@ -281,11 +282,25 @@ def run():
     for handler in handlers:
         register_api_handler(webapp, handler)
 
-    # add the webapp, mcp, and a2a to the app
+    # Import and setup persona API (FastAPI sidecar for interoperability with Archon)
+    # This enables Agent Zero to expose persona creation endpoints via A2A protocol
+    try:
+        from python.api.persona_agent_create import router as persona_router
+        persona_app = FastAPI(title="Agent Zero Persona API", version="1.0.0")
+        persona_app.include_router(persona_router)
+    except ImportError:
+        # Persona integration not available, skip
+        persona_app = None
+
+    # add the webapp, mcp, a2a, and persona API to the app
     middleware_routes = {
         "/mcp": ASGIMiddleware(app=mcp_server.DynamicMcpProxy.get_instance()),  # type: ignore
         "/a2a": ASGIMiddleware(app=fasta2a_server.DynamicA2AProxy.get_instance()),  # type: ignore
     }
+
+    # Add persona API if available (enables /api/persona endpoints)
+    if persona_app:
+        middleware_routes["/api"] = ASGIMiddleware(app=persona_app)  # type: ignore
 
     app = DispatcherMiddleware(webapp, middleware_routes)  # type: ignore
 
