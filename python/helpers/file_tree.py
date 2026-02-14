@@ -8,7 +8,7 @@ from typing import Any, Callable, Iterable, Literal, Optional, Sequence
 
 from pathspec import PathSpec
 
-from python.helpers.files import get_abs_path
+from python.helpers import files as files_helper
 
 SORT_BY_NAME = "name"
 SORT_BY_CREATED = "created"
@@ -62,10 +62,12 @@ def file_tree(
             :data:`OUTPUT_MODE_NESTED`.
 
     Returns:
-        ``OUTPUT_MODE_STRING`` → ``str``: multi-line ASCII tree.
-        ``OUTPUT_MODE_FLAT`` → ``list[dict]``: flattened sequence of TreeItem dictionaries.
-        ``OUTPUT_MODE_NESTED`` → ``list[dict]``: nested TreeItem dictionaries where folders
-        include ``items`` arrays.
+        ``OUTPUT_MODE_STRING`` → ``str``: multi-line ASCII tree. The first line is the root banner and
+        uses a dockerized absolute path for display.
+        ``OUTPUT_MODE_FLAT`` → ``list[dict]``: flattened sequence of TreeItem dictionaries, with a
+        synthetic root folder item prepended at index 0 (using a dockerized absolute path for display).
+        ``OUTPUT_MODE_NESTED`` → ``list[dict]``: a single synthetic root folder item (using a dockerized
+        absolute path for display) whose ``items`` contains the nested TreeItem dictionaries.
 
     Notes:
         * The utility is synchronous; avoid calling from latency-sensitive async loops.
@@ -81,7 +83,8 @@ def file_tree(
                 epoch = item[\"created\"].timestamp()
 
     """
-    abs_root = get_abs_path(relative_path)
+    abs_root = files_helper.get_abs_path(relative_path)
+    output_root = files_helper.get_abs_path_dockerized(relative_path)
 
     if not os.path.exists(abs_root):
         raise FileNotFoundError(f"Path does not exist: {relative_path!r}")
@@ -234,8 +237,15 @@ def file_tree(
             if not visible_ids or id(node) in visible_ids:
                 yield node
 
+    def make_root_item(items: list[dict] | None) -> dict:
+        root_item = root_node.as_dict()
+        root_item["name"] = output_root
+        root_item["text"] = f"{output_root.rstrip(os.sep)}/"
+        root_item["items"] = items
+        return root_item
+
     if output_mode == OUTPUT_MODE_STRING:
-        display_name = relative_path.strip() or root_name
+        display_name = output_root #relative_path.strip() or root_name
         root_line = f"{display_name.rstrip(os.sep)}/"
         lines = [root_line]
         for node in iter_visible():
@@ -243,9 +253,9 @@ def file_tree(
         return "\n".join(lines)
 
     if output_mode == OUTPUT_MODE_FLAT:
-        return _build_tree_items_flat(list(iter_visible()))
+        return [make_root_item(None)] + _build_tree_items_flat(list(iter_visible()))
 
-    return _to_nested_structure(root_node.items or [])
+    return [make_root_item(_to_nested_structure(root_node.items or []))]
 
 
 @dataclass(slots=True)

@@ -23,10 +23,10 @@ chat:
     kwargs:
       api_base: http://tensorzero-gateway:3000/v1
   a0_venice:
-    name: Agent Zero Venice.ai
+    name: Agent Zero API
     litellm_provider: openai
     kwargs:
-      api_base: https://api.agent-zero.ai/venice/v1
+      api_base: https://llm.agent-zero.ai/v1
       venice_parameters:
         include_venice_system_prompt: false
   anthropic:
@@ -45,6 +45,7 @@ chat:
       extra_headers:
         "Editor-Version": "vscode/1.85.1"
         "Copilot-Integration-Id": "vscode-chat"
+        "Copilot-Vision-Request": "true"
   google:
     name: Google
     litellm_provider: gemini
@@ -60,6 +61,9 @@ chat:
   mistral:
     name: Mistral AI
     litellm_provider: mistral
+  moonshot:
+    name: Moonshot AI
+    litellm_provider: moonshot
   ollama:
     name: Ollama
     litellm_provider: ollama
@@ -69,6 +73,9 @@ chat:
   azure:
     name: OpenAI Azure
     litellm_provider: azure
+  bedrock:
+    name: AWS Bedrock
+    litellm_provider: bedrock
   openrouter:
     name: OpenRouter
     litellm_provider: openrouter
@@ -89,6 +96,16 @@ chat:
   xai:
     name: xAI
     litellm_provider: xai
+  zai:
+    name: Z.AI
+    litellm_provider: openai
+    kwargs:
+      api_base: https://api.z.ai/api/paas/v4
+  zai_coding:
+    name: Z.AI Coding
+    litellm_provider: openai
+    kwargs:
+      api_base: https://api.z.ai/api/coding/paas/v4
   other:
     name: Other OpenAI compatible
     litellm_provider: openai
@@ -120,6 +137,9 @@ embedding:
   azure:
     name: OpenAI Azure
     litellm_provider: azure
+  bedrock:
+    name: AWS Bedrock
+    litellm_provider: bedrock
   # TODO: OpenRouter not yet supported by LiteLLM, replace with native litellm_provider openrouter and remove api_base when ready
   openrouter:
     name: OpenRouter

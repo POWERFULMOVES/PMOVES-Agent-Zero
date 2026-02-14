@@ -28,6 +28,16 @@
                 </button>
                 <div id="current-path"><span id="path-text" x-text="$store.fileBrowser.browser.currentPath"></span></div>
               </div>
+              <div class="new-item-buttons">
+                <button class="btn btn-ok btn-new-item" @click="$store.fileBrowser.openNewFile()">
+                  <span class="material-symbols-outlined">note_add</span>
+                  New File
+                </button>
+                <button class="btn btn-ok btn-new-item" @click="$store.fileBrowser.openNewFolderModal()">
+                  <span class="material-symbols-outlined">create_new_folder</span>
+                  New Folder
+                </button>
+              </div>
 
               <!-- Files list -->
               <div class="files-list">
@@ -41,18 +51,63 @@
                 <template x-if="$store.fileBrowser.browser.entries.length">
                   <template x-for="file in $store.fileBrowser.sortFiles($store.fileBrowser.browser.entries)" :key="file.path">
                     <div class="file-item" :data-is-dir="file.is_dir">
-                      <div class="file-name" @click="file.is_dir ? $store.fileBrowser.navigateToFolder(file.path) : $store.fileBrowser.downloadFile(file)">
+                      <div class="file-name" @click="file.is_dir && $store.fileBrowser.navigateToFolder(file.path)">
                         <img :src="'/public/' + (file.type === 'unknown' ? 'file' : ($store.fileBrowser.isArchive(file.name) ? 'archive' : file.type)) + '.svg'" class="file-icon" :alt="file.type" />
                         <span x-text="file.name"></span>
                       </div>
                       <div class="file-size" x-text="$store.fileBrowser.formatFileSize(file.size)"></div>
                       <div class="file-date" x-text="$store.fileBrowser.formatDate(file.modified)"></div>
                       <div class="file-actions">
-                        <button class="action-button download-button" @click.stop="$store.fileBrowser.downloadFile(file)">
-                          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 19.5 19.5"><path d="m.75,14.25v2.25c0,1.24,1.01,2.25,2.25,2.25h13.5c1.24,0,2.25-1.01,2.25-2.25v-2.25m-4.5-4.5l-4.5,4.5m0,0l-4.5-4.5m4.5,4.5V.75" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"/></svg>
+                        <!-- Single-item actions (Edit/Rename/...) are grouped under a dropdown -->
+                        <div
+                          class="dropdown file-actions-dropdown"
+                          @click.outside="$store.fileBrowser.closeDropdown()"
+                          @keydown.escape.window="$store.fileBrowser.closeDropdown()"
+                        >
+                          <button
+                            type="button"
+                            class="btn-icon-action dropdown-trigger"
+                            @click.stop="$store.fileBrowser.toggleDropdown(file.path)"
+                            :aria-expanded="$store.fileBrowser.isDropdownOpen(file.path).toString()"
+                            aria-label="More actions"
+                            title="More actions"
+                          >
+                            <span class="material-symbols-outlined">more_vert</span>
+                          </button>
+
+                          <div
+                            class="dropdown-menu"
+                            x-show="$store.fileBrowser.isDropdownOpen(file.path)"
+                            x-transition
+                            :class="{ 'bottom': $el.getBoundingClientRect().bottom > window.innerHeight - 100 }"
+                            style="display: none;"
+                            @click="$store.fileBrowser.closeDropdown()"
+                          >
+                            <button
+                              type="button"
+                              class="dropdown-item"
+                              x-show="!file.is_dir && file.size <= 1048576"
+                              @click="$store.fileBrowser.openFileEditor(file)"
+                            >
+                              <span class="material-symbols-outlined">file_open</span>
+                              <span>Edit</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              class="dropdown-item"
+                              @click="$store.fileBrowser.openRenameModal(file)"
+                            >
+                              <span class="material-symbols-outlined">drive_file_rename_outline</span>
+                              <span>Rename</span>
+                            </button>
+                          </div>
+                        </div>
+                        <button class="btn-icon-action" x-show="!file.is_dir" @click.stop="$store.fileBrowser.downloadFile(file)" title="Download file">
+                          <span class="material-symbols-outlined">download</span>
                         </button>
-                        <button class="delete-button" @click.stop="$store.fileBrowser.deleteFile(file)">
-                          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 15.03 22.53" fill="currentColor"><path d="m14.55,7.82H4.68L14.09,3.19c.83-.41,1.17-1.42.77-2.25-.41-.83-1.42-1.17-2.25-.77l-3.16,1.55-.15-.31c-.22-.44-.59-.76-1.05-.92-.46-.16-.96-.13-1.39.09l-2.08,1.02c-.9.44-1.28,1.54-.83,2.44l.15.31-3.16,1.55c-.83.41-1.17,1.42-.77,2.25.29.59.89.94,1.51.94.25,0,.5-.06.74-.17l.38-.19s.09.03.14.03h11.14v11.43c0,.76-.62,1.38-1.38,1.38h-.46v-11.28c0-.26-.21-.47-.47-.47s-.47.21-.47.47v11.28h-2.39v-11.28c0-.26-.21-.47-.47-.47s-.47.21-.47.47v11.28h-2.39v-11.28c0-.26-.21-.47-.47-.47s-.47.21-.47.47v11.28h-.46c-.76,0-1.38-.62-1.38-1.38v-9.9c0-.26-.21-.47-.47-.47s-.47.21-.47.47v9.9c0,1.28,1.04,2.32,2.32,2.32h8.55c1.28,0,2.32-1.04,2.32-2.32v-11.91c0-.26-.21-.47-.47-.47Z" stroke-width="0"/></svg>
+                        <button class="btn-icon-action" @click.stop="$confirmClick($event, () => $store.fileBrowser.deleteFile(file))" title="Delete item">
+                          <span class="material-symbols-outlined">delete</span>
                         </button>
                       </div>
                     </div>
@@ -131,23 +186,24 @@
     }
 
     /* File Browser Styles */
-    .files-list,
-    .file-header,
-    .file-item {
+    .files-list {
       width: 100%;
       border-radius: 4px;
-      overflow: hidden;
+      /* Removed overflow: hidden to allow dropdown menus to be visible */
     }
 
     /* Header Styles */
     .file-header {
-    display: grid;
-    grid-template-columns: 2fr 0.6fr 1fr 80px;
-    background: var(--secondary-bg);
-    padding: 8px 0;
-    font-weight: bold;
-    border-bottom: 1px solid var(--border-color);
-    color: var(--color-primary);
+      width: 100%;
+      border-radius: 4px;
+      overflow: hidden;
+      display: grid;
+      grid-template-columns: 1.5fr 0.71fr 1.05fr 0.6fr;
+      background: var(--secondary-bg);
+      padding: 8px 0;
+      font-weight: bold;
+      border-bottom: 1px solid var(--border-color);
+      color: var(--color-primary);
     }
     .file-cell,
     .file-cell-size,
@@ -160,14 +216,15 @@
     /* File Item Styles */
     .file-item {
     display: grid;
-    grid-template-columns: 2fr 0.6fr 1fr 80px;
+    grid-template-columns: 1.5fr 0.7fr 1fr 0.6fr;
     align-items: center;
     padding: 8px 0;
     font-size: 0.875rem;
     border-top: 1px solid var(--color-border);
     transition: background-color 0.2s;
     white-space: nowrap;
-    overflow: hidden;
+    border-radius: 4px;
+    overflow: visible; /* allow action dropdown menus to overflow the row */
     color: var(--color-text);
     }
     .file-item:hover {
@@ -221,6 +278,17 @@
     border: 1px solid var(--color-border);
     border-radius: 8px;
     }
+
+    .new-item-buttons {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.5em;
+    margin-bottom: 0.5em;
+    }
+    .new-item-buttons button {
+    margin-left: 0.5em;
+    }
+    
     .nav-button {
     padding: 4px 12px;
     border: 1px solid var(--color-border);
@@ -279,52 +347,42 @@
     .btn-upload:active {
     background-color: #2b309c;
     }
-    /* Delete Button Styles */
-    .delete-button {
-    background: none;
-    border: none;
-    color: var(--color-primary);
-    cursor: pointer;
-    width: 32px;
-    padding: 4px 8px;
-    border-radius: 4px;
-    transition: opacity 0.2s, background-color 0.2s;
-    }
-    .delete-button:hover {
-    color: #ff7878;
-    }
-    .delete-button:active {
-    opacity: 0.6;
-    }
 
     /* File Actions */
     .file-actions {
     display: flex;
     gap: var(--spacing-xs);
     }
-    .action-button {
-    background: none;
-    border: none;
-    cursor: pointer;
-    width: 32px;
-    padding: 6px 8px;
-    border-radius: 4px;
-    transition: background-color 0.2s;
+    .file-actions .dropdown-menu {
+    top: auto !important;
+    bottom: 100% !important;
+    margin-top: 0;
+    margin-bottom: var(--spacing-xs);
     }
-    .download-button {
-    color: var(--color-primary);
+    .btn-new-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 8px 14px;
     }
-    .download-button:hover {
-    background-color: var(--color-border);
+    .btn-secondary {
+    background: var(--color-secondary);
+    color: var(--color-text);
+    border: 1px solid var(--color-border);
     }
-    .light-mode .download-button:hover {
-    background-color: #c6d4de;
+    .btn-secondary:hover {
+    filter: brightness(1.05);
+    }
+    .btn-secondary:active {
+    filter: brightness(0.95);
     }
     /* Responsive Design */
     @media (max-width: 768px) {
-    .file-header,
+    .file-header {
+      grid-template-columns: 1fr 0.52fr 120px;
+    }
     .file-item {
-        grid-template-columns: 1fr 0.5fr 80px;
+        grid-template-columns: 1fr 0.5fr 120px;
     }
     .file-cell-date,
     .file-date {
@@ -334,7 +392,7 @@
     @media (max-width: 540px) {
     .file-header,
     .file-item {
-        grid-template-columns: 1fr 80px;
+        grid-template-columns: 1fr 120px;
     }
     .file-cell-size,
     .file-size,

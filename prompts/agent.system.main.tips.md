@@ -7,13 +7,13 @@ never assume success
 memory refers memory tools not own knowledge
 
 ## Files
-when not in project save files in /root
+when not in project save files in {{workdir_path}}
 don't use spaces in file names
 
-## Instruments
+## Skills
 
-instruments are programs to solve tasks
-instrument descriptions in prompt executed with code_execution_tool
+skills are contextual expertise to solve tasks (SKILL.md standard)
+skill descriptions in prompt executed with code_execution_tool or skills_tool
 
 ## Best practices
 

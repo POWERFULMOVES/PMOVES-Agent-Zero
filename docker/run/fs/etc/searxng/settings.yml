@@ -44,7 +44,7 @@ enabled_plugins:
   - 'Hash plugin'
   - 'Self Informations'
   - 'Tracker URL remover'
-  - 'Ahmia blacklist'
+  # - 'Ahmia blacklist'
   # - 'Hostnames plugin'  # see 'hostnames' configuration below
   # - 'Open Access DOI rewrite'
 
@@ -65,6 +65,14 @@ enabled_plugins:
 engines:
   - name: radio browser
     engine: radio_browser
+    disabled: true
+    inactive: true
+
+  - name: ahmia
+    disabled: true
+    inactive: true
+
+  - name: torch
     disabled: true
     inactive: true
 # TODO enable radio_browser when it works again

@@ -33,4 +33,7 @@ sys.modules["numpy.distutils.cpuinfo"] = cpuinfo
 np.distutils = dist # type: ignore
 # -------------------------------------------------------------------
 
-import faiss
+import warnings
+with warnings.catch_warnings():
+    warnings.simplefilter("ignore", DeprecationWarning)
+    import faiss

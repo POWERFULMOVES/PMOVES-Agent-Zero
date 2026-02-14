@@ -45,7 +45,7 @@ async def preload():
         ]
 
         await asyncio.gather(*tasks, return_exceptions=True)
-        PrintStyle().print("Preload completed")
+        PrintStyle().print("Preload completed.")
     except Exception as e:
         PrintStyle().error(f"Error in preload: {e}")
 

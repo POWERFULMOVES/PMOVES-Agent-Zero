@@ -128,7 +128,8 @@ const model = {
   setupPasteHandler() {
     console.log("Setting up paste handler...");
     document.addEventListener("paste", (e) => {
-      console.log("Paste event detected, target:", e.target.tagName);
+      // console.log("Paste event detected, target:", e.target.id);
+      if(e.target.id != "chat-input" && e.target.id != "full-screen-input") return;
 
       const items = e.clipboardData.items;
       let imageFound = false;
@@ -259,11 +260,11 @@ const model = {
 
   // Generate server-side API URL for file (for device sync)
   getServerImgUrl(filename) {
-    return `/image_get?path=/a0/tmp/uploads/${encodeURIComponent(filename)}`;
+    return `/image_get?path=/a0/usr/uploads/${encodeURIComponent(filename)}`;
   },
 
   getServerFileUrl(filename) {
-    return `/a0/tmp/uploads/${encodeURIComponent(filename)}`;
+    return `/a0/usr/uploads/${encodeURIComponent(filename)}`;
   },
 
   // Check if file is an image based on extension

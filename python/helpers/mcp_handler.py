@@ -23,6 +23,7 @@ from datetime import timedelta
 import json
 from python.helpers import errors
 from python.helpers import settings
+from python.helpers.log import LogItem
 
 import httpx
 
@@ -90,7 +91,6 @@ def initialize_mcp(mcp_servers_config: str):
             AgentContext.log_to_all(
                 type="warning",
                 content=f"Failed to update MCP settings: {e}",
-                temp=False,
             )
 
             PrintStyle(
@@ -100,6 +100,14 @@ def initialize_mcp(mcp_servers_config: str):
 
 class MCPTool(Tool):
     """MCP Tool wrapper"""
+
+    def get_log_object(self) -> LogItem:
+        return self.agent.context.log.log(
+            type="mcp",
+            heading=f"icon://extension {self.agent.agent_name}: Using MCP tool '{self.name}'",
+            content="",
+            kvps={"tool_name": self.name, **self.args},
+        )
 
     async def execute(self, **kwargs: Any):
         error = ""
@@ -276,10 +284,9 @@ class MCPServerRemote(BaseModel):
                         key = "url"  # remap serverUrl to url
 
                     setattr(self, key, value)
-            # We already run in an event loop, dont believe Pylance
-            return asyncio.run(self.__on_update())
+            return self
 
-    async def __on_update(self) -> "MCPServerRemote":
+    async def initialize(self) -> "MCPServerRemote":
         await self.__client.update_tools()  # type: ignore
         return self
 
@@ -353,10 +360,9 @@ class MCPServerLocal(BaseModel):
                     if key == "name":
                         value = normalize_name(value)
                     setattr(self, key, value)
-            # We already run in an event loop, dont believe Pylance
-            return asyncio.run(self.__on_update())
+            return self
 
-    async def __on_update(self) -> "MCPServerLocal":
+    async def initialize(self) -> "MCPServerLocal":
         await self.__client.update_tools()  # type: ignore
         return self
 
@@ -614,6 +620,24 @@ class MCPConfig(BaseModel):
                 self.disconnected_servers.append(
                     {"config": server_item, "error": error_msg, "name": server_name}
                 )
+
+        # Initialize all servers in parallel (fetch tools concurrently)
+        if self.servers:
+            async def _init_server(server):
+                try:
+                    await server.initialize()
+                except Exception as e:
+                    error_msg = str(e)
+                    PrintStyle(
+                        background_color="grey", font_color="red", padding=True
+                    ).print(
+                        f"MCPConfig::__init__: Failed to initialize MCPServer '{server.name}': {error_msg}"
+                    )
+
+            async def _init_all():
+                await asyncio.gather(*[_init_server(s) for s in self.servers])
+
+            asyncio.run(_init_all())
 
     def get_server_log(self, server_name: str) -> str:
         with self.__lock:
@@ -1071,9 +1095,9 @@ class MCPClientRemote(MCPClientBase):
         server: MCPServerRemote = cast(MCPServerRemote, self.server)
         set = settings.get_settings()
 
-        # Use lower timeouts for faster failure detection
-        init_timeout = min(server.init_timeout or set["mcp_client_init_timeout"], 5)
-        tool_timeout = min(server.tool_timeout or set["mcp_client_tool_timeout"], 10)
+        # Resolve timeout: check server config first, then settings, defaulting to 5s/10s
+        init_timeout = server.init_timeout or set["mcp_client_init_timeout"] or 5
+        tool_timeout = server.tool_timeout or set["mcp_client_tool_timeout"] or 10
 
         client_factory = CustomHTTPClientFactory(verify=server.verify)
         # Check if this is a streaming HTTP type

@@ -124,7 +124,6 @@ some classes like modal-header are shared between the old and the new system */
 .modal-content {
   padding: 0.5rem 1.5rem 0 1.5rem;
   overflow-y: auto;
-  overflow-x: hidden;
   height: calc(90vh);
   flex-grow: 1;
   background-clip: border-box;
@@ -163,7 +162,7 @@ some classes like modal-header are shared between the old and the new system */
   margin: 4px 0;
   border-radius: 6px;
 }
-.modal-content::-webkit-scrollbar-thumb, .modal-scroll::webkit-scrollbar-thumb {
+.modal-content::-webkit-scrollbar-thumb, .modal-scroll::-webkit-scrollbar-thumb {
   background-color: rgba(155, 155, 155, 0.5);
   border-radius: 6px;
   transition: background-color 0.2s ease;
@@ -201,7 +200,7 @@ some classes like modal-header are shared between the old and the new system */
 .section {
   margin-bottom: 2rem;
   padding: 1rem;
-  padding-bottom: 0;
+  /* padding-bottom: 0; */
   border: 1px solid var(--color-border);
   border-radius: 0.5rem;
 }
@@ -382,27 +381,40 @@ input[type="range"] {
   background: var(--color-border);
   border-radius: 2px;
   outline: none;
+  transition: all 0.2s ease;
 }
 input[type="range"]::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
   width: 16px;
   height: 16px;
-  background: var(--color-text);
+  background: var(--color-primary);
   border-radius: 50%;
   cursor: pointer;
+  transition: all 0.2s ease;
 }
+
 input[type="range"]::-moz-range-thumb {
   width: 16px;
   height: 16px;
-  background: var(--color-text);
+  background: var(--color-primary);
   border-radius: 50%;
   cursor: pointer;
   border: none;
+  transition: all 0.2s ease;
 }
+
 .range-value {
   min-width: 3em;
   text-align: right;
+}
+
+/* Light mode overrides */
+.light-mode input[type="range"]::-webkit-slider-thumb {
+  background: #777;
+}
+.light-mode input[type="range"]::-moz-range-thumb {
+  background: #777;
 }
 
 /* Responsive Design */
@@ -427,12 +439,12 @@ input[type="range"]::-moz-range-thumb {
     flex-grow: 1;
   }
   .modal-footer {
-    padding: var(--spacing-sm) 0 var(--spacing-sm) 0 !important;
+    padding: var(--spacing-sm) !important;
   }
   .section {
     margin-bottom: 1.5rem;
     padding: 1rem;
-    padding-bottom: 0;
+    /* padding-bottom: 0; */
     border: 1px solid var(--color-border);
     border-radius: 0.5rem;
   }
@@ -512,4 +524,81 @@ input[type="range"]::-moz-range-thumb {
   100% {
     background-position: -200% 0;
   }
+}
+
+/* Confirm Dialog */
+.confirm-dialog-backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.confirm-dialog-backdrop.visible {
+  opacity: 1;
+}
+
+.confirm-dialog {
+  background: var(--color-panel);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  max-width: 450px;
+  width: 90%;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+  transform: scale(0.95);
+  transition: transform 0.2s ease;
+}
+
+.confirm-dialog-backdrop.visible .confirm-dialog {
+  transform: scale(1);
+}
+
+.confirm-dialog-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75em;
+  padding: 1em 1.25em;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.confirm-dialog-icon {
+  font-size: 1.5em;
+}
+
+.confirm-dialog-title {
+  font-size: 1.1em;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.confirm-dialog-body {
+  padding: 1.25em;
+  color: var(--color-text);
+  line-height: 1.6;
+  font-size: 0.95em;
+}
+
+.confirm-dialog-body ul {
+  margin: 0.75em 0;
+  padding-left: 1.5em;
+}
+
+.confirm-dialog-body p {
+  margin: 0;
+}
+
+.confirm-dialog-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75em;
+  padding: 1em 1.25em;
+  border-top: 1px solid var(--color-border);
 }

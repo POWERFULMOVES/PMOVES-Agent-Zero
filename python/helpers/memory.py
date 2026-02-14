@@ -57,7 +57,6 @@ class Memory:
         MAIN = "main"
         FRAGMENTS = "fragments"
         SOLUTIONS = "solutions"
-        INSTRUMENTS = "instruments"
 
     index: dict[str, "MyFaiss"] = {}
 
@@ -139,7 +138,7 @@ class Memory:
             log_item.stream(progress="\nInitializing VectorDB")
 
         em_dir = files.get_abs_path(
-            "memory/embeddings"
+            "tmp/memory/embeddings"
         )  # just caching, no need to parameterize
         db_dir = abs_db_dir(memory_subdir)
 
@@ -308,7 +307,7 @@ class Memory:
                 log_item,
                 abs_knowledge_dir(kn_dir),
                 index,
-                {"area": Memory.Area.MAIN},
+                {"area": Memory.Area.MAIN.value},
                 filename_pattern="*",
                 recursive=False,
             )
@@ -322,16 +321,6 @@ class Memory:
                     {"area": area.value},
                     recursive=True,
                 )
-
-        # load instruments descriptions
-        index = knowledge_import.load_knowledge(
-            log_item,
-            files.get_abs_path("instruments"),
-            index,
-            {"area": Memory.Area.INSTRUMENTS.value},
-            filename_pattern="**/*.md",
-            recursive=True,
-        )
 
         return index
 
@@ -483,7 +472,9 @@ class Memory:
 def get_custom_knowledge_subdir_abs(agent: Agent) -> str:
     for dir in agent.config.knowledge_subdirs:
         if dir != "default":
-            return files.get_abs_path("knowledge", dir)
+            if dir == "custom":
+                return files.get_abs_path("usr/knowledge")
+            return files.get_abs_path("usr/knowledge", dir)
     raise Exception("No custom knowledge subdir set")
 
 
@@ -499,7 +490,7 @@ def abs_db_dir(memory_subdir: str) -> str:
 
         return files.get_abs_path(get_project_meta_folder(memory_subdir[9:]), "memory")
     # standard subdirs
-    return files.get_abs_path("memory", memory_subdir)
+    return files.get_abs_path("usr/memory", memory_subdir)
 
 
 def abs_knowledge_dir(knowledge_subdir: str, *sub_dirs: str) -> str:
@@ -511,7 +502,11 @@ def abs_knowledge_dir(knowledge_subdir: str, *sub_dirs: str) -> str:
             get_project_meta_folder(knowledge_subdir[9:]), "knowledge", *sub_dirs
         )
     # standard subdirs
-    return files.get_abs_path("knowledge", knowledge_subdir, *sub_dirs)
+    if knowledge_subdir == "default":
+        return files.get_abs_path("knowledge", *sub_dirs)
+    if knowledge_subdir == "custom":
+        return files.get_abs_path("usr/knowledge", *sub_dirs)
+    return files.get_abs_path("usr/knowledge", knowledge_subdir, *sub_dirs)
 
 
 def get_memory_subdir_abs(agent: Agent) -> str:
@@ -546,7 +541,7 @@ def get_existing_memory_subdirs() -> list[str]:
         )
 
         # Get subdirectories from memory folder
-        subdirs = files.get_subdirectories("memory", exclude="embeddings")
+        subdirs = files.get_subdirectories("usr/memory")
 
         project_subdirs = files.get_subdirectories(get_projects_parent_folder())
         for project_subdir in project_subdirs:

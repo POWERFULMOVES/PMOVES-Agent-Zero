@@ -1,0 +1,113 @@
+<html>
+  <head>
+    <title>Working directory</title>
+
+    <script type="module">
+      import { store } from "/components/settings/settings-store.js";
+      import { store as fileBrowserStore } from "/components/modals/file-browser/file-browser-store.js";
+    </script>
+  </head>
+
+  <body>
+    <div x-data>
+      <template x-if="$store.settings?.settings">
+        <div>
+          <div class="section-title">Default working directory</div>
+          <div class="section-description">
+            When project is not selected, agent is instructed to use this directory as it's workplace. New terminal sessions will be spawned with this CWD.
+          </div>
+
+          <div class="field">
+            <div class="field-label">
+              <div class="field-title">Workdir path</div>
+              <div class="field-description">Full path to the working directory inside the linux container. Default is /a0/usr/workdir.</div>
+            </div>
+            <div class="field-control">
+              <input type="text" x-model="$store.settings.settings.workdir_path" />
+            </div>
+          </div>
+
+          <div class="field">
+            <div class="field-label">
+              <div class="field-title">Show workdir structure to the agent</div>
+              <div class="field-description">
+                When turned on, the workdir file structure will be injected into the context window of the agent.
+              </div>
+            </div>
+            <div class="field-control">
+              <label class="toggle">
+                <input type="checkbox" x-model="$store.settings.settings.workdir_show" />
+                <span class="toggler"></span>
+              </label>
+            </div>
+          </div>
+
+          <template x-if="$store.settings.settings.workdir_show">
+            <div>
+              <div class="field">
+                <div class="field-label">
+                  <div class="field-title">Max Depth</div>
+                  <div class="field-description">Set the maximum depth for the file structure (0 = unlimited).</div>
+                </div>
+                <div class="field-control">
+                  <input type="number" x-model.number="$store.settings.settings.workdir_max_depth" min="0" step="1" />
+                </div>
+              </div>
+
+              <div class="field">
+                <div class="field-label">
+                  <div class="field-title">Max Lines</div>
+                  <div class="field-description">Maximum total lines outputted for the agent (0 = unlimited).</div>
+                </div>
+                <div class="field-control">
+                  <input type="number" x-model.number="$store.settings.settings.workdir_max_lines" min="0" step="1" />
+                </div>
+              </div>
+
+              <div class="field">
+                <div class="field-label">
+                  <div class="field-title">Max Folders</div>
+                  <div class="field-description">Maximum number of subfolders to display under one folder (0 = unlimited).</div>
+                </div>
+                <div class="field-control">
+                  <input type="number" x-model.number="$store.settings.settings.workdir_max_folders" min="0" step="1" />
+                </div>
+              </div>
+
+              <div class="field">
+                <div class="field-label">
+                  <div class="field-title">Max Files</div>
+                  <div class="field-description">Maximum number of files to display under one folder (0 = unlimited).</div>
+                </div>
+                <div class="field-control">
+                  <input type="number" x-model.number="$store.settings.settings.workdir_max_files" min="0" step="1" />
+                </div>
+              </div>
+
+              <div class="field field-full">
+                <div class="field-label">
+                  <div class="field-title">Ignored files / folders</div>
+                  <div class="field-description">Specify patterns in gitignore format.</div>
+                </div>
+                <div class="field-control">
+                  <textarea x-model="$store.settings.settings.workdir_gitignore" rows="5" placeholder="Enter gitignore patterns (e.g., node_modules/, .git/, *.log)"></textarea>
+                </div>
+              </div>
+
+              <div class="field">
+                <div class="field-label">
+                  <div class="field-title">Test output</div>
+                  <div class="field-description">Preview the current workdir structure output.</div>
+                </div>
+                <div class="field-control">
+                  <button class="btn btn-field" @click="$store.settings.testWorkdirFileStructure()">Test output</button>
+                  <button class="btn btn-field" style="margin-left: 0.5em;" @click="$store.fileBrowser.open($store.settings.settings.workdir_path)">Browse</button>
+                </div>
+              </div>
+            </div>
+          </template>
+        </div>
+      </template>
+    </div>
+  </body>
+</html>
