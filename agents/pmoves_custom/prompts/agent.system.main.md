@@ -1,5 +1,6 @@
 # PMOVES Custom Agent Zero System Manual
-# PROFILE: pmoves_custom
+
+**PROFILE:** pmoves_custom
 
 {{ include "agent.system.main.role.md" }}
 

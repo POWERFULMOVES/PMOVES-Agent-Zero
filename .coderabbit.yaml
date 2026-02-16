@@ -1,10 +1,10 @@
 reviews:
   review_status: true
-  branches:
-    - "main"
-    - "PMOVES.AI-Edition-Hardened"
-    - "PMOVES.AI-Edition-Hardened-DoX"
-    - "feat/*"
-    - "fix/*"
+  auto_review:
+    base_branches:
+      - "PMOVES.AI-Edition-Hardened"
+      - "PMOVES.AI-Edition-Hardened-DoX"
+      - "feat/.*"
+      - "fix/.*"
 
 language: "en-US"
