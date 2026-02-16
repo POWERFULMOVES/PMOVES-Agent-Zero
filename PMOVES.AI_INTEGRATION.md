@@ -75,7 +75,7 @@ nats sub "services.announce.v1"
 - **Tier:** agent
 - **Port:** 8080
 - **Health Check:** http://localhost:8080/healthz
-- **NATS Enabled:** False
+- **NATS Enabled:** True
 - **GPU Enabled:** False
 
 ## Files Created
