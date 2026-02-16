@@ -3,6 +3,7 @@ reviews:
   branches:
     - "main"
     - "PMOVES.AI-Edition-Hardened"
+    - "PMOVES.AI-Edition-Hardened-DoX"
     - "feat/*"
     - "fix/*"
 
