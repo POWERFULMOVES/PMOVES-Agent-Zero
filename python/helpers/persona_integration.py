@@ -244,7 +244,7 @@ class PersonaIntegrationService:
         """
         self.supabase_url = supabase_url or os.getenv("SUPABASE_URL", "")
         self.supabase_key = supabase_key or os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
-        self.nats_url = nats_url or os.getenv("NATS_URL", "nats://localhost:4222")
+        self.nats_url = nats_url or os.getenv("NATS_URL", "nats://nats:pmoves@nats:4222")
 
         # Validate Supabase configuration
         if not self.supabase_url or not self.supabase_key:
