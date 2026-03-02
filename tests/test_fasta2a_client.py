@@ -25,10 +25,11 @@ def get_test_urls():
         base_url = "http://localhost:50101"
 
         urls = {
-            "token_based": f"{base_url}/a2a/t-{token}/.well-known/agent.json",
-            "bearer_auth": f"{base_url}/a2a/.well-known/agent.json",
-            "api_key_header": f"{base_url}/a2a/.well-known/agent.json",
-            "api_key_query": f"{base_url}/a2a/.well-known/agent.json?api_key={token}"
+            "token_based": f"{base_url}/a2a/t-{token}/.well-known/agent-card.json",
+            "bearer_auth": f"{base_url}/a2a/.well-known/agent-card.json",
+            "api_key_header": f"{base_url}/a2a/.well-known/agent-card.json",
+            "api_key_query": f"{base_url}/a2a/.well-known/agent-card.json?api_key={token}",
+            "legacy_alias": f"{base_url}/a2a/.well-known/agent.json",
         }
 
         return {"token": token, "urls": urls}
@@ -66,6 +67,10 @@ def print_test_commands():
 
     print("4️⃣  API key query parameter:")
     print(f"   curl -v '{urls['api_key_query']}'")
+    print()
+
+    print("5️⃣  Legacy alias (backward compatibility):")
+    print(f"   curl -v '{urls['legacy_alias']}'")
     print()
 
     print("Expected response (if working):")

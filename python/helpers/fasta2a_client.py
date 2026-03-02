@@ -12,6 +12,9 @@ except ImportError:
 
 _PRINTER = PrintStyle(italic=True, font_color="cyan", padding=False)
 
+WELL_KNOWN_AGENT_CARD_PATH = "/.well-known/agent-card.json"
+LEGACY_AGENT_CARD_PATH = "/.well-known/agent.json"
+
 
 class AgentConnection:
     """Helper class for connecting to and communicating with other Agent Zero instances via FastA2A."""
@@ -50,7 +53,10 @@ class AgentConnection:
         """Retrieve the agent card from the remote agent."""
         if self._agent_card is None:
             try:
-                response = await self._http_client.get(f"{self.agent_url}/.well-known/agent.json")
+                # Canonical A2A discovery path first, then legacy alias.
+                response = await self._http_client.get(f"{self.agent_url}{WELL_KNOWN_AGENT_CARD_PATH}")
+                if response.status_code == 404:
+                    response = await self._http_client.get(f"{self.agent_url}{LEGACY_AGENT_CARD_PATH}")
                 response.raise_for_status()
                 self._agent_card = response.json()
                 _PRINTER.print(f"Retrieved agent card from {self.agent_url}")
@@ -61,7 +67,9 @@ class AgentConnection:
                 if "/a2a" in self.agent_url:
                     root_url = self.agent_url.split("/a2a", 1)[0]
                     try:
-                        response = await self._http_client.get(f"{root_url}/.well-known/agent.json")
+                        response = await self._http_client.get(f"{root_url}{WELL_KNOWN_AGENT_CARD_PATH}")
+                        if response.status_code == 404:
+                            response = await self._http_client.get(f"{root_url}{LEGACY_AGENT_CARD_PATH}")
                         response.raise_for_status()
                         self._agent_card = response.json()
                         _PRINTER.print(f"Retrieved agent card from {root_url}")
