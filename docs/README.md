@@ -28,6 +28,7 @@ Welcome to the Agent Zero documentation hub. Whether you're getting started or d
 - **[MCP Configuration](developer/mcp-configuration.md):** Advanced MCP server configuration.
 - **[Notifications](developer/notifications.md):** Notification system architecture and setup.
 - **[Contributing Skills](developer/contributing-skills.md):** Create and share agent skills.
+- **[PMOVES Branching Strategy](branching-strategy.md):** PMOVES fork branch variants and upstream sync workflow.
 - **[Contributing Guide](guides/contribution.md):** Contribute to the Agent Zero project.
 
 ## Community & Support

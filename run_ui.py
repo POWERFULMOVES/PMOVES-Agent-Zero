@@ -12,8 +12,10 @@ import urllib.request
 import urllib.error
 import uvicorn
 from flask import Flask, request, Response, session, redirect, url_for, render_template_string
+from prometheus_client import Counter, Histogram, Gauge, generate_latest, CONTENT_TYPE_LATEST
 from werkzeug.wrappers.response import Response as BaseResponse
 from werkzeug.wrappers.request import Request as WerkzeugRequest
+from fastapi import FastAPI
 
 import initialize
 from python.helpers import files, git, mcp_server, fasta2a_server, settings as settings_helper
@@ -83,6 +85,31 @@ settings_helper.set_runtime_settings_snapshot(_settings)
 websocket_manager.set_server_restart_broadcast(
     _settings.get("websocket_server_restart_enabled", True)
 )
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Prometheus Metrics
+# ─────────────────────────────────────────────────────────────────────────────
+AGENT_REQUESTS = Counter(
+    "agent_zero_requests_total",
+    "Total API requests",
+    labelnames=("endpoint", "status")
+)
+AGENT_REQUEST_LATENCY = Histogram(
+    "agent_zero_request_latency_seconds",
+    "Request latency",
+    labelnames=("endpoint",),
+    buckets=(0.1, 0.5, 1.0, 2.0, 5.0, 10.0, 30.0)
+)
+AGENT_ACTIVE_SESSIONS = Gauge(
+    "agent_zero_active_sessions",
+    "Active chat sessions"
+)
+AGENT_MCP_REQUESTS = Counter(
+    "agent_zero_mcp_requests_total",
+    "MCP tool requests",
+    labelnames=("tool",)
+)
+# ─────────────────────────────────────────────────────────────────────────────
 
 # Set up basic authentication for UI and API but not MCP
 # basic_auth = BasicAuth(webapp)
@@ -211,6 +238,23 @@ async def login_handler():
 async def logout_handler():
     session.pop('authentication', None)
     return redirect(url_for('login_handler'))
+
+
+@webapp.route("/healthz", methods=["GET"])
+def healthz():
+    """Health check endpoint for probes and monitoring."""
+    gitinfo = None
+    try:
+        gitinfo = git.get_git_info()
+    except Exception:
+        gitinfo = {"version": "unknown"}
+    return {"ok": True, "service": "agent-zero", "version": gitinfo.get("version", "unknown")}
+
+
+@webapp.route("/metrics", methods=["GET"])
+def metrics():
+    """Prometheus metrics endpoint."""
+    return Response(generate_latest(), mimetype=CONTENT_TYPE_LATEST)
 
 
 # handle default address, load index
@@ -460,6 +504,18 @@ def run():
     for handler in handlers:
         register_api_handler(webapp, handler)
 
+    persona_app: FastAPI | None = None
+    try:
+        from python.api.persona_agent_create import router as persona_router
+
+        # Mounted under /api below, so keep routes under /persona/*.
+        if getattr(persona_router, "prefix", None) == "/api/persona":
+            persona_router.prefix = "/persona"
+        persona_app = FastAPI(title="Agent Zero Persona API", version="1.0.0")
+        persona_app.include_router(persona_router)
+    except ImportError:
+        persona_app = None
+
     handlers_by_namespace = _build_websocket_handlers_by_namespace(socketio_server, lock)
     configure_websocket_namespaces(
         webapp=webapp,
@@ -471,13 +527,14 @@ def run():
     init_a0()
 
     wsgi_app = WSGIMiddleware(webapp)
-    starlette_app = Starlette(
-        routes=[
-            Mount("/mcp", app=mcp_server.DynamicMcpProxy.get_instance()),
-            Mount("/a2a", app=fasta2a_server.DynamicA2AProxy.get_instance()),
-            Mount("/", app=wsgi_app),
-        ]
-    )
+    routes = [
+        Mount("/mcp", app=mcp_server.DynamicMcpProxy.get_instance()),
+        Mount("/a2a", app=fasta2a_server.DynamicA2AProxy.get_instance()),
+    ]
+    if persona_app:
+        routes.append(Mount("/api", app=persona_app))
+    routes.append(Mount("/", app=wsgi_app))
+    starlette_app = Starlette(routes=routes)
 
     asgi_app = ASGIApp(socketio_server, other_asgi_app=starlette_app)
 

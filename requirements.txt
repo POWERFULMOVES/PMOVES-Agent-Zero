@@ -48,6 +48,8 @@ beautifulsoup4>=4.12.3
 boto3>=1.35.0
 exchangelib>=5.4.3
 pywinpty==3.0.2; sys_platform == "win32"
+prometheus-client>=0.20.0
+fastapi>=0.115.0
 python-socketio>=5.14.2
 uvicorn>=0.38.0
 wsproto>=1.2.0

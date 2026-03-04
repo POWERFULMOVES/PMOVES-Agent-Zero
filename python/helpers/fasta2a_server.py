@@ -60,6 +60,9 @@ except ImportError:  # pragma: no cover – library not installed
 
 _PRINTER = PrintStyle(italic=True, font_color="purple", padding=False)
 
+WELL_KNOWN_AGENT_CARD_PATH = "/.well-known/agent-card.json"
+LEGACY_AGENT_CARD_PATH = "/.well-known/agent.json"
+
 
 class AgentZeroWorker(Worker):  # type: ignore[misc]
     """Agent Zero implementation of FastA2A Worker."""
@@ -518,6 +521,10 @@ class DynamicA2AProxy:
 
                 receive = receive_wrapper
 
+            # Support A2A canonical well-known route while preserving FastA2A legacy handling.
+            if remaining_path == WELL_KNOWN_AGENT_CARD_PATH:
+                remaining_path = LEGACY_AGENT_CARD_PATH
+
             # Update scope with cleaned path
             scope = dict(scope)
             scope['path'] = remaining_path
@@ -551,6 +558,11 @@ class DynamicA2AProxy:
                     return
             else:
                 _PRINTER.print("[A2A] No expected token found in settings")
+
+            # Support A2A canonical well-known route while preserving FastA2A legacy handling.
+            if path == WELL_KNOWN_AGENT_CARD_PATH:
+                scope = dict(scope)
+                scope["path"] = LEGACY_AGENT_CARD_PATH
 
         # Delegate to FastA2A app with cleaned scope
         with self._lock:

@@ -36,5 +36,10 @@ RUN bash /ins/configure_ssh.sh
 # after install
 RUN bash /ins/after_install.sh
 
+# Create non-root user for runtime
+RUN groupadd -g 1000 a0user && \
+    useradd -u 1000 -g a0user -m -s /bin/bash a0user
+
 # Keep container running infinitely
+USER a0user
 CMD ["tail", "-f", "/dev/null"]
