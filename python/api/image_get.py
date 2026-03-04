@@ -23,14 +23,13 @@ class ImageGet(ApiHandler):
         if not path:
             raise ValueError("No path provided")
 
-        # no real need to check, we have the extension filter in place
-        # check if path is within base directory
-        # if runtime.is_development():
-        #     in_base = files.is_in_base_dir(files.fix_dev_path(path))
-        # else:
-        #     in_base = files.is_in_base_dir(path)
-        # if not in_base and not files.is_in_dir(path, "/root"):
-        #     raise ValueError("Path is outside of allowed directory")
+        # Path containment check — restrict to base directory (defense-in-depth)
+        if runtime.is_development():
+            in_base = files.is_in_base_dir(files.fix_dev_path(path))
+        else:
+            in_base = files.is_in_base_dir(path)
+        if not in_base and not files.is_in_dir(path, "/root"):
+            raise ValueError("Path is outside of allowed directory")
 
         # get file extension and info
         file_ext = os.path.splitext(path)[1].lower()
