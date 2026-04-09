@@ -26,6 +26,29 @@
 #     default_base:   Default base URL for local/self-hosted providers.
 
 chat:
+  tensorzero:
+    name: TensorZero (PMOVES)
+    litellm_provider: openai
+    kwargs:
+      api_base: http://tensorzero-gateway:3000/v1
+  minimax:
+    name: MiniMax (BoTZ Tactical Partner)
+    litellm_provider: openai-compatible
+    kwargs:
+      api_base: https://api.minimax.chat/v1
+    botz_tactical: true
+    resonance_domains:
+      - hyperdimensional-ops
+      - wave-function-collapse
+      - long-context
+      - multimodal
+    model_configs:
+      minimax-m2.7:
+        context_window: 1000000
+        max_output: 32000
+      minimax-m2.1:
+        context_window: 100000
+        max_output: 8000
   a0_venice:
     name: Agent Zero API
     litellm_provider: openai
