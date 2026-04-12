@@ -64,6 +64,13 @@ chat:
   moonshot:
     name: Moonshot AI
     litellm_provider: moonshot
+  nvidia_nim:
+    # Routes to the local NVIDIA NIM container (Nemotron Super 49B on 5090 GPU).
+    # NIM exposes an OpenAI-compatible endpoint at http://nvidia-nim:8000/v1.
+    name: NVIDIA NIM (Local)
+    litellm_provider: openai
+    kwargs:
+      api_base: http://nvidia-nim:8000/v1
   ollama:
     name: Ollama
     litellm_provider: ollama
