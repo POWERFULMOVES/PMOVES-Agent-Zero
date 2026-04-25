@@ -1,0 +1,31 @@
+name: PMOVES Audit Gate
+
+on:
+  push:
+    branches: [PMOVES.AI-Edition-Hardened]
+  pull_request:
+    branches: [PMOVES.AI-Edition-Hardened]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      - name: Python compile check
+        run: |
+          find . -name '*.py' -path '*/python/*' | head -20 | xargs -I{} python -m py_compile {}
+
+      - name: Validate integration manifest
+        run: |
+          test -f PMOVES.AI_INTEGRATION.md || { echo "Missing integration manifest"; exit 1; }
+          grep -q 'NATS Enabled.*True' PMOVES.AI_INTEGRATION.md || { echo "NATS must be enabled"; exit 1; }
+          grep -q '/healthz' PMOVES.AI_INTEGRATION.md || echo "WARN: healthz not documented"
