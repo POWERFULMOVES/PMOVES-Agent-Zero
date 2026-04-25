@@ -47,7 +47,7 @@ chat:
   # PMOVES: MiniMax as BoTZ tactical partner
   minimax:
     name: MiniMax (BoTZ Tactical Partner)
-    litellm_provider: openai-compatible
+    litellm_provider: openai
     models_list:
       endpoint_url: "/v1/models"
       default_base: "https://api.minimax.chat"
