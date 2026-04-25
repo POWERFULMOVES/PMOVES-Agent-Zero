@@ -39,7 +39,6 @@ pydantic==2.11.7
 pymupdf==1.25.3
 pytesseract==0.3.13
 pdf2image==1.17.0
-crontab==1.0.1
 pathspec>=0.12.1
 psutil>=7.0.0
 soundfile==0.13.1
@@ -61,3 +60,6 @@ h11>=0.16.0  # security floor: HTTP request smuggling CWE-444
 urllib3>=2.6.0  # security floor: resource exhaustion CWE-770, data amplification CWE-409
 cryptography>=46.0.0  # security floor: insufficient data authenticity CWE-345
 werkzeug>=3.0.3  # security floor: RCE CWE-94
+# PMOVES: additional dependencies
+prometheus-client>=0.20.0
+fastapi>=0.115.0

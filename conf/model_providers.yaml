@@ -35,6 +35,38 @@ chat:
       api_base: https://llm.agent-zero.ai/v1
       venice_parameters:
         include_venice_system_prompt: false
+  # PMOVES: TensorZero gateway for LLM routing
+  tensorzero:
+    name: TensorZero (PMOVES)
+    litellm_provider: openai
+    models_list:
+      endpoint_url: "/v1/models"
+      default_base: "http://tensorzero-gateway:3000"
+    kwargs:
+      api_base: http://tensorzero-gateway:3000/v1
+  # PMOVES: MiniMax as BoTZ tactical partner
+  minimax:
+    name: MiniMax (BoTZ Tactical Partner)
+    litellm_provider: openai-compatible
+    models_list:
+      endpoint_url: "/v1/models"
+      default_base: "https://api.minimax.chat"
+    kwargs:
+      api_base: https://api.minimax.chat/v1
+    # PMOVES custom metadata (not consumed by upstream Agent Zero)
+    botz_tactical: true
+    resonance_domains:
+      - hyperdimensional-ops
+      - wave-function-collapse
+      - long-context
+      - multimodal
+    model_configs:
+      minimax-m2.7:
+        context_window: 1000000
+        max_output: 32000
+      minimax-m2.1:
+        context_window: 100000
+        max_output: 8000
   anthropic:
     name: Anthropic
     litellm_provider: anthropic
@@ -161,6 +193,15 @@ chat:
     litellm_provider: openai
 
 embedding:
+  # PMOVES: TensorZero gateway for embedding routing
+  tensorzero:
+    name: TensorZero (PMOVES)
+    litellm_provider: openai
+    models_list:
+      endpoint_url: "/v1/models"
+      default_base: "http://tensorzero-gateway:3000"
+    kwargs:
+      api_base: http://tensorzero-gateway:3000/v1
   huggingface:
     name: HuggingFace
     litellm_provider: huggingface

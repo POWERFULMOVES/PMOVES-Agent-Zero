@@ -8,6 +8,13 @@ import threading
 import time
 from typing import Any
 
+# PMOVES: conditional import for prometheus_metrics (soft dependency)
+try:
+    from helpers.prometheus_metrics import healthz_handler, metrics_handler
+    _PMOVES_PROMETHEUS = True
+except ImportError:
+    _PMOVES_PROMETHEUS = False
+
 from flask import (
     Flask,
     Response,
@@ -152,6 +159,10 @@ class UiServerRuntime:
             handlers.serve_extension_asset,
             methods=["GET"],
         )
+        # PMOVES: Prometheus /healthz + /metrics endpoints
+        if _PMOVES_PROMETHEUS:
+            self.webapp.add_url_rule("/healthz", "healthz", healthz_handler, methods=["GET"])
+            self.webapp.add_url_rule("/metrics", "metrics", metrics_handler, methods=["GET"])
         self._routes_registered = True
 
     def register_transport_handlers(self) -> None:
@@ -177,12 +188,24 @@ class UiServerRuntime:
             a2a_app = fasta2a_server.DynamicA2AProxy.get_instance()
 
         with startup_monitor.stage("starlette.app.create"):
+            routes = [
+                Mount("/mcp", app=mcp_app),
+                Mount("/a2a", app=a2a_app),
+            ]
+            # PMOVES: mount persona API if available
+            try:
+                from fastapi import FastAPI
+                from python.api.persona_agent_create import router as persona_router
+                if getattr(persona_router, "prefix", None) == "/api/persona":
+                    persona_router.prefix = "/persona"
+                persona_app = FastAPI(title="Agent Zero Persona API", version="1.0.0")
+                persona_app.include_router(persona_router)
+                routes.append(Mount("/api", app=persona_app))
+            except ImportError:
+                pass
+            routes.append(Mount("/", app=wsgi_app))
             starlette_app = Starlette(
-                routes=[
-                    Mount("/mcp", app=mcp_app),
-                    Mount("/a2a", app=a2a_app),
-                    Mount("/", app=wsgi_app),
-                ],
+                routes=routes,
                 lifespan=startup_monitor.lifespan(),
             )
 
