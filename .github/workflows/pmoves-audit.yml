@@ -29,3 +29,27 @@ jobs:
           test -f PMOVES.AI_INTEGRATION.md || { echo "Missing integration manifest"; exit 1; }
           grep -q 'NATS Enabled.*True' PMOVES.AI_INTEGRATION.md || { echo "NATS must be enabled"; exit 1; }
           grep -q '/healthz' PMOVES.AI_INTEGRATION.md || echo "WARN: healthz not documented"
+
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: PMOVES.AI-Edition-Hardened
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install ruff
+      - run: ruff check python/ --ignore=python/tests/
+
+  security-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: PMOVES.AI-Edition-Hardened
+      - uses: github/codeql-action/init@v3
+        with:
+          languages: python
+      - uses: github/codeql-action/analyze@v3
