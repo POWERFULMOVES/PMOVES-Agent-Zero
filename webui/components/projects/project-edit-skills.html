@@ -11,8 +11,7 @@
         <template x-if="$store.projects && $store.projects.selectedProject">
             <div class="project-skills-section">
                 <p class="skills-description">
-                    Import skills specific to this project. Project skills are stored in the project's
-                    <code>.a0proj/skills/</code> folder and are only available when this project is active.
+                    Add skills for this project only. Global skills are inherited automatically by every project.
                 </p>
 
                 <div class="skills-actions">
@@ -26,15 +25,9 @@
                     </button>
                 </div>
 
-                <div class="skills-info">
-                    <p>
-                        <strong>Project Skills Location:</strong><br>
-                        <code x-text="$store.projects.getSelectedProjectSkillsPath()"></code>
-                    </p>
-                    <p class="skills-note">
-                        Use the global Settings &gt; Skills tab for custom skills available to all projects.
-                    </p>
-                </div>
+                <p class="skills-path">
+                    Project-only skills live in <code x-text="$store.projects.getSelectedProjectSkillsPath()"></code>
+                </p>
             </div>
         </template>
     </div>
@@ -49,35 +42,23 @@
         .skills-description {
             color: var(--color-text-secondary);
             font-size: 0.9rem;
+            line-height: 1.4;
             margin: 0;
         }
 
         .skills-actions {
             display: flex;
             gap: 0.5rem;
+            flex-wrap: wrap;
         }
 
-        .skills-info {
-            background: var(--color-bg-secondary);
-            padding: 0.75rem;
-            border-radius: 4px;
-            font-size: 0.85rem;
-        }
-
-        .skills-info p {
-            margin: 0 0 0.5rem 0;
-        }
-
-        .skills-info p:last-child {
-            margin-bottom: 0;
-        }
-
-        .skills-note {
+        .skills-path {
             color: var(--color-text-secondary);
-            font-style: italic;
+            font-size: 0.85rem;
+            margin: 0;
         }
 
-        .skills-info code {
+        .skills-path code {
             background: var(--color-bg-tertiary);
             padding: 0.1rem 0.3rem;
             border-radius: 3px;

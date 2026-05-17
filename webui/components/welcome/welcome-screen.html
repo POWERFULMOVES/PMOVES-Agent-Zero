@@ -7,12 +7,15 @@
 </head>
 
 <body>
-    <div x-data >
-        <template x-if="$store.welcomeStore && $store.welcomeStore.isVisible">
-            <div x-create="$store.welcomeStore.onCreate()" class="welcome-container">
+    <div x-data>
+        <template x-if="$store.welcomeStore">
+            <div x-init="$store.welcomeStore.init(); if ($store.welcomeStore.isVisible) { $store.welcomeStore.onCreate(); } $watch('$store.welcomeStore.isVisible', (visible) => { if (visible) { $store.welcomeStore.onCreate(); } });"
+                 class="welcome-container">
+                <x-extension id="welcome-screen-start"></x-extension>
                 <div class="welcome-content">
                     <!-- Action Cards -->
                     <div class="welcome-actions">
+                        <x-extension id="welcome-actions-start"></x-extension>
                         <div class="welcome-action-card" @click="$store.welcomeStore.executeAction('new-chat')">
                             <span class="material-symbols-outlined welcome-action-icon">add_circle</span>
                             <h3 class="welcome-action-title">New Chat</h3>
@@ -29,11 +32,15 @@
 
                         <div class="welcome-action-card" @click="$store.welcomeStore.executeAction('scheduler')">
                             <span class="material-symbols-outlined welcome-action-icon">schedule</span>
-                            <h3 class="welcome-action-title">Scheduler</h3>
+                            <h3 class="welcome-action-title">Tasks</h3>
                         </div>
                         <div class="welcome-action-card" @click="$store.welcomeStore.executeAction('settings')">
                             <span class="material-symbols-outlined welcome-action-icon">settings</span>
                             <h3 class="welcome-action-title">Settings</h3>
+                        </div>
+                        <div class="welcome-action-card" @click="$store.welcomeStore.executeAction('plugins')">
+                            <span class="material-symbols-outlined welcome-action-icon">extension</span>
+                            <h3 class="welcome-action-title">Plugins</h3>
                         </div>
 
                         <div class="welcome-action-card" @click="$store.welcomeStore.executeAction('files')">
@@ -44,10 +51,7 @@
                             <span class="material-symbols-outlined welcome-action-icon">language</span>
                             <h3 class="welcome-action-title">Visit Website</h3>
                         </div>
-                        <div class="welcome-action-card" @click="$store.welcomeStore.executeAction('github')">
-                            <span class="material-symbols-outlined welcome-action-icon">code</span>
-                            <h3 class="welcome-action-title">Visit GitHub</h3>
-                        </div>
+                        <x-extension id="welcome-actions-end"></x-extension>
                     </div>
 
                     <div class="welcome-actions-footer">
@@ -71,6 +75,7 @@
 
                     <!-- Banner Section -->
                     <div class="welcome-banners" x-show="$store.welcomeStore.banners && $store.welcomeStore.banners.length > 0">
+                        <x-extension id="welcome-banners-start"></x-extension>
                         <template x-for="banner in $store.welcomeStore.sortedBanners" :key="banner.id">
                             <div class="welcome-banner" :class="$store.welcomeStore.getBannerClass(banner.type)">
                                 <!-- Banner Icon -->
@@ -93,8 +98,10 @@
                                 </button>
                             </div>
                         </template>
+                        <x-extension id="welcome-banners-end"></x-extension>
                     </div>
                 </div>
+                <x-extension id="welcome-screen-end"></x-extension>
             </div>
         </template>
     </div>
@@ -113,6 +120,11 @@
             min-height: 100vh;
             position: relative;
             overflow: hidden;
+        }
+        .welcome-container > x-extension,
+        .welcome-actions > x-extension,
+        .welcome-banners > x-extension {
+            display: contents;
         }
 
         .welcome-container::before {

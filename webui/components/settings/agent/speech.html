@@ -9,23 +9,23 @@
         <div>
           <div class="section-title">Speech</div>
           <div class="section-description">
-            Voice transcription and speech synthesis settings.
+            Pick the microphone, transcription model, and voice output behavior.
           </div>
 
           <div class="field field-full">
             <div class="field-label">
               <div class="field-title">Microphone device</div>
-              <div class="field-description">Select the microphone device to use for speech-to-text.</div>
+              <div class="field-description">Choose the input device Agent Zero listens to.</div>
             </div>
             <div class="field-control">
-              <x-component path="/settings/speech/microphone.html"></x-component>
+              <x-component path="settings/speech/microphone.html"></x-component>
             </div>
           </div>
 
           <div class="field">
             <div class="field-label">
               <div class="field-title">Speech-to-text model size</div>
-              <div class="field-description">Select the speech-to-text model size</div>
+              <div class="field-description">Larger models can hear more accurately, but need more time and memory.</div>
             </div>
             <div class="field-control">
               <select x-model="$store.settings.settings.stt_model_size">
@@ -38,50 +38,9 @@
 
           <div class="field">
             <div class="field-label">
-              <div class="field-title">Speech-to-text language code</div>
-              <div class="field-description">Language code (e.g. en, fr, it)</div>
-            </div>
-            <div class="field-control">
-              <input type="text" x-model="$store.settings.settings.stt_language" />
-            </div>
-          </div>
-
-          <div class="field">
-            <div class="field-label">
-              <div class="field-title">Microphone silence threshold</div>
-              <div class="field-description">Silence detection threshold. Lower values are more sensitive to noise.</div>
-            </div>
-            <div class="field-control">
-              <input type="range" min="0" max="1" step="0.01" x-model.number="$store.settings.settings.stt_silence_threshold" />
-              <span class="range-value" x-text="$store.settings.settings.stt_silence_threshold"></span>
-            </div>
-          </div>
-
-          <div class="field">
-            <div class="field-label">
-              <div class="field-title">Microphone silence duration (ms)</div>
-              <div class="field-description">Duration of silence before the system considers speaking to have ended.</div>
-            </div>
-            <div class="field-control">
-              <input type="number" x-model.number="$store.settings.settings.stt_silence_duration" />
-            </div>
-          </div>
-
-          <div class="field">
-            <div class="field-label">
-              <div class="field-title">Microphone waiting timeout (ms)</div>
-              <div class="field-description">Duration of silence before the system closes the microphone.</div>
-            </div>
-            <div class="field-control">
-              <input type="number" x-model.number="$store.settings.settings.stt_waiting_timeout" />
-            </div>
-          </div>
-
-          <div class="field">
-            <div class="field-label">
               <div class="field-title">Enable Kokoro TTS</div>
               <div class="field-description">
-                Enable higher quality server-side AI (Kokoro) instead of browser-based text-to-speech.
+                Use higher-quality server-side speech instead of the browser voice.
               </div>
             </div>
             <div class="field-control">
@@ -89,6 +48,57 @@
                 <input type="checkbox" x-model="$store.settings.settings.tts_kokoro" />
                 <span class="toggler"></span>
               </label>
+            </div>
+          </div>
+
+          <div class="settings-advanced-section" x-data="{ advOpen: false }">
+            <button type="button" class="settings-advanced-toggle" @click="advOpen = !advOpen">
+              <span class="material-symbols-outlined settings-advanced-toggle-icon"
+                    :style="advOpen ? 'transform:rotate(90deg)' : ''">chevron_right</span>
+              <span>Advanced Settings</span>
+            </button>
+
+            <div class="settings-advanced-body" x-show="advOpen" x-transition.opacity>
+              <div class="field">
+                <div class="field-label">
+                  <div class="field-title">Language hint</div>
+                  <div class="field-description">Use a short language code such as en, fr, or it when automatic detection needs guidance.</div>
+                </div>
+                <div class="field-control">
+                  <input type="text" x-model="$store.settings.settings.stt_language" />
+                </div>
+              </div>
+
+              <div class="field">
+                <div class="field-label">
+                  <div class="field-title">Silence threshold</div>
+                  <div class="field-description">Lower values catch softer speech; higher values ignore more room noise.</div>
+                </div>
+                <div class="field-control">
+                  <input type="range" min="0" max="1" step="0.01" x-model.number="$store.settings.settings.stt_silence_threshold" />
+                  <span class="range-value" x-text="$store.settings.settings.stt_silence_threshold"></span>
+                </div>
+              </div>
+
+              <div class="field">
+                <div class="field-label">
+                  <div class="field-title">End-of-speech delay</div>
+                  <div class="field-description">How long silence must last before Agent Zero treats your sentence as complete.</div>
+                </div>
+                <div class="field-control">
+                  <input type="number" x-model.number="$store.settings.settings.stt_silence_duration" />
+                </div>
+              </div>
+
+              <div class="field">
+                <div class="field-label">
+                  <div class="field-title">Microphone close delay</div>
+                  <div class="field-description">How long Agent Zero waits before closing the microphone after speech stops.</div>
+                </div>
+                <div class="field-control">
+                  <input type="number" x-model.number="$store.settings.settings.stt_waiting_timeout" />
+                </div>
+              </div>
             </div>
           </div>
         </div>

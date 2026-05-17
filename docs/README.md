@@ -1,31 +1,51 @@
 ![Agent Zero Logo](res/header.png)
 # Agent Zero Documentation
 
-Welcome to the Agent Zero documentation hub. Whether you're getting started or diving deep into the framework, you'll find comprehensive guides below.
+Welcome to the Agent Zero documentation hub. Start with the practical guides
+below: install it, open the Web UI, connect your host machine when needed, and
+learn the main workflows by sight.
+
+For architecture and source-linked internals, use
+[DeepWiki for Agent Zero](https://deepwiki.com/agent0ai/agent-zero). The local
+docs focus on practical setup, screenshots, and user workflows.
 
 ## Quick Start
 
 - **[Quickstart Guide](quickstart.md):** Get up and running in 5 minutes with Agent Zero.
-- **[Installation Guide](setup/installation.md):** Detailed setup instructions for all platforms (or [update your installation](setup/installation.md#how-to-update-agent-zero)).
+- **[First-Run Onboarding](guides/onboarding.md):** Choose Cloud or Local, add a provider key, and select main and utility models.
+- **[Installation Guide](setup/installation.md):** Install scripts, updates, and advanced Docker setup (includes [How to Update](setup/installation.md#how-to-update-agent-zero)).
+- **[A0 CLI Connector](guides/a0-cli-connector.md):** Install the host connector for a running Agent Zero instance, use the command palette, and switch Browser modes.
+- **[Self Update](guides/self-update.md):** How the in-app updater works (technical reference).
 - **[VPS Deployment](setup/vps-deployment.md):** Deploy Agent Zero on a remote server.
 - **[Development Setup](setup/dev-setup.md):** Set up a local development environment.
 
 ## User Guides
 
-- **[Usage Guide](guides/usage.md):** Comprehensive guide to Agent Zero's features and capabilities.
+- **[Usage Guide](guides/usage.md):** Practical tour of Agent Zero's main workflows.
+- **[First-Run Onboarding](guides/onboarding.md):** Set up OpenRouter, our proxy API or another provider with the guided wizard.
+- **[Browser Guide](guides/browser.md):** Use the built-in Browser, live Canvas surface, annotations, screenshots, host browser mode, and extensions.
+- **[Desktop Guide](guides/desktop.md):** Use the built-in Linux desktop, GUI apps, and LibreOffice Writer/Calc/Impress Cowork.
+- **[A0 CLI Connector](guides/a0-cli-connector.md):** Terminal-first host connector for Agent Zero, with screenshots of the host picker, connected shell, command palette, and Browser modes.
+- **[Create a Small Plugin](guides/create-plugin.md):** Build and review a tiny Web UI plugin that adds an unread dot to the chat list.
+- **[Skills Guide](guides/skills.md):** Open the Skills selector, add active skills, and remove prompt extras you no longer need.
+- **[Agent Profiles](guides/agent-profiles.md):** Switch the current chat profile or create a new guided profile from the chat input.
+- **[Model Presets](guides/model-presets.md):** Create simple named shortcuts for model setups.
+- **[Memory Guide](guides/memory.md):** Search, edit, delete, and curate memories so useful context does not become stale noise.
 - **[Projects Tutorial](guides/projects.md):** Learn to create isolated workspaces with dedicated context and memory.
 - **[API Integration](guides/api-integration.md):** Add external APIs without writing code.
 - **[MCP Setup](guides/mcp-setup.md):** Configure Model Context Protocol servers.
 - **[A2A Setup](guides/a2a-setup.md):** Enable agent-to-agent communication.
 - **[Troubleshooting](guides/troubleshooting.md):** Solutions to common issues and FAQs.
 
-## Developer Documentation
+## Technical Reference
 
-- **[Architecture Overview](developer/architecture.md):** Understand Agent Zero's internal structure and components.
-- **[Extensions](developer/extensions.md):** Create custom extensions to extend functionality.
-- **[Connectivity](developer/connectivity.md):** Connect to Agent Zero from external applications.
-- **[WebSockets](developer/websockets.md):** Real-time communication infrastructure.
-- **[MCP Configuration](developer/mcp-configuration.md):** Advanced MCP server configuration.
+- **[DeepWiki for Agent Zero](https://deepwiki.com/agent0ai/agent-zero):** Architecture, Web UI internals, plugin lifecycle, backend APIs, deployment details, and source-linked explanations.
+- **[Architecture](developer/architecture.md):** Short local handoff to DeepWiki plus practical starting points.
+- **[Plugins](developer/plugins.md):** Compact plugin starting points and sharing checklist.
+- **[Extensions](developer/extensions.md):** Short guide for when an extension is the right tool.
+- **[Connectivity](developer/connectivity.md):** Choose between A0 CLI, MCP, A2A, and external APIs.
+- **[WebSockets](developer/websockets.md):** Short local handoff to DeepWiki and source files.
+- **[MCP Configuration](developer/mcp-configuration.md):** Compact reference for MCP JSON.
 - **[Notifications](developer/notifications.md):** Notification system architecture and setup.
 - **[Contributing Skills](developer/contributing-skills.md):** Create and share agent skills.
 - **[PMOVES Branching Strategy](branching-strategy.md):** PMOVES fork branch variants and upstream sync workflow.
@@ -44,11 +64,14 @@ Welcome to the Agent Zero documentation hub. Whether you're getting started or d
 
 - [Quick Start](#quick-start)
   - [Quickstart Guide](quickstart.md)
+  - [First-Run Onboarding](guides/onboarding.md)
   - [Installation Guide](setup/installation.md)
+    - [How to Update Agent Zero](setup/installation.md#how-to-update-agent-zero)
+    - [Manual Installation (Advanced)](setup/installation.md#manual-installation-advanced)
     - [Step 1: Install Docker Desktop](setup/installation.md#step-1-install-docker-desktop)
-      - [Windows Installation](setup/installation.md#-windows-installation)
-      - [macOS Installation](setup/installation.md#-macos-installation)
-      - [Linux Installation](setup/installation.md#-linux-installation)
+      - [Windows Installation](setup/installation.md#windows-installation)
+      - [macOS Installation](setup/installation.md#macos-installation)
+      - [Linux Installation](setup/installation.md#linux-installation)
     - [Step 2: Run Agent Zero](setup/installation.md#step-2-run-agent-zero)
       - [Pull Docker Image](setup/installation.md#21-pull-the-agent-zero-docker-image)
       - [Map Folders for Persistence](setup/installation.md#22-optional-map-folders-for-persistence)
@@ -63,49 +86,52 @@ Welcome to the Agent Zero documentation hub. Whether you're getting started or d
     - [Choosing Your LLMs](setup/installation.md#choosing-your-llms)
     - [Installing Ollama (Local Models)](setup/installation.md#installing-and-using-ollama-local-models)
     - [Using on Mobile Devices](setup/installation.md#using-agent-zero-on-your-mobile-device)
-    - [How to Update Agent Zero](setup/installation.md#how-to-update-agent-zero)
+  - [Self Update (technical)](guides/self-update.md)
   - [VPS Deployment](setup/vps-deployment.md)
   - [Development Setup](setup/dev-setup.md)
+  - [A0 CLI Connector](guides/a0-cli-connector.md)
 
 - [User Guides](#user-guides)
   - [Usage Guide](guides/usage.md)
     - [Basic Operations](guides/usage.md#basic-operations)
+    - [Plugins And Plugin Hub](guides/usage.md#plugins-and-plugin-hub)
+    - [Skills, Agent Profiles, And Model Presets](guides/usage.md#skills-agent-profiles-and-model-presets)
+      - [Skills](guides/usage.md#skills)
+      - [Agent Profiles](guides/usage.md#agent-profiles)
+      - [Model Presets](guides/usage.md#model-presets)
+    - [File Attachments](guides/usage.md#file-attachments)
     - [Tool Usage](guides/usage.md#tool-usage)
+      - [Browser Tool And Surface](guides/usage.md#browser-tool-and-surface)
+      - [Desktop Surface](guides/usage.md#desktop-surface)
+      - [Agent-To-Agent Communication](guides/usage.md#agent-to-agent-communication)
+      - [Multi-Agent Cooperation](guides/usage.md#multi-agent-cooperation)
     - [Projects](guides/usage.md#projects)
-      - [What Projects Provide](guides/usage.md#what-projects-provide)
-      - [Creating Projects](guides/usage.md#creating-projects)
-      - [Project Configuration](guides/usage.md#project-configuration)
-      - [Activating Projects](guides/usage.md#activating-projects)
-      - [Common Use Cases](guides/usage.md#common-use-cases)
-    - [Tasks & Scheduling](guides/usage.md#tasks--scheduling)
-      - [Task Types](guides/usage.md#task-types)
-      - [Creating Tasks](guides/usage.md#creating-tasks)
-      - [Task Configuration](guides/usage.md#task-configuration)
-      - [Integration with Projects](guides/usage.md#integration-with-projects)
-    - [Secrets & Variables](guides/usage.md#secrets--variables)
-    - [Remote Access via Tunneling](guides/usage.md#remote-access-via-tunneling)
+    - [Tasks And Scheduling](guides/usage.md#tasks-and-scheduling)
+    - [Secrets And Variables](guides/usage.md#secrets-and-variables)
+    - [Remote Access Via Tunneling](guides/usage.md#remote-access-via-tunneling)
     - [Voice Interface](guides/usage.md#voice-interface)
+    - [Mathematical Expressions](guides/usage.md#mathematical-expressions)
+    - [File Browser](guides/usage.md#file-browser)
     - [Memory Management](guides/usage.md#memory-management)
-    - [Backup & Restore](guides/usage.md#backup--restore)
+    - [Backup And Restore](guides/usage.md#backup-and-restore)
+  - [Browser Guide](guides/browser.md)
+  - [Desktop Guide](guides/desktop.md)
+  - [A0 CLI Connector](guides/a0-cli-connector.md)
+  - [Create a Small Plugin](guides/create-plugin.md)
+  - [Skills Guide](guides/skills.md)
+  - [Agent Profiles](guides/agent-profiles.md)
+  - [Model Presets](guides/model-presets.md)
+  - [Memory Guide](guides/memory.md)
   - [Projects Tutorial](guides/projects.md)
   - [API Integration](guides/api-integration.md)
   - [MCP Setup](guides/mcp-setup.md)
   - [A2A Setup](guides/a2a-setup.md)
   - [Troubleshooting](guides/troubleshooting.md)
 
-- [Developer Documentation](#developer-documentation)
-  - [Architecture Overview](developer/architecture.md)
-    - [System Architecture](developer/architecture.md#system-architecture)
-    - [Runtime Architecture](developer/architecture.md#runtime-architecture)
-    - [Implementation Details](developer/architecture.md#implementation-details)
-    - [Core Components](developer/architecture.md#core-components)
-      - [Agents](developer/architecture.md#1-agents)
-      - [Tools](developer/architecture.md#2-tools)
-      - [Memory System](developer/architecture.md#3-memory-system)
-      - [Prompts](developer/architecture.md#4-prompts)
-      - [Knowledge](developer/architecture.md#5-knowledge)
-      - [Skills](developer/architecture.md#6-skills)
-      - [Extensions](developer/architecture.md#7-extensions)
+- [Technical Reference](#technical-reference)
+  - [DeepWiki for Agent Zero](https://deepwiki.com/agent0ai/agent-zero)
+  - [Architecture](developer/architecture.md)
+  - [Plugins](developer/plugins.md)
   - [Extensions](developer/extensions.md)
   - [Connectivity](developer/connectivity.md)
   - [WebSockets](developer/websockets.md)
@@ -115,6 +141,15 @@ Welcome to the Agent Zero documentation hub. Whether you're getting started or d
   - [Contributing Guide](guides/contribution.md)
 
 ---
+
+## Documentation Ownership
+
+| Content type | Home |
+| --- | --- |
+| Setup, screenshots, and everyday workflows | These docs |
+| Architecture and source-linked internals | [DeepWiki](https://deepwiki.com/agent0ai/agent-zero) |
+| Exact behavior | The current source code |
+| Community help and examples | Discord, Skool, GitHub discussions |
 
 ### Your journey with Agent Zero starts now!
 

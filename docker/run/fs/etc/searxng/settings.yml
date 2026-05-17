@@ -4,6 +4,7 @@ use_default_settings:
   engines:
     remove:
       - radio browser
+      - wikidata
 # TODO enable radio_browser when it works again
 # currently it crashes on x86 on gethostbyaddr
 

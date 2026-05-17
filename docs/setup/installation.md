@@ -1,13 +1,86 @@
 # Installation Guide
 
-Click to open a video to learn how to install Agent Zero:
-
-[![Easy Installation guide](../res/easy_ins_vid.png)](https://www.youtube.com/watch?v=w5v5Kjx51hs)
-
 ## **Goal:** Go from zero to a first working chat with minimal setup.
 
+---
 
-## Step 1: Install Docker Desktop
+## Quick Start (Recommended)
+
+The install script is the fastest way to get Agent Zero running. It handles Docker, image pulling, and container setup automatically.
+
+**macOS / Linux:**
+```bash
+curl -fsSL https://bash.agent-zero.ai | bash
+```
+
+**Windows (PowerShell):**
+```powershell
+irm https://ps.agent-zero.ai | iex
+```
+
+**Docker (run directly):**
+```bash
+docker run -p 80:80 agent0ai/agent-zero
+```
+
+Once the install completes, open the URL shown in your terminal to access the Web UI. Follow the prompts in the CLI to set your port and authentication, complete onboarding, add your API key, then continue to [Step 3: Configure Agent Zero](#step-3-configure-agent-zero).
+
+> [!TIP]
+> Need Agent Zero to reach host-machine files, shell, or a host browser? Install the optional [A0 CLI Connector](../guides/a0-cli-connector.md), then run `a0` to connect your terminal to this Agent Zero instance.
+
+---
+
+## How to Update Agent Zero
+
+### Self Update (Recommended)
+
+Use the built-in updater in the Web UI:
+
+1. Open **Settings UI -> Update** tab
+2. Open **Self Update**
+3. Wait for the update checker to see if you have the latest version or if there's an available update. 
+
+You'll also be prompted through the UI when a new A0 version is released. Backups are automatically managed internally during this process.
+
+For technical details of the updater, see [Self Update](../guides/self-update.md).
+
+### Updating from Pre-v0.9.8
+
+If you are upgrading from Agent Zero v0.9.8 or earlier to v1.1 or newer, use the migration path below. Older installs were laid out differently, so the in-app Self Update is not the right tool for that jump.
+
+1. **Backup your existing `usr/` directory** (which contains your settings, projects, memory, and custom plugins).
+2. **Run the new install script** to set up the current Docker-based install:
+   - macOS / Linux: `curl -fsSL https://bash.agent-zero.ai | bash`
+   - Windows (PowerShell): `irm https://ps.agent-zero.ai | iex`
+3. **Migrate your data:** After the new installation completes, copy the contents of your backed-up `usr/` directory into the new `/a0/usr/` directory created by the script.
+4. Restart the container for the changes to take effect.
+
+### Manual Update (Advanced)
+
+> Use this only if Self Update is unavailable or you must manage containers yourself (for example, some custom Docker setups).
+
+1. Keep the current container running
+2. `docker pull agent0ai/agent-zero:latest`
+3. Start a **new** container on a different host port, for example: `docker run -d -p 50081:80 --name agent-zero-new agent0ai/agent-zero`
+4. On the **old** instance: **Settings -> Backup & Restore -> Create Backup**
+5. On the **new** instance: **Restore** the backup
+6. Verify chats and data, then remove the old container
+
+> [!CAUTION]
+> Do not delete the old container until the new one has your data.
+
+> [!TIP]
+> If the new instance fails to load settings, remove `/a0/usr/settings.json` and restart to regenerate default settings.
+
+---
+
+## Manual Installation (Advanced)
+
+> Users should use [Quick Start (Recommended)](#quick-start-recommended) above. The steps below are for custom Docker setups, air-gapped installs, or when you cannot use the install scripts.
+
+Follow the steps below to install Docker and run the image by hand.
+
+### Step 1: Install Docker Desktop
 
 Docker Desktop provides the runtime environment for Agent Zero, ensuring consistent behavior and security across platforms. The entire framework runs within a Docker container, providing isolation and easy deployment.
 
@@ -39,7 +112,7 @@ Docker Desktop provides the runtime environment for Agent Zero, ensuring consist
 ---
 
 <a name="windows-installation"></a>
-## <img src="../res/setup/oses/windows.png" width="30" alt="Windows"/> Windows Installation
+#### <img src="../res/setup/oses/windows.png" width="30" alt="Windows"/> Windows Installation
 
 **1.1. Download Docker Desktop**
 
@@ -62,14 +135,14 @@ Once installed, launch Docker Desktop from your Start menu or desktop shortcut.
 
 <img src="../res/setup/image-11.png" alt="docker installed" height="100"/>
 
-✅ **Docker is now installed!** 
+**Docker is now installed.**
 
-### Continue to [Step 2: Run Agent Zero](#step-2-run-agent-zero)
+Continue to [Step 2: Run Agent Zero](#step-2-run-agent-zero)
 
 ---
 
 <a name="macos-installation"></a>
-## <img src="../res/setup/oses/apple.png" width="30" alt="macOS"/> macOS Installation
+#### <img src="../res/setup/oses/apple.png" width="30" alt="macOS"/> macOS Installation
 
 **1.1. Download Docker Desktop**
 
@@ -95,18 +168,18 @@ Open Docker Desktop from your Applications folder.
 **1.4. Configure Docker Socket**
 
 > [!NOTE]
-> **Important macOS Configuration:** In Docker Desktop's preferences (Docker menu) → Settings → Advanced, enable "Allow the default Docker socket to be used (requires password)."
+> **Important macOS Configuration:** In Docker Desktop's preferences (Docker menu) -> Settings -> Advanced, enable "Allow the default Docker socket to be used (requires password)."
 
 ![docker socket macOS](../res/setup/macsocket.png)
 
-✅ **Docker is now installed!** 
+**Docker is now installed.**
 
-### Continue to [Step 2: Run Agent Zero](#step-2-run-agent-zero)
+Continue to [Step 2: Run Agent Zero](#step-2-run-agent-zero)
 
 ---
 
 <a name="linux-installation"></a>
-## <img src="../res/setup/oses/linux.png" width="30" alt="Linux"/> Linux Installation
+#### <img src="../res/setup/oses/linux.png" width="30" alt="Linux"/> Linux Installation
 
 **1.1. Choose Installation Method**
 
@@ -138,16 +211,16 @@ docker login
 
 If you installed Docker Desktop, launch it from your applications menu.
 
-✅ **Docker is now installed!** 
+**Docker is now installed.**
 
 > [!TIP]
 > **Deploying on a VPS/Server?** For production deployments with reverse proxy, SSL, and domain configuration, see the [VPS Deployment Guide](vps-deployment.md).
 
 ---
 
-## Step 2: Run Agent Zero
+### Step 2: Run Agent Zero
 
-### 2.1. Pull the Agent Zero Docker Image
+#### 2.1. Pull the Agent Zero Docker Image
 
 **Using Docker Desktop GUI:**
 
@@ -163,11 +236,11 @@ If you installed Docker Desktop, launch it from your applications menu.
 docker pull agent0ai/agent-zero
 ```
 
-### 2.2. (Optional) Map Folders for Persistence
+#### 2.2. (Optional) Map Folders for Persistence
 
 Choose or create a folder on your computer where Agent Zero will save its data. 
 
-### Setting up persistence is needed only if you want your data and files to remain available even after you delete the container. 
+Setting up persistence is needed only if you want your data and files to remain available even after you delete the container.
 
 You can pick any location you find convenient:
 
@@ -182,7 +255,7 @@ You can map just the `/a0/usr` directory (recommended) or individual subfolders 
 > [!TIP]
 > Choose a location that's easy to access and backup. All your Agent Zero data will be directly accessible in this directory.
 
-### 2.3. Run the Container
+#### 2.3. Run the Container
 
 **Using Docker Desktop GUI:**
 
@@ -199,7 +272,7 @@ The container will start and show in the "Containers" tab:
 
 ![docker containers](../res/setup/4-docker-container-started.png)
 
-### 2.4. Access the Web UI
+#### 2.4. Access the Web UI
 
 The framework will take a few seconds to initialize. Find the mapped port in Docker Desktop (shown as `<PORT>:80`) or click the port right under the container ID:
 
@@ -227,7 +300,10 @@ docker run -p 0:80 -v /path/to/your/work_dir:/a0/usr agent0ai/agent-zero
 
 ## Step 3: Configure Agent Zero
 
-The UI will show a warning banner "Missing LLM API Key for current settings". Click on `Add your API key` to enter Settings and start configuring A0.
+The UI will show a welcome banner when model setup is missing. Click
+**Start Onboarding** to choose Cloud or Local, add a provider key or account
+connection, and select your main and utility models. For the screenshot
+walkthrough, see the [First-Run Onboarding guide](../guides/onboarding.md).
 
 ### Settings Configuration
 
@@ -235,15 +311,21 @@ Agent Zero provides a comprehensive settings interface to customize various aspe
 
 ### Agent Configuration
 
-- **Agent Profile:** Select the agent profile (e.g., `agent0`, `hacker`, `researcher`). Profiles can override prompts, tools, and extensions.
+- **Agent Profile:** Select the default profile for new chats, such as `agent0`,
+  `hacker`, or `researcher`.
 - **Memory Subdirectory:** Select the subdirectory for agent memory storage, allowing separation between different instances.
 - **Knowledge Subdirectory:** Specify the location of custom knowledge files to enhance the agent's understanding.
 
-> [!NOTE]
-> Since v0.9.7, custom prompts belong in `/a0/agents/<agent_name>/prompts/` rather than a shared `/prompts` folder. See the [Extensions guide](../developer/extensions.md#prompts) for details.
+See the [Agent Profiles guide](../guides/agent-profiles.md) for the chat menu,
+profile switching, and guided profile creation.
 
 > [!NOTE]
-> The Hacker profile is included in the main image. After launch, choose the **hacker** agent profile in Settings if you want the security-focused prompts and tooling. The "hacker" branch is deprecated.
+> Since v0.9.7, custom prompts belong inside a specific agent profile rather
+> than a shared `/prompts` folder. Most users should create profiles from the
+> chat profile menu.
+
+> [!NOTE]
+> The Hacker profile is included in the main image. After launch, choose the **hacker** agent profile in Settings to make it the default for new chats, or switch the selected chat from the composer profile selector. The "hacker" branch is deprecated.
 
 ![settings](../res/setup/settings/1-agentConfig.png)
 
@@ -296,7 +378,7 @@ Configure API keys for various service providers directly within the Web UI. Cli
 > **OpenAI API vs Plus subscription:** A ChatGPT Plus subscription does not include API credits. You must provide a separate API key for OpenAI usage in Agent Zero.
 
 > [!TIP]
-> For OpenAI-compatible providers (e.g., custom gateways or Z.AI/GLM), add the API key under **External Services → Other OpenAI-compatible API keys**, then select **OpenAI Compatible** as the provider in model settings.
+> For OpenAI-compatible providers (e.g., custom gateways or Z.AI/GLM), add the API key under **External Services -> Other OpenAI-compatible API keys**, then select **OpenAI Compatible** as the provider in model settings.
 
 > [!CAUTION]
 > **GitHub Copilot Provider:** When using the GitHub Copilot provider, after selecting the model and entering your first prompt, the OAuth login procedure will begin. You'll find the authentication code and link in the output logs. Complete the authentication process by following the provided link and entering the code, then you may continue using Agent Zero.
@@ -330,16 +412,18 @@ The Settings page is the control center for selecting the Large Language Models 
 
 | LLM Role | Description |
 | --- | --- |
-| `chat_llm` | This is the primary LLM used for conversations and generating responses. |
+| `chat_llm` | This is the primary LLM used for conversations, agent reasoning, and tool use. Vision support controls image understanding. |
 | `utility_llm` | This LLM handles internal tasks like summarizing messages, managing memory, and processing internal prompts. Using a smaller, less expensive model here can improve efficiency. |
-| `browser_llm` | This LLM powers the browser agent for web navigation and interaction tasks. Vision support is recommended for better page understanding. |
 | `embedding_llm` | The embedding model shipped with A0 runs on CPU and is responsible for generating embeddings used for memory retrieval and knowledge base lookups. Changing the `embedding_llm` will re-index all of A0's memory. |
 
 **How to Change:**
 
 1. Open Settings page in the Web UI.
-2. Choose the provider for the LLM for each role (Chat model, Utility model, Browser model, Embedding model) and write the model name.
+2. Choose the provider for the LLM for each role (Main Model, Utility Model, Embedding Model) and write the model name.
 3. Click "Save" to apply the changes.
+
+> [!NOTE]
+> The built-in Browser does not have a separate default model slot. The main agent decides when to call the direct `browser` tool. Browser settings can optionally choose a Browser LLM preset for Browser-owned helper operations.
 
 ### Important Considerations
 
@@ -365,7 +449,7 @@ Use the naming format required by your selected provider:
 #### Utility Model Guidance
 
 - Utility models handle summarization and memory extraction.
-- Very small models (≈4B) usually fail at reliable context extraction.
+- Very small models (about 4B) usually fail at reliable context extraction.
 - Aim for ~70B class models or strong cloud "flash/mini" models for better results.
 
 #### Reasoning/Thinking Models
@@ -468,24 +552,6 @@ ollama rm <model-name>
 
 ---
 
-## How to Update Agent Zero
-
-> [!NOTE]
-> Since v0.9, Agent Zero includes a Backup & Restore workflow in the Settings UI. This is the **safest** way to upgrade Docker instances.
-
-### Recommended Update Process (Docker)
-
-1. **Keep the old container running** and note its port.
-2. **Pull the new image** (`agent0ai/agent-zero:latest`).
-3. **Start a new container** on a different host port.
-4. In the **old** instance, open **Settings → Backup & Restore** and create a backup.
-5. In the **new** instance, restore that backup from the same panel.
-
-> [!TIP]
-> If the new instance fails to load settings, remove `/a0/usr/settings.json` and restart to regenerate default settings.
-
----
-
 ## Using Agent Zero on Your Mobile Device
 
 Agent Zero can be accessed from mobile devices and other computers using the built-in **Tunnel feature**.
@@ -501,7 +567,7 @@ The Tunnel feature allows secure access to your Agent Zero instance from anywher
 5. Share this URL to access Agent Zero from any device
 
 > [!IMPORTANT]
-> **Security:** Always set a username and password in Settings → Authentication before creating a tunnel to secure your instance on the internet.
+> **Security:** Always set a username and password in Settings -> Authentication before creating a tunnel to secure your instance on the internet.
 
 For complete details on tunnel configuration and security considerations, see the [Remote Access via Tunneling](../guides/usage.md#remote-access-via-tunneling) section in the Usage Guide.
 

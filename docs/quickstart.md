@@ -1,68 +1,95 @@
 # Quick Start
-This guide provides a quick introduction to using Agent Zero. We'll cover the essential installation steps and running your first Skill.
 
-## Installation Steps
+This guide gets you from install to a first useful chat. Keep it simple: start
+Agent Zero, add a model or API key, open the Web UI, and give it a concrete job.
 
-### Step 1: Install Docker Desktop
+## Installation (recommended)
 
-Download and install Docker Desktop for your operating system:
+Run one command; the script handles Docker, image pull, and container setup.
 
-- **Windows:** Download from [Docker Desktop](https://www.docker.com/products/docker-desktop/) and run the installer with default settings
-- **macOS:** Download for Apple Silicon or Intel, drag to Applications, and enable the Docker socket in Settings → Advanced
-- **Linux:** Install Docker Desktop or docker-ce following the [official instructions](https://docs.docker.com/desktop/install/linux-install/)
+**macOS / Linux:**
+```bash
+curl -fsSL https://bash.agent-zero.ai | bash
+```
+
+**Windows (PowerShell):**
+```powershell
+irm https://ps.agent-zero.ai | iex
+```
+
+Follow the CLI prompts for port and authentication, complete onboarding, then open the Web UI URL from the terminal.
 
 > [!TIP]
-> For complete OS-specific installation instructions, see the [full Installation Guide](setup/installation.md#step-1-install-docker-desktop).
+> To update later, open **Settings UI -> Update tab -> Open Self Update** (see [How to Update](setup/installation.md#how-to-update-agent-zero)). Backups are automatically managed internally.
 
-### Step 2: Pull the Agent Zero Image
+> [!NOTE]
+> For manual Docker Desktop setup, volume mapping, and platform-specific detail, see the [Installation Guide](setup/installation.md#manual-installation-advanced).
 
-Using Docker Desktop GUI, search for `agent0ai/agent-zero` and click Pull, or use the terminal:
+## Use Agent Zero on your real local files
 
+If you want Agent Zero to work on the actual files on your computer, this is the important part.
+
+Agent Zero stays in Docker for safety. The A0 CLI installs and runs on your host machine. It is not another CLI agent; it is the connector that lets your running Agent Zero instance work on the real files on your real computer.
+
+**macOS / Linux:**
 ```bash
-docker pull agent0ai/agent-zero
+curl -LsSf https://cli.agent-zero.ai/install.sh | sh
 ```
 
-### Step 3: Run the Container
-
-**Using Docker Desktop:** Go to Images tab, click Run next to `agent0ai/agent-zero`, open Optional settings, map a host port to container port `80` (use `0` for automatic assignment), then click Run.
-
-**Using Terminal:**
-
-```bash
-docker run -p 0:80 agent0ai/agent-zero
+**Windows (PowerShell):**
+```powershell
+irm https://cli.agent-zero.ai/install.ps1 | iex
 ```
 
-The container will start in a few seconds. Find the mapped port in Docker Desktop (shown as `<PORT>:80`).
+Run those on the host machine, not inside the Agent Zero container.
 
-### Step 4: Open the Web UI and Configure API Key
+Then launch:
 
-Open your browser and navigate to `http://localhost:<PORT>`. The Web UI will show a warning banner about missing API key.
+```bash
+a0
+```
+
+Once `a0` connects, open or create a chat there. The reasoning still belongs to Agent Zero; the CLI is the host bridge that lets it work on real local files on your machine.
+
+For the full setup flow, host picker screenshots, command palette guidance, Browser mode commands, manual fallback install paths, remote-host tips, and a copy-ready brief for another agent, see the [A0 CLI Connector guide](guides/a0-cli-connector.md).
+
+### Open the Web UI and complete onboarding
+
+Open your browser and navigate to `http://localhost:<PORT>`. The Web UI will
+show the onboarding banner. Click **Start Onboarding** to choose Cloud or
+Local, add a provider key or account connection, and select your main and
+utility models.
 
 ![Agent Zero Web UI](res/setup/6-docker-a0-running-new.png)
 
-Click **Add your API key** to open Settings and configure:
-
-- **Default Provider:** OpenRouter (supports most models with a single API key)
-- **Alternative Providers:** Anthropic, OpenAI, Ollama/LM Studio (local models), and many others
-- **Model Selection:** Choose your chat model (e.g., `anthropic/claude-sonnet-4-5` for OpenRouter)
+For a screenshot walkthrough using **Agent Zero API** with
+`claude-opus-4-6`, see the [First-Run Onboarding guide](guides/onboarding.md).
 
 > [!NOTE]
-> Agent Zero supports any LLM provider, including local models via Ollama. For detailed provider configuration and local model setup, see the [Installation Guide](setup/installation.md#choosing-your-llms).
+> Agent Zero supports hosted providers and local models. You can use the same
+> provider for main and utility work, or choose separate providers for each.
 
-### Step 5: Start Your First Chat
+### Start your first chat
 
-Once configured, you'll see the Agent Zero dashboard with access to:
+Once configured, you will see the Agent Zero dashboard.
 
-- **Projects** - organize your work into projects
-- **Memory** - open the memory dashboard
-- **Scheduler** - create and manage planned tasks
-- **Files** - open the File Browser
-- **Settings** - configure models and preferences
-- **System Stats** - monitor resource usage
+![Agent Zero dashboard](res/usage/webui/dashboard.png)
 
-Click **New Chat** to start creating with Agent Zero!
+Click **New Chat** and start with a specific request.
 
-![Agent Zero Dashboard](res/quickstart/ui_newchat1.png)
+Good first prompts:
+
+```text
+Create a short plan for organizing my project notes.
+```
+
+```text
+Use the Browser to research three options for this tool and summarize the tradeoffs.
+```
+
+```text
+Help me create a project for this repository and write good instructions for it.
+```
 
 > [!TIP]
 > The Web UI provides a comprehensive chat actions dropdown with options for managing conversations, including creating new chats, resetting, saving/loading, and many more advanced features. Chats are saved in JSON format in the `/usr/chats` directory.
@@ -72,11 +99,14 @@ Click **New Chat** to start creating with Agent Zero!
 ---
 
 ## Example Interaction
-Let's ask Agent Zero to use one of the built-in skills. Here's how:
 
-1. Type "Activate your brainstorming skill" in the chat input field and press Enter or click the send button.
-2. Agent Zero will process your request. You'll see its thoughts and tool calls in the UI.
-3. The agent will acknowledge the skill activation and ask you for a follow-up on the brainstorming request.
+Try a small request first so you can see how Agent Zero thinks, uses tools, and
+reports progress.
+
+1. Type a concrete request in the chat input and press Enter.
+2. Watch the streamed response and any tool calls.
+3. Redirect the agent if it starts moving in the wrong direction.
+4. Ask for the final result in the format you want.
 
 Here's an example of what you might see in the Web UI at step 3:
 
@@ -85,17 +115,47 @@ Here's an example of what you might see in the Web UI at step 3:
 ## Next Steps
 Now that you've run a simple task, you can experiment with more complex requests. Try asking Agent Zero to:
 
-* Connect to your email
-* Execute shell commands
-* Develop skills
-* Explore web development tasks
-* Develop A0 itself
+- Create a project for a focused workspace.
+- Use the built-in Browser to research, screenshot, or annotate a page.
+- Open the Desktop when you want Linux GUI apps or LibreOffice Cowork.
+- Review Memory when Agent Zero seems to keep the wrong assumption.
+- Connect A0 CLI when Agent Zero should work on host-machine files.
+- Use **+ -> Skills** when you want to pin or remove a skill in the current chat.
+- Switch Agent Profiles from the menu near the chat input when you want a different working style.
+- Use the first model dropdown when you want to choose or edit Model Presets.
+- Attach files and ask for a summary, edit, or conversion.
+- Create a scheduled task for recurring work.
+- Explore plugins when you need installed integrations or custom UI features.
+
+### [Open A0 Browser Guide](guides/browser.md)
+
+Explains the built-in Browser, live Browser Canvas, screenshots, annotations, host-browser mode through A0 CLI, and Chrome extensions.
+
+### [Open A0 Desktop Guide](guides/desktop.md)
+
+Shows the right-side Canvas Linux desktop, the New menu for Markdown/Writer/Spreadsheet/Presentation files, and LibreOffice Cowork.
+
+### [Open A0 Memory Guide](guides/memory.md)
+
+Explains how to search, edit, delete, export, and curate memories before stale context starts steering the agent.
+
+### [Open A0 Skills Guide](guides/skills.md)
+
+Shows the chat input **+** menu, the Skills selector, and how active skills are added to prompt extras.
+
+### [Open A0 Agent Profiles Guide](guides/agent-profiles.md)
+
+Shows how to switch profiles in a chat and start the guided profile-creation flow.
+
+### [Open A0 Model Presets Guide](guides/model-presets.md)
+
+Explains presets as simple named shortcuts for model setups.
 
 ### [Open A0 Usage Guide](guides/usage.md)
 
-Provides more in-depth information on tools, projects, tasks, and backup/restore.
+Provides more in-depth information on chat controls, tools, projects, tasks, and backup/restore.
 
-## 🎓 Video Tutorials
+## Video Tutorials
 - [MCP Server Setup](https://youtu.be/pM5f4Vz3_IQ)
 - [Projects & Workspaces](https://youtu.be/RrTDp_v9V1c)
 - [Memory Management](https://youtu.be/sizjAq2-d9s)

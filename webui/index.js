@@ -1,5 +1,6 @@
 import * as msgs from "/js/messages.js";
 import * as api from "/js/api.js";
+import { callJsExtensions } from "/js/extensions.js";
 import * as css from "/js/css.js";
 import { sleep } from "/js/sleep.js";
 import { store as attachmentsStore } from "/components/chat/attachments/attachmentsStore.js";
@@ -38,9 +39,15 @@ let skipOneSpeech = false;
 
 export async function sendMessage() {
   try {
-    const message = inputStore.message.trim();
-    const attachmentsWithUrls = attachmentsStore.getAttachmentsForSending();
+    let message = inputStore.message.trim();
+    let attachmentsWithUrls = attachmentsStore.getAttachmentsForSending();
     const hasAttachments = attachmentsWithUrls.length > 0;
+
+    const sendCtx = { message, attachments: attachmentsWithUrls, context, cancel: false };
+    await callJsExtensions("send_message_before", sendCtx);
+    if (sendCtx.cancel) return;
+    message = sendCtx.message;
+    attachmentsWithUrls = sendCtx.attachments;
 
     // If empty input but has queued messages, send all queued
     if (!message && !hasAttachments && messageQueueStore.hasQueue) {
@@ -55,6 +62,7 @@ export async function sendMessage() {
         // no await for the queue
         // if (success) {
           inputStore.reset();
+          adjustTextareaHeight();
         // }
         return;
       }
@@ -66,8 +74,9 @@ export async function sendMessage() {
       let response;
       const messageId = generateGUID();
 
-      // Clear input and attachments
-      inputStore.reset();
+    // Clear input and attachments
+    inputStore.reset();
+    adjustTextareaHeight();
 
       // Include attachments in the user message
       if (hasAttachments) {
@@ -77,7 +86,7 @@ export async function sendMessage() {
             : "";
 
         // Render user message with attachments
-        setMessages([{ id: messageId, type: "user", heading, content: message, kvps: {
+        await setMessages([{ id: messageId, type: "user", heading, content: message, kvps: {
           // attachments: attachmentsWithUrls, // skip here, let the backend properly log them
         }}]);
 
@@ -161,23 +170,23 @@ globalThis.toastFetchError = toastFetchError;
 // Event listeners will be set up in DOMContentLoaded
 
 export function updateChatInput(text) {
-  const chatInputEl = document.getElementById("chat-input");
-  if (!chatInputEl) {
-    console.warn("`chatInput` element not found, cannot update.");
+  if (!inputStore) {
+    console.warn("`chatInput` store not found, cannot update.");
     return;
   }
   console.log("updateChatInput called with:", text);
 
-  // Append text with proper spacing
-  const currentValue = chatInputEl.value;
+  // Append text with proper spacing in Alpine store first.
+  const currentValue = inputStore.message || "";
   const needsSpace = currentValue.length > 0 && !currentValue.endsWith(" ");
-  chatInputEl.value = currentValue + (needsSpace ? " " : "") + text + " ";
+  inputStore.message = currentValue + (needsSpace ? " " : "") + text + " ";
 
-  // Adjust height and trigger input event
-  adjustTextareaHeight();
-  chatInputEl.dispatchEvent(new Event("input"));
+  // Adjust height after Alpine applies store value.
+  setTimeout(() => {
+    adjustTextareaHeight();
+  }, 0);
 
-  console.log("Updated chat input value:", chatInputEl.value);
+  console.log("Updated chat input value:", inputStore.message);
 }
 
 async function updateUserTime() {
@@ -211,8 +220,8 @@ async function updateUserTime() {
 updateUserTime();
 setInterval(updateUserTime, 1000);
 
-function setMessages(...params) {
-  return msgs.setMessages(...params);
+async function setMessages(...params) {
+  return await msgs.setMessages(...params);
 }
 
 globalThis.loadKnowledge = async function () {
@@ -222,6 +231,7 @@ globalThis.loadKnowledge = async function () {
 function adjustTextareaHeight() {
   const chatInputEl = document.getElementById("chat-input");
   if (chatInputEl) {
+    if (!inputStore.message) chatInputEl.value = "";
     chatInputEl.style.height = "auto";
     chatInputEl.style.height = chatInputEl.scrollHeight + "px";
   }
@@ -311,6 +321,14 @@ export async function applySnapshot(snapshot, options = {}) {
     return { updated: false };
   }
 
+  const snapCtx = {
+    snapshot,
+    willUpdateMessages: lastLogVersion != snapshot.log_version,
+    skip: false,
+  };
+  await callJsExtensions("apply_snapshot_before", snapCtx);
+  if (snapCtx.skip) return { updated: false };
+
   // If the chat has been reset, reset cursors and request a resync from the caller.
   // Note: on first snapshot after a context switch, lastLogGuid is intentionally empty,
   // so the mismatch is expected and should not trigger a second state_request/poll.
@@ -332,7 +350,7 @@ export async function applySnapshot(snapshot, options = {}) {
 
   if (lastLogVersion != snapshot.log_version) {
     updated = true;
-    setMessages(snapshot.logs);
+    await setMessages(snapshot.logs);
     afterMessagesUpdate(snapshot.logs);
   }
 
@@ -463,16 +481,33 @@ function speakMessages(logs) {
 }
 
 function updateProgress(progress, active) {
-  const progressBarEl = document.getElementById("progress-bar");
-  if (!progressBarEl) return;
   if (!progress) progress = "";
 
-  setProgressBarShine(progressBarEl, active);
+  // Strip HTML tags for plain-text placeholder use
+  const plainText = progress.replace(/<[^>]*>/g, "").trim();
 
-  progress = msgs.convertIcons(progress);
+  // Update the input store so the placeholder reflects progress
+  inputStore.progressText = plainText;
+  inputStore.progressActive = !!active;
 
-  if (progressBarEl.innerHTML != progress) {
-    progressBarEl.innerHTML = progress;
+  // Apply shimmer class to the textarea when active
+  const chatInputEl = document.getElementById("chat-input");
+  if (chatInputEl) {
+    if (active && plainText) {
+      addClassToElement(chatInputEl, "progress-active");
+    } else {
+      removeClassFromElement(chatInputEl, "progress-active");
+    }
+  }
+
+  // Also update legacy progress bar element if it still exists
+  const progressBarEl = document.getElementById("progress-bar");
+  if (progressBarEl) {
+    setProgressBarShine(progressBarEl, active);
+    const html = msgs.convertIcons(progress);
+    if (progressBarEl.innerHTML != html) {
+      progressBarEl.innerHTML = html;
+    }
   }
 }
 
@@ -539,6 +574,13 @@ export const setContext = function (id) {
 
   //skip one speech if enabled when switching context
   if (preferencesStore.speech) skipOneSpeech = true;
+
+  // Focus the chat input
+  if (id) {
+    setTimeout(() => {
+      inputStore.focus();
+    }, 50);
+  }
 };
 
 export const deselectChat = function () {

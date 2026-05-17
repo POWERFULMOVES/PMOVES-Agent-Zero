@@ -86,6 +86,22 @@ const model = {
     this.fileOperationsLog = '';
   },
 
+  createDownloadToastGroup(prefix) {
+    return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  },
+
+  showDownloadPreparingToast(group) {
+    window.toastFrontendInfo?.("Preparing download...", "Download", 0, group, undefined, true);
+  },
+
+  showDownloadStartedToast(group) {
+    window.toastFrontendInfo?.("Downloading...", "Download", 3, group, undefined, true);
+  },
+
+  showDownloadErrorToast(group, message) {
+    window.toastFrontendError?.(message || "Download failed", "Download Error", 8, group, undefined, true);
+  },
+
   // Cleanup method for modal close
   onClose() {
     this.resetState();
@@ -389,12 +405,15 @@ const model = {
       return;
     }
 
+    const downloadToastGroup = this.createDownloadToastGroup("backup-create");
+
     try {
       this.loading = true;
       this.loadingMessage = 'Creating backup...';
       this.error = '';
       this.clearFileOperations();
       this.addFileOperation('Starting backup creation...');
+      this.showDownloadPreparingToast(downloadToastGroup);
 
       const metadata = this.backupMetadataConfig;
 
@@ -421,7 +440,7 @@ const model = {
         window.URL.revokeObjectURL(url);
 
         this.addFileOperation('Backup created and downloaded successfully!');
-        window.toastFrontendInfo('Backup created and downloaded successfully', 'Backup Status');
+        this.showDownloadStartedToast(downloadToastGroup);
       } else {
         // Try to parse error response
         const errorText = await response.text();
@@ -432,18 +451,23 @@ const model = {
           this.error = `Backup creation failed: ${response.status} ${response.statusText}`;
         }
         this.addFileOperation(`Error: ${this.error}`);
+        this.showDownloadErrorToast(downloadToastGroup, this.error);
       }
 
     } catch (error) {
       this.error = `Backup error: ${error.message}`;
       this.addFileOperation(`Error: ${error.message}`);
+      this.showDownloadErrorToast(downloadToastGroup, this.error);
     } finally {
       this.loading = false;
     }
   },
 
   async downloadBackup(backupPath, backupName) {
+    const downloadToastGroup = this.createDownloadToastGroup("backup-download");
+
     try {
+      this.showDownloadPreparingToast(downloadToastGroup);
       const response = await fetchApi('/backup_download', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -458,9 +482,16 @@ const model = {
         a.download = `${backupName}.zip`;
         a.click();
         window.URL.revokeObjectURL(url);
+        this.showDownloadStartedToast(downloadToastGroup);
+      } else {
+        const errorText = await response.text();
+        this.error = errorText || `Download failed: ${response.status}`;
+        this.showDownloadErrorToast(downloadToastGroup, this.error);
       }
     } catch (error) {
       console.error('Download error:', error);
+      this.error = error.message || 'Download failed';
+      this.showDownloadErrorToast(downloadToastGroup, this.error);
     }
   },
 

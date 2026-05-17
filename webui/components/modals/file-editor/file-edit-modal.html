@@ -48,13 +48,13 @@
 
   <template x-if="$store.fileEditor">
     <div class="modal-footer" data-modal-footer>
-      <button class="btn btn-cancel" @click="$store.fileEditor.closeFileEditor()" :disabled="$store.fileEditor.isSaving">Cancel</button>
       <button
         class="btn btn-ok"
         @click="$store.fileEditor.saveFileEdits()"
         :disabled="$store.fileEditor.isSaving || $store.fileEditor.isEditLoading || $store.fileEditor.editError"
         x-text="$store.fileEditor.isSaving ? 'Saving…' : 'Save'"
       ></button>
+      <button class="btn btn-cancel" @click="$store.fileEditor.closeFileEditor()" :disabled="$store.fileEditor.isSaving">Cancel</button>
     </div>
   </template>
 

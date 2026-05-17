@@ -30,7 +30,7 @@ RUN bash /ins/post_install.sh $BRANCH
 # Expose ports
 EXPOSE 22 80 9000-9009
 
-RUN chmod +x /exe/initialize.sh /exe/run_A0.sh /exe/run_searxng.sh /exe/run_tunnel_api.sh
+RUN chmod +x /exe/initialize.sh /exe/run_A0.sh /exe/run_searxng.sh /exe/run_tunnel_api.sh /exe/trigger_self_update.sh
 
 # Ensure a0user exists (created in base image) and owns runtime dirs
 RUN id a0user 2>/dev/null || (groupadd -g 1000 a0user && useradd -u 1000 -g a0user -m -s /bin/bash a0user) && \

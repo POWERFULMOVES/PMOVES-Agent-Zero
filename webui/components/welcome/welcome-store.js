@@ -1,7 +1,7 @@
 import { createStore } from "/js/AlpineStore.js";
 import { getContext } from "/index.js";
 import { store as chatsStore } from "/components/sidebar/chats/chats-store.js";
-import { store as memoryStore } from "/components/modals/memory/memory-dashboard-store.js";
+import { store as memoryStore } from "/plugins/_memory/webui/memory-dashboard-store.js";
 import { store as projectsStore } from "/components/projects/projects-store.js";
 import { store as chatInputStore } from "/components/chat/input/input-store.js";
 import * as API from "/js/api.js";
@@ -12,15 +12,21 @@ const model = {
   bannersLoading: false,
   lastBannerRefresh: 0,
   hasDismissedBanners: false,
+  _initialized: false,
 
   get isVisible() {
     return !chatsStore.selected;
   },
 
   init() {
-    // Reload banners when settings change
-    document.addEventListener("settings-updated", () => {
-      this.refreshBanners(true);
+    if (this._initialized) return;
+    this._initialized = true;
+
+    // Reload banners when a modal closes while the welcome screen is visible.
+    document.addEventListener("modal-closed", () => {
+      if (this.isVisible) {
+        this.refreshBanners(true);
+      }
     });
   },
 
@@ -135,9 +141,9 @@ const model = {
   },
 
   get sortedBanners() {
-    return [...this.banners].sort(
-      (a, b) => (b.priority || 0) - (a.priority || 0),
-    );
+    return [...this.banners]
+      .filter((b) => b.type !== "hero" && b.type !== "feature")
+      .sort((a, b) => (b.priority || 0) - (a.priority || 0));
   },
 
   /**
@@ -200,11 +206,10 @@ const model = {
         window.openModal("modals/scheduler/scheduler-modal.html");
         break;
       case "settings":
-        // Open settings modal
-        const settingsButton = document.getElementById("settings");
-        if (settingsButton) {
-          settingsButton.click();
-        }
+        window.openModal("settings/settings.html");
+        break;
+      case "plugins":
+        window.openModal("components/plugins/list/plugin-list.html");
         break;
       case "projects":
         projectsStore.openProjectsModal();
@@ -217,9 +222,6 @@ const model = {
         break;
       case "website":
         window.open("https://agent-zero.ai", "_blank");
-        break;
-      case "github":
-        window.open("https://github.com/agent0ai/agent-zero", "_blank");
         break;
     }
   },

@@ -103,26 +103,24 @@ The agent confirms:
 - File location: `/root/agent_zero_logo_0.jpg`
 - File size: 378 KB
 
-## How Memory Works
+## How Memory Helps
 
-Here's where it gets interesting: **Agent Zero will remember this solution**.
+Agent Zero can save useful API patterns in memory so you do not have to explain
+the same integration every time.
 
-The next time you ask it to generate an image:
-- It will automatically use the Gemini API approach it learned
-- No need to provide the code snippet again
-- The API key is already configured
-- Dependencies are already installed
+For example, it may remember:
 
-The agent stores:
-- **How to use the API** (code structure, parameters)
-- **What the API does** (image generation)
-- **What credentials are needed** (`GEMINI_API_KEY`)
-- **Common patterns and best practices** from the interaction
+- what the API is useful for;
+- what credential name is needed;
+- which package or example worked;
+- how you prefer to use that service in this project.
 
-This memory persists across:
-- Multiple conversations
-- Agent restarts
-- Different projects (for global memory and global secrets)
+> [!IMPORTANT]
+> Memory still needs curation. If Agent Zero keeps using an old API pattern,
+> wrong credential name, or outdated package, open Memory and fix or remove that
+> memory. Memory should help the agent think, not trap it in yesterday's answer.
+
+See the [Memory Guide](memory.md) for cleanup and curation tips.
 
 ## Use Cases
 
@@ -219,13 +217,18 @@ Then in future chats:
 
 ## Conclusion
 
-By leveraging Agent Zero's ability to learn from API code snippets, you can:
+By showing Agent Zero a working API example, you can:
 
-- **Add new capabilities instantly** without writing integration code
-- **Keep solutions in memory** for reuse across conversations
-- **Manage credentials securely** with global or project-scoped secrets
-- **Scale across any public API** using the same simple workflow
+- add a new service to a project;
+- keep credentials in settings or project secrets;
+- reuse working patterns later;
+- clean up memory when an old pattern stops helping.
 
-This makes Agent Zero incredibly versatile - it's not limited to its built-in features. Show it how to use an API once, and it becomes part of its permanent toolkit.
+This is not magic permanence. It works best when you keep the example, secrets,
+project instructions, and memories tidy.
 
-Ready to try it yourself? Pick any API you want to integrate and follow the steps above!
+## Related
+
+- [Memory Guide](memory.md)
+- [Projects Guide](projects.md)
+- [MCP Setup](mcp-setup.md)

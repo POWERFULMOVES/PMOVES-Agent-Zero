@@ -1,10 +1,10 @@
 import { createStore } from "/js/AlpineStore.js";
+import { fetchApi } from "/js/api.js";
 import { formatDateTime, getUserTimezone } from "/js/time-utils.js";
 import { store as chatsStore } from "/components/sidebar/chats/chats-store.js";
 import { store as projectsStore } from "/components/projects/projects-store.js";
 import { store as notificationsStore } from "/components/notifications/notification-store.js";
 
-const API = globalThis.fetchApi || globalThis.fetch;
 const VIEW_MODE_STORAGE_KEY = "scheduler_view_mode";
 const NOTIFICATION_DURATION = {
   success: 3,
@@ -268,7 +268,7 @@ function buildPayloadFromEditingTask(editingTask, { isCreating = false } = {}) {
 
 async function callSchedulerEndpoint(endpoint, payload = {}, defaultError) {
   try {
-    const response = await API(endpoint, {
+    const response = await fetchApi(endpoint, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -277,11 +277,11 @@ async function callSchedulerEndpoint(endpoint, payload = {}, defaultError) {
     });
     const data = await response.json().catch(() => ({}));
     if (!response.ok) {
-      return { ok: false, error: data?.error || defaultError || "Scheduler request failed" };
+      return { ok: false, error: data?.error || defaultError || "Task request failed" };
     }
     return { ok: true, data };
   } catch (error) {
-    return { ok: false, error: error?.message || defaultError || "Scheduler request failed" };
+    return { ok: false, error: error?.message || defaultError || "Task request failed" };
   }
 }
 
@@ -347,7 +347,7 @@ const notificationChannels = {
   error: "frontendError",
 };
 
-function pushNotification(type, message, title = "Scheduler", duration) {
+function pushNotification(type, message, title = "Tasks", duration) {
   const channel = notificationChannels[type];
   if (!channel || typeof notificationsStore[channel] !== "function") return;
   const ttl = duration ?? NOTIFICATION_DURATION[type] ?? 4;

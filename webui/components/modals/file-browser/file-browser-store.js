@@ -23,7 +23,12 @@ const model = {
   renameMode: "rename",
   isRenaming: false,
   renameError: null,
+  renameAfterConfirm: null,
+  renamePerformAction: null,
+  renameValidateName: null,
   openDropdownPath: null, // Track which dropdown is currently open
+  searchQuery: "",
+  isBulkBusy: false,
 
   // --- Lifecycle -----------------------------------------------------------
   init() {
@@ -36,6 +41,8 @@ const model = {
     this.isLoading = true;
     this.error = null;
     this.history = [];
+    this.searchQuery = "";
+    this.isBulkBusy = false;
 
     try {
       // Open modal FIRST (immediate UI feedback)
@@ -73,6 +80,8 @@ const model = {
     this.initialPath = "";
     this.browser.entries = [];
     this.openDropdownPath = null;
+    this.searchQuery = "";
+    this.isBulkBusy = false;
     this.resetRenameState();
   },
 
@@ -135,6 +144,76 @@ const model = {
     return new Date(dateString).toLocaleDateString(undefined, options);
   },
 
+  decorateEntries(entries = [], selectedPaths = new Set()) {
+    return entries.map((entry) => ({
+      ...entry,
+      selected: selectedPaths.has(entry.path),
+    }));
+  },
+
+  get filteredEntries() {
+    const query = this.searchQuery.trim().toLowerCase();
+    if (!query) return this.browser.entries;
+
+    return this.browser.entries.filter((file) => {
+      const searchable = [
+        file.name,
+        file.path,
+        file.type,
+        file.symlink_target,
+        file.is_dir ? "folder directory" : "file",
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+      return searchable.includes(query);
+    });
+  },
+
+  get visibleEntries() {
+    return this.sortFiles(this.filteredEntries);
+  },
+
+  clearSearch() {
+    this.searchQuery = "";
+  },
+
+  get selectedFiles() {
+    return this.browser.entries.filter((file) => file.selected);
+  },
+
+  get selectedCount() {
+    return this.selectedFiles.length;
+  },
+
+  get selectedCountLabel() {
+    return `${this.selectedCount} ${this.selectedCount === 1 ? "item" : "items"} selected`;
+  },
+
+  get allVisibleSelected() {
+    return (
+      this.filteredEntries.length > 0 &&
+      this.filteredEntries.every((file) => file.selected)
+    );
+  },
+
+  get someVisibleSelected() {
+    return this.filteredEntries.some((file) => file.selected);
+  },
+
+  toggleSelectAllVisible() {
+    const shouldSelect = !this.allVisibleSelected;
+    this.filteredEntries.forEach((file) => {
+      file.selected = shouldSelect;
+    });
+  },
+
+  clearSelection() {
+    this.browser.entries.forEach((file) => {
+      file.selected = false;
+    });
+  },
+
   // --- Modal helpers -------------------------------------------------------
   normalizePath(path) {
     if (!path) return "";
@@ -148,12 +227,27 @@ const model = {
     return `${trimmedBase}/${name}`;
   },
 
+  parentPath(path) {
+    const normalized = this.normalizePath(String(path || "")).replace(/\/+$/, "");
+    const index = normalized.lastIndexOf("/");
+    if (index <= 0) return "/";
+    return normalized.slice(0, index);
+  },
+
+  siblingPath(path, name) {
+    const parent = this.parentPath(path);
+    return parent === "/" ? `/${name}` : `${parent}/${name}`;
+  },
+
   resetRenameState() {
     this.renameTarget = null;
     this.renameName = "";
     this.renameMode = "rename";
     this.isRenaming = false;
     this.renameError = null;
+    this.renameAfterConfirm = null;
+    this.renamePerformAction = null;
+    this.renameValidateName = null;
   },
 
   // --- Sorting -------------------------------------------------------------
@@ -207,6 +301,9 @@ const model = {
     const isSamePath = this.browser.currentPath === path || 
                        (!path && !this.browser.currentPath);
     const scrollPos = isSamePath ? this.saveScrollPosition() : null;
+    const selectedPaths = isSamePath
+      ? new Set(this.selectedFiles.map((file) => file.path))
+      : new Set();
     
     try {
       const response = await fetchApi(
@@ -215,7 +312,11 @@ const model = {
       const data = await response.json().catch(() => ({}));
 
       if (response.ok && !data.error) {
-        this.browser.entries = data.data.entries;
+        if (!isSamePath) this.searchQuery = "";
+        this.browser.entries = this.decorateEntries(
+          data.data.entries || [],
+          selectedPaths
+        );
         this.browser.currentPath = data.data.current_path;
         this.browser.parentPath = data.data.parent_path;
         
@@ -258,12 +359,21 @@ const model = {
   },
 
   // --- Rename / Create -----------------------------------------------------
-  async openRenameModal(file) {
+  async openRenameModal(file, options = {}) {
     this.resetRenameState();
     this.renameTarget = file;
     this.renameName = file?.name || "";
     this.renameMode = "rename";
     this.renameError = null;
+    this.renameAfterConfirm = typeof options.onRenamed === "function" ? options.onRenamed : null;
+    this.renamePerformAction = typeof options.performRename === "function" ? options.performRename : null;
+    this.renameValidateName = typeof options.validateName === "function" ? options.validateName : null;
+    if (typeof options.currentPath === "string" && options.currentPath) {
+      this.browser.currentPath = options.currentPath;
+    }
+    if (Array.isArray(options.entries)) {
+      this.browser.entries = options.entries;
+    }
     window.openModal("modals/file-browser/rename-modal.html");
   },
 
@@ -299,6 +409,13 @@ const model = {
       this.renameError = "No item selected for rename.";
       return;
     }
+    if (this.renameValidateName) {
+      const validation = this.renameValidateName(newName, this.renameTarget);
+      if (validation !== true) {
+        this.renameError = typeof validation === "string" ? validation : "Name is not valid.";
+        return;
+      }
+    }
 
     // UX: pre-validate duplicates so we can show a clean inline error (no toast spam)
     const duplicate = (this.browser.entries || []).some((entry) => {
@@ -317,6 +434,11 @@ const model = {
     this.renameError = null;
 
     try {
+      const previousPath = this.renameTarget?.path || "";
+      const renamedPath =
+        this.renameMode === "create-folder"
+          ? this.buildChildPath(newName)
+          : this.siblingPath(previousPath, newName);
       const payload =
         this.renameMode === "create-folder"
           ? {
@@ -332,18 +454,45 @@ const model = {
               newName: newName,
             };
 
-      const resp = await fetchApi("/rename_work_dir_file", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
+      let data = {};
+      if (this.renamePerformAction) {
+        data = await this.renamePerformAction({
+          action: this.renameMode,
+          previousPath,
+          path: renamedPath,
+          name: newName,
+          target: this.renameTarget,
+          payload,
+        }) || {};
+        if (data.error || data.ok === false) {
+          throw new Error(data.error || "Rename failed");
+        }
+      } else {
+        const resp = await fetchApi("/rename_work_dir_file", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
 
-      const data = await resp.json().catch(() => ({}));
-      if (!resp.ok || data.error) {
-        throw new Error(data.error || "Rename failed");
+        data = await resp.json().catch(() => ({}));
+        if (!resp.ok || data.error) {
+          throw new Error(data.error || "Rename failed");
+        }
       }
 
-      await this.fetchFiles(this.browser.currentPath);
+      if (!this.renamePerformAction || data.refreshFiles !== false) {
+        await this.fetchFiles(this.browser.currentPath);
+      }
+      if (this.renameAfterConfirm) {
+        await this.renameAfterConfirm({
+          action: this.renameMode,
+          previousPath,
+          path: renamedPath,
+          name: newName,
+          target: this.renameTarget,
+          response: data,
+        });
+      }
       this.closeRenameModal();
     } catch (error) {
       const message = error?.message || "Rename failed";
@@ -402,6 +551,177 @@ const model = {
     }
   },
 
+  copySelectedPaths() {
+    const selectedFiles = this.selectedFiles;
+    if (!selectedFiles.length) return;
+
+    const paths = selectedFiles.map((file) => file.path).join("\n");
+    this.copyToClipboard(paths, () => {
+      window.toastFrontendSuccess(
+        `Copied ${selectedFiles.length} ${selectedFiles.length === 1 ? "path" : "paths"}`,
+        "File Browser"
+      );
+    });
+  },
+
+  copyToClipboard(text, onSuccess) {
+    if (navigator.clipboard && window.isSecureContext) {
+      navigator.clipboard
+        .writeText(text)
+        .then(() => onSuccess?.())
+        .catch(() => this.fallbackCopyToClipboard(text, onSuccess));
+    } else {
+      this.fallbackCopyToClipboard(text, onSuccess);
+    }
+  },
+
+  fallbackCopyToClipboard(text, onSuccess) {
+    const textArea = document.createElement("textarea");
+    textArea.value = text;
+    textArea.style.position = "fixed";
+    textArea.style.left = "-999999px";
+    textArea.style.top = "-999999px";
+    document.body.appendChild(textArea);
+    textArea.focus();
+    textArea.select();
+    try {
+      document.execCommand("copy");
+      onSuccess?.();
+    } catch (error) {
+      console.error("Clipboard copy failed:", error);
+      window.toastFrontendError("Failed to copy selected paths", "File Browser");
+    } finally {
+      document.body.removeChild(textArea);
+    }
+  },
+
+  getDownloadFilename(response, fallback) {
+    const disposition = response.headers.get("Content-Disposition") || "";
+    const utf8Match = disposition.match(/filename\*=UTF-8''([^;]+)/i);
+    if (utf8Match?.[1]) {
+      try {
+        return decodeURIComponent(utf8Match[1].replace(/^"|"$/g, ""));
+      } catch {
+        return utf8Match[1].replace(/^"|"$/g, "");
+      }
+    }
+
+    const asciiMatch = disposition.match(/filename="([^"]+)"/i);
+    return asciiMatch?.[1] || fallback;
+  },
+
+  createDownloadToastGroup(prefix) {
+    return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  },
+
+  showDownloadPreparingToast(group) {
+    window.toastFrontendInfo?.("Preparing download...", "Download", 0, group, undefined, true);
+  },
+
+  showDownloadStartedToast(group) {
+    window.toastFrontendInfo?.("Downloading...", "Download", 3, group, undefined, true);
+  },
+
+  showDownloadErrorToast(group, message) {
+    window.toastFrontendError?.(message || "Download failed", "Download Error", 8, group, undefined, true);
+  },
+
+  async bulkDownloadFiles() {
+    const selectedFiles = this.selectedFiles;
+    if (!selectedFiles.length || this.isBulkBusy) return;
+
+    this.isBulkBusy = true;
+    this.closeDropdown();
+    const downloadToastGroup = this.createDownloadToastGroup("file-browser-bulk-download");
+
+    try {
+      this.showDownloadPreparingToast(downloadToastGroup);
+      const resp = await fetchApi("/download_work_dir_files", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          paths: selectedFiles.map((file) => file.path),
+          currentPath: this.browser.currentPath,
+        }),
+      });
+
+      if (!resp.ok) {
+        const message = await resp.text();
+        throw new Error(message || "Download failed");
+      }
+
+      const blob = await resp.blob();
+      const url = URL.createObjectURL(blob);
+      const fallback = `agent-zero-files-${selectedFiles.length}.zip`;
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = this.getDownloadFilename(resp, fallback);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      setTimeout(() => URL.revokeObjectURL(url), 0);
+
+      this.showDownloadStartedToast(downloadToastGroup);
+    } catch (error) {
+      this.showDownloadErrorToast(
+        downloadToastGroup,
+        error?.message || "Failed to download selected files"
+      );
+    } finally {
+      this.isBulkBusy = false;
+    }
+  },
+
+  async bulkDeleteFiles() {
+    const selectedFiles = this.selectedFiles;
+    if (!selectedFiles.length || this.isBulkBusy) return;
+
+    this.isBulkBusy = true;
+    this.closeDropdown();
+
+    try {
+      const resp = await fetchApi("/delete_work_dir_files", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          paths: selectedFiles.map((file) => file.path),
+          currentPath: this.browser.currentPath,
+        }),
+      });
+      const data = await resp.json().catch(() => ({}));
+
+      if (resp.ok && !data.error) {
+        this.browser.entries = this.decorateEntries(data.data?.entries || []);
+        this.browser.currentPath = data.data?.current_path || this.browser.currentPath;
+        this.browser.parentPath = data.data?.parent_path || this.browser.parentPath;
+        const deletedCount = data.deleted?.length || selectedFiles.length;
+        window.toastFrontendSuccess(
+          `Deleted ${deletedCount} ${deletedCount === 1 ? "item" : "items"}`,
+          "File Browser"
+        );
+
+        if (data.failed?.length) {
+          window.toastFrontendError(
+            `${data.failed.length} selected ${data.failed.length === 1 ? "item" : "items"} could not be deleted`,
+            "File Browser"
+          );
+        }
+      } else {
+        window.toastFrontendError(
+          data.error || "Error deleting selected files",
+          "File Browser"
+        );
+      }
+    } catch (error) {
+      window.toastFrontendError(
+        "Error deleting selected files: " + error.message,
+        "File Browser"
+      );
+    } finally {
+      this.isBulkBusy = false;
+    }
+  },
+
   async handleFileUpload(event) {
     return store._handleFileUpload(event); // bind to model to ensure correct context
   },
@@ -429,7 +749,7 @@ const model = {
       });
       const data = await resp.json().catch(() => ({}));
       if (resp.ok && !data.error) {
-        this.browser.entries = data.data.entries;
+        this.browser.entries = this.decorateEntries(data.data.entries || []);
         this.browser.currentPath = data.data.current_path;
         this.browser.parentPath = data.data.parent_path;
         if (data.failed && data.failed.length) {
@@ -451,9 +771,46 @@ const model = {
     }
   },
 
+  async downloadDirectory(file) {
+    const downloadToastGroup = this.createDownloadToastGroup("file-browser-directory-download");
+
+    try {
+      this.showDownloadPreparingToast(downloadToastGroup);
+      const resp = await fetchApi(`/download_work_dir_file?path=${encodeURIComponent(file.path)}`, {
+        method: "GET",
+      });
+
+      if (!resp.ok) {
+        const message = await resp.text();
+        throw new Error(message || "Download failed");
+      }
+
+      const blob = await resp.blob();
+      const url = URL.createObjectURL(blob);
+      const fallback = `${file.name}.zip`;
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = this.getDownloadFilename(resp, fallback);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      setTimeout(() => URL.revokeObjectURL(url), 0);
+      this.showDownloadStartedToast(downloadToastGroup);
+    } catch (error) {
+      this.showDownloadErrorToast(
+        downloadToastGroup,
+        error?.message || "Failed to download directory"
+      );
+    }
+  },
+
   downloadFile(file) {
+    if (file.is_dir) {
+      return this.downloadDirectory(file);
+    }
+
     const link = document.createElement("a");
-    link.href = `/download_work_dir_file?path=${encodeURIComponent(file.path)}`;
+    link.href = `/api/download_work_dir_file?path=${encodeURIComponent(file.path)}`;
     link.download = file.name;
     document.body.appendChild(link);
     link.click();

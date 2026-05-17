@@ -9,13 +9,13 @@
         <div>
           <div class="section-title">External MCP Servers</div>
           <div class="section-description">
-            Agent Zero can use external MCP servers, local or remote as tools.
+            Connect local or remote MCP servers so their tools become available to the agent.
           </div>
 
           <div class="field">
             <div class="field-label">
               <div class="field-title">MCP Servers Configuration</div>
-              <div class="field-description">External MCP servers can be configured here.</div>
+              <div class="field-description">Add servers, inspect status, and review their exposed tools.</div>
             </div>
             <div class="field-control">
               <button
@@ -27,27 +27,37 @@
             </div>
           </div>
 
-          <div class="field">
-            <div class="field-label">
-              <div class="field-title">MCP Client Init Timeout</div>
-              <div class="field-description">
-                Timeout for MCP client initialization (in seconds). Higher values might be required for complex MCPs, but might also slowdown system startup.
-              </div>
-            </div>
-            <div class="field-control">
-              <input type="number" x-model.number="settings.mcp_client_init_timeout" />
-            </div>
-          </div>
+          <div class="settings-advanced-section" x-data="{ advOpen: false }">
+            <button type="button" class="settings-advanced-toggle" @click="advOpen = !advOpen">
+              <span class="material-symbols-outlined settings-advanced-toggle-icon"
+                    :style="advOpen ? 'transform:rotate(90deg)' : ''">chevron_right</span>
+              <span>Advanced Settings</span>
+            </button>
 
-          <div class="field">
-            <div class="field-label">
-              <div class="field-title">MCP Client Tool Timeout</div>
-              <div class="field-description">
-                Timeout for MCP client tool execution. Higher values might be required for complex tools, but might also result in long responses with failing tools.
+            <div class="settings-advanced-body" x-show="advOpen" x-transition.opacity>
+              <div class="field">
+                <div class="field-label">
+                  <div class="field-title">Startup timeout</div>
+                  <div class="field-description">
+                    How long Agent Zero waits for an MCP server to initialize before marking it unavailable.
+                  </div>
+                </div>
+                <div class="field-control">
+                  <input type="number" x-model.number="settings.mcp_client_init_timeout" />
+                </div>
               </div>
-            </div>
-            <div class="field-control">
-              <input type="number" x-model.number="settings.mcp_client_tool_timeout" />
+
+              <div class="field">
+                <div class="field-label">
+                  <div class="field-title">Tool call timeout</div>
+                  <div class="field-description">
+                    Maximum time a single MCP tool call may run before it is treated as failed.
+                  </div>
+                </div>
+                <div class="field-control">
+                  <input type="number" x-model.number="settings.mcp_client_tool_timeout" />
+                </div>
+              </div>
             </div>
           </div>
         </div>

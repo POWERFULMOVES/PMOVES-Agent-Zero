@@ -37,9 +37,6 @@
                     </template>
 
                     <div class="buttons-right">
-                        <button type="button" class="button cancel"
-                            @click="$store.projects.cancelCreate()"
-                            :disabled="$store.projects.selectedProject._cloning">Cancel</button>
                         <button type="button" class="button confirm" 
                             @click="$store.projects.confirmCreate()"
                             :disabled="$store.projects.selectedProject._cloning">
@@ -53,6 +50,9 @@
                                 <span x-text="$store.projects.selectedProject.git_url ? 'Clone and continue' : 'Create and continue'"></span>
                             </template>
                         </button>
+                        <button type="button" class="button cancel"
+                            @click="$store.projects.cancelCreate()"
+                            :disabled="$store.projects.selectedProject._cloning">Cancel</button>
                     </div>
                 </div>
 

@@ -1,82 +1,25 @@
 ### skills_tool
-
-#### overview
-
-skills are folders with instructions scripts files
-give agent extra capabilities
-agentskills.io standard
-
-#### workflow
-1. skill list titles descriptions in system prompt section available skills
-2. use skills_tool:load to get full skill instructions and context
-4. use code_execution_tool to run scripts or read files
-
-#### examples
-
-##### skills_tool:list
-
-list all skills with metadata name version description tags author
-only use when details needed
-
+use skills only when relevant
+actions: list search load read_file
+common args: action skill_name query file_path
+workflow:
+- action `search`: find candidate skills by keywords or trigger phrases from the current task
+- action `list`: discover available skills
+- action `load`: load one skill by `skill_name`
+- action `read_file`: open one file inside a loaded skill directory
+if the user says "find/search a skill", call `search` before `load` even when the likely skill name seems obvious
+`read_file` requires both `skill_name` and `file_path`; load the skill first, then read `SKILL.md` or the named relative file
+after loading a skill, follow its instructions and use referenced files or scripts with other tools
+reload a skill if its instructions are no longer in context
+example:
 ~~~json
 {
-    "thoughts": [
-        "Need find skills of certain properties...",
-    ],
-    "headline": "Listing all available skills",
-    "tool_name": "skills_tool:list",
+  "thoughts": ["The user's request sounds like a skill trigger phrase, so I should search first."],
+  "headline": "Searching for relevant skill",
+  "tool_name": "skills_tool",
+  "tool_args": {
+    "action": "search",
+    "query": "set up a0 cli connector"
+  }
 }
 ~~~
-
-##### skills_tool:load
-
-loads complete SKILL.md content instructions procedures
-returns metadata content file tree
-use when potential skill identified and want usage instructions
-use again when no longer in history
-
-~~~json
-{
-    "thoughts": [
-        "User needs PDF form extraction",
-        "pdf_editing skill will provide procedures",
-        "Loading full skill content"
-    ],
-    "headline": "Loading PDF editing skill",
-    "tool_name": "skills_tool:load",
-    "tool_args": {
-        "skill_name": "pdf_editing"
-    }
-}
-~~~
-
-##### executing skill scripts
-
-use skills_tool:load identify skill script files and instructions
-use code_execution_tool runtime terminal to execute
-write command and parameters as instructed
-use full paths or cd to skill directory
-
-~~~json
-{
-    "thoughts": [
-        "Need to convert PDF to images",
-        "Skill provides convert_pdf_to_images.py at scripts/convert_pdf_to_images.py",
-        "Using code_execution_tool to run it directly"
-    ],
-    "headline": "Converting PDF to images",
-    "tool_name": "code_execution_tool",
-    "tool_args": {
-        "runtime": "terminal",
-        "code": "python /path/to/skill/scripts/convert_pdf_to_images.py /path/to/document.pdf /tmp/images"
-    }
-}
-~~~
-
-#### skills guide
-use skills when relevant for task
-load skill before use
-read / execute files with code_execution_tool
-follow instructions in skill
-mind relative paths
-conversation history discards old messages use skills_tool:load again when lost

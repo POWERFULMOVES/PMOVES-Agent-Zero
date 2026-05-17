@@ -5,7 +5,11 @@
 </head>
 
 <body>
-    <div x-data>
+    <div
+        x-data
+        x-init="window.initExternalApiExamples && window.initExternalApiExamples($el)"
+        x-destroy="window.destroyExternalApiExamples && window.destroyExternalApiExamples($el)"
+    >
         <p>Agent Zero provides external API endpoints for integration with other applications.</p>
         <p>These endpoints use API key authentication and support text messages and file attachments.</p>
 
@@ -35,7 +39,7 @@
                     • <code>message</code> (string, required): The message to send<br>
                     • <code>attachments</code> (array, optional): Array of {filename, base64} objects<br>
                     • <code>lifetime_hours</code> (number, optional): Chat lifetime in hours (default: 24)<br>
-                    • <code>project</code> (string, optional): Project name to activate (only on first message)
+                    • <code>project_name</code> (string, optional): Project name to activate (only on first message)
                 </p>
                 <p style="margin: 0; color: var(--color-text-secondary); font-size: 14px;">
                     <strong>Headers:</strong> <code>X-API-KEY</code> (required), <code>Content-Type: application/json</code>
@@ -193,7 +197,51 @@
         <script type="module">
             import * as API from "/js/api.js";
 
-            setTimeout(async () => {
+            const mountedEditors = new WeakMap();
+
+            function scheduleEditorResize(root, editors) {
+                const state = {
+                    editors,
+                    frameId: null,
+                    timeoutIds: [],
+                };
+                const resize = () => {
+                    if (mountedEditors.get(root) !== state) return;
+                    editors.forEach((editor) => editor.resize(true));
+                };
+                state.frameId = requestAnimationFrame(() => {
+                    state.frameId = null;
+                    resize();
+                    state.timeoutIds = [
+                        setTimeout(resize, 80),
+                        setTimeout(resize, 240),
+                    ];
+                });
+                mountedEditors.set(root, state);
+            }
+
+            function destroyEditors(root) {
+                const state = mountedEditors.get(root);
+                if (!state) return;
+
+                if (state.frameId) {
+                    cancelAnimationFrame(state.frameId);
+                }
+                state.timeoutIds.forEach((timeoutId) => clearTimeout(timeoutId));
+
+                state.editors.forEach((editor) => {
+                    try {
+                        editor.destroy();
+                        editor.container.removeAttribute("data-ace-editor-id");
+                        editor.container.textContent = "";
+                    } catch (error) {
+                        console.warn("Failed to destroy API example editor:", error);
+                    }
+                });
+                mountedEditors.delete(root);
+            }
+
+            async function buildExamples() {
                 const url = window.location.origin;
 
                 // Fetch token from settings API
@@ -209,7 +257,7 @@
                 const basicExample = `// Basic message example
 async function sendMessage() {
     try {
-        const response = await fetch('${url}/api_message', {
+        const response = await fetch('${url}/api/api_message', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -249,7 +297,7 @@ sendMessage().then(result => {
                 const continuationExample = `// Continue conversation example
 async function continueConversation(contextId) {
     try {
-        const response = await fetch('${url}/api_message', {
+        const response = await fetch('${url}/api/api_message', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -296,7 +344,7 @@ async function sendWithAttachment() {
         const textContent = "Hello World from attachment!";
         const base64Content = btoa(textContent);
 
-        const response = await fetch('${url}/api_message', {
+        const response = await fetch('${url}/api/api_message', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -342,7 +390,7 @@ async function getLogsGET(contextId, length = 50) {
             length: length.toString()
         });
 
-        const response = await fetch('${url}/api_log_get?' + params, {
+        const response = await fetch('${url}/api/api_log_get?' + params, {
             method: 'GET',
             headers: {
                 'X-API-KEY': '${token}'
@@ -374,7 +422,7 @@ getLogsGET('ctx_abc123', 20);`;
                 const logPostExample = `// Get logs using POST request
 async function getLogsPOST(contextId, length = 50) {
     try {
-        const response = await fetch('${url}/api_log_get', {
+        const response = await fetch('${url}/api/api_log_get', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -415,7 +463,7 @@ getLogsPOST('ctx_abc123', 10);`;
                 const terminateExample = `// Basic terminate chat function
 async function terminateChat(contextId) {
     try {
-        const response = await fetch('${url}/api_terminate_chat', {
+        const response = await fetch('${url}/api/api_terminate_chat', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -469,7 +517,7 @@ simpleWorkflow();`;
                 const resetExample = `// Basic reset chat function
 async function resetChat(contextId) {
     try {
-        const response = await fetch('${url}/api_reset_chat', {
+        const response = await fetch('${url}/api/api_reset_chat', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -511,7 +559,7 @@ async function resetAndContinue() {
         console.log('Chat reset, starting fresh conversation...');
 
         // Continue with same context_id but fresh history
-        const response = await fetch('${url}/api_message', {
+        const response = await fetch('${url}/api/api_message', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -536,7 +584,7 @@ resetAndContinue();`;
                 const filesGetExample = `// Basic file retrieval
 async function getFiles(filePaths) {
     try {
-        const response = await fetch('${url}/api_files_get', {
+        const response = await fetch('${url}/api/api_files_get', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -584,7 +632,7 @@ getFiles(filePaths);
 // Example 2: Complete attachment workflow
 async function attachmentWorkflow() {
     // Step 1: Send message with attachments
-    const messageResponse = await fetch('${url}/api_message', {
+    const messageResponse = await fetch('${url}/api/api_message', {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
@@ -621,7 +669,7 @@ attachmentWorkflow();`;
 async function sendMessageWithProject() {
     try {
         // First message - activate project
-        const response = await fetch('${url}/api_message', {
+        const response = await fetch('${url}/api/api_message', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -629,7 +677,7 @@ async function sendMessageWithProject() {
             },
             body: JSON.stringify({
                 message: "Analyze the project structure",
-                project: "my-web-app"  // Activates this project
+                project_name: "my-web-app"  // Activates this project
             })
         });
 
@@ -641,7 +689,7 @@ async function sendMessageWithProject() {
             console.log('Response:', data.response);
 
             // Continue conversation - project already set
-            const followUp = await fetch('${url}/api_message', {
+            const followUp = await fetch('${url}/api/api_message', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -650,7 +698,7 @@ async function sendMessageWithProject() {
                 body: JSON.stringify({
                     context_id: data.context_id,
                     message: "What files are in the project?"
-                    // Do NOT include project field here - already set on first message
+                    // Do NOT include project_name here - already set on first message
                 })
             });
 
@@ -670,8 +718,7 @@ async function sendMessageWithProject() {
 // Call the function
 sendMessageWithProject();`;
 
-                // Initialize ACE editors
-                const editors = [
+                return [
                     { id: "api-basic-example", content: basicExample },
                     { id: "api-continuation-example", content: continuationExample },
                     { id: "api-attachment-example", content: attachmentExample },
@@ -682,9 +729,25 @@ sendMessageWithProject();`;
                     { id: "api-reset-example", content: resetExample },
                     { id: "api-files-get-example", content: filesGetExample }
                 ];
+            }
 
-                editors.forEach(({ id, content }) => {
-                    const editor = ace.edit(id);
+            window.destroyExternalApiExamples = destroyEditors;
+
+            window.initExternalApiExamples = async (root) => {
+                if (!root || !window.ace) return;
+
+                destroyEditors(root);
+                const examples = await buildExamples();
+                if (!root.isConnected) return;
+
+                const editors = [];
+
+                examples.forEach(({ id, content }) => {
+                    const container = root.querySelector(`#${id}`);
+                    if (!container) return;
+                    container.textContent = "";
+
+                    const editor = ace.edit(container);
                     const dark = localStorage.getItem("darkMode");
                     if (dark != "false") {
                         editor.setTheme("ace/theme/github_dark");
@@ -692,11 +755,15 @@ sendMessageWithProject();`;
                         editor.setTheme("ace/theme/tomorrow");
                     }
                     editor.session.setMode("ace/mode/javascript");
-                    editor.setValue(content);
-                    editor.clearSelection();
+                    editor.setValue(content, -1);
                     editor.setReadOnly(true);
+                    editor.renderer.setShowGutter(true);
+                    editor.renderer.setPadding(8);
+                    editors.push(editor);
                 });
-            }, 0);
+
+                scheduleEditorResize(root, editors);
+            };
         </script>
     </div>
 

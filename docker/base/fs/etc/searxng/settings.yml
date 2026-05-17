@@ -1,6 +1,11 @@
 # SearXNG settings
 
-use_default_settings: true
+# Keep a minimal default engine set. Wikidata currently returns
+# variant payloads that break the 2026.04 searxng bootstrap init path.
+use_default_settings:
+  engines:
+    remove:
+      - wikidata
 
 general:
   debug: false

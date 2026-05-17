@@ -3,14 +3,14 @@
 Quick guide for using the notification system in Agent Zero.
 
 > [!TIP]
-> Notifications pair well with scheduled tasks. See [Tasks & Scheduling](../guides/usage.md#tasks--scheduling) for automation patterns.
+> Notifications pair well with scheduled tasks. See [Tasks & Scheduling](../guides/usage.md#tasks-and-scheduling) for automation patterns.
 
 ## Backend Usage
 
 Use `AgentNotification` helper methods anywhere in your Python code:
 
 ```python
-from python.helpers.notification import AgentNotification
+from helpers.notification import AgentNotification
 
 # Basic notifications
 AgentNotification.info("Operation completed")

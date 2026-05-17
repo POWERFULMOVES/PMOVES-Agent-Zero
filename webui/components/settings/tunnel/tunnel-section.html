@@ -1,601 +1,512 @@
 <html>
-
-<head>
-    <title></title>
-
-    <!-- Import the alpine store -->
+  <head>
+    <title>Remote Link</title>
     <script type="module">
-        import { store } from "/components/settings/tunnel/tunnel-store.js";
+      import { store } from "/components/settings/tunnel/tunnel-store.js";
     </script>
-</head>
+  </head>
 
-<body>
-
-    <!-- This construct of x-data + x-if is used to ensure the component is only rendered when the store is available -->
+  <body>
     <div x-data>
-        <template x-if="$store.tunnelStore">
+      <template x-if="$store.tunnelStore">
+        <div
+          id="tunnel-settings-section"
+          class="remote-link-surface"
+          x-init="$store.tunnelStore.init()"
+          x-destroy="$store.tunnelStore.cleanup()"
+        >
+          <header class="remote-link-hero">
+            <div class="remote-link-hero-icon" aria-hidden="true">
+              <span class="material-symbols-outlined">share</span>
+            </div>
+            <div>
+              <div class="section-title">Remote Link</div>
+              <div class="section-description">
+                Create a temporary HTTPS link for this Agent Zero instance, then open it from another browser or scan it from your phone.
+              </div>
+            </div>
+          </header>
 
-            <!-- Keep in mind that <template> can have only one root element inside -->
-            <div id="tunnel-settings-section">
-                <div class="section-title">Flare Tunnel</div>
-                <div class="section-description">Create a secure public URL to access your Agent Zero instance anytime,
-                    anywhere.</div>
-                <!-- Tunnel content UI -->
-                <div class="tunnel-container">
-                    <div class="field">
-                        <div class="field-label">
-                            <div class="field-title">Tunnel provider</div>
-                            <div class="field-description">Select provider for public tunnel</div>
-                        </div>
-                        <div class="field-control">
-                            <select id="tunnel-provider" x-model="$store.tunnelStore.provider"
-                                :disabled="$store.tunnelStore.isLoading">
-                                <option value="cloudflared">Cloudflare</option>
-                                <option value="microsoft">Microsoft Dev Tunnels</option>
-                                <option value="serveo">Serveo</option>
-                            </select>
-                        </div>
-                    </div>
-                    <!-- Loading spinner for tunnel operations -->
-                    <div class="tunnel-loading-status" x-show="$store.tunnelStore.isLoading">
-                        <span class="icon material-symbols-outlined spin">progress_activity</span>
-                        <span x-text="$store.tunnelStore.loadingText || 'Processing tunnel request...'"></span>
-                    </div>
-                    <!-- Microsoft login code display -->
-                    <div class="microsoft-login-box" x-show="$store.tunnelStore.microsoftLoginCode" x-transition>
-                        <div class="microsoft-login-header">
-                            <span class="microsoft-login-icon material-symbols-outlined">key</span>
-                            <div class="microsoft-login-title">Microsoft Login Required</div>
-                        </div>
-                        <div class="microsoft-login-steps">
-                            <div class="microsoft-login-step">
-                                <span class="step-number">1</span>
-                                <span class="step-text">Open the authentication page:</span>
-                            </div>
-                            <a class="microsoft-login-link" :href="$store.tunnelStore.microsoftLoginUrl" target="_blank">
-                                <span class="icon material-symbols-outlined">open_in_new</span>
-                                <span x-text="$store.tunnelStore.microsoftLoginUrl"></span>
-                            </a>
-                            <div class="microsoft-login-step">
-                                <span class="step-number">2</span>
-                                <span class="step-text">Enter this code:</span>
-                            </div>
-                        </div>
-                        <div class="microsoft-login-code-container">
-                            <div class="microsoft-login-code" x-text="$store.tunnelStore.microsoftLoginCode"></div>
-                            <button class="btn btn-copy-code" @click="$store.tunnelStore.copyLoginCode()" :class="$store.tunnelStore.codeCopied ? 'copied' : ''">
-                                <span class="icon material-symbols-outlined" x-text="$store.tunnelStore.codeCopied ? 'check' : 'content_copy'"></span>
-                                <span x-text="$store.tunnelStore.codeCopied ? 'Copied!' : 'Copy Code'"></span>
-                            </button>
-                        </div>
-                        <div class="microsoft-login-footer">
-                            <span class="icon material-symbols-outlined spin-slow">sync</span>
-                            <span>Waiting for authentication to complete...</span>
-                        </div>
-                    </div>
+          <div class="remote-link-safety-note">
+            <span class="material-symbols-outlined" aria-hidden="true">lock</span>
+            <span>Use sign-in before sharing a remote link. The URL can reach your instance while the link is active.</span>
+          </div>
 
-                    <!-- Tunnel content when not loading -->
-                    <div x-show="!$store.tunnelStore.isLoading">
-                        <!-- Tunnel link display when generated -->
-                        <div class="tunnel-link-container" x-show="$store.tunnelStore.linkGenerated">
-                            <div class="tunnel-link-field">
-                                <input type="text" class="tunnel-link-input" :value="$store.tunnelStore.tunnelLink"
-                                    readonly>
-                                <div class="buttons-row">
-                                    <button class="copy-link-button" @click="$store.tunnelStore.copyToClipboard()"
-                                        title="Copy to clipboard">
-                                        <span class="icon material-symbols-outlined">content_copy</span> Copy
-                                    </button>
-                                    <button class="refresh-link-button" @click="$store.tunnelStore.refreshLink()"
-                                        title="Generate new URL">
-                                        <span class="icon material-symbols-outlined">refresh</span> Refresh
-                                    </button>
-                                </div>
-                            </div>
-                            <div class="tunnel-qr-container">
-                                <div class="tunnel-qr-code" id="qrcode-tunnel">
-                                    <!-- QR code will be generated here -->
-                                </div>
-                                <div class="tunnel-qr-label">Scan with mobile device</div>
-                            </div>
-                            <div class="tunnel-link-info">
-                                Share this URL to allow others to access your Agent Zero instance.
-                            </div>
-                            <div class="tunnel-link-persistence">
-                                This URL will persist until you stop the tunnel or restart the Docker container.
-                            </div>
-                            <div class="stop-tunnel-container">
-                                <button class="btn btn-danger" @click="$store.tunnelStore.stopTunnel()">
-                                    <span class="icon material-symbols-outlined">stop_circle</span> Stop Tunnel
-                                </button>
-                            </div>
-                        </div>
-                        <!-- Generate tunnel button when no link exists -->
-                        <div class="tunnel-actions" x-show="!$store.tunnelStore.linkGenerated">
-                            <button class="btn btn-ok" @click="$store.tunnelStore.generateLink()">
-                                <span class="icon material-symbols-outlined">play_circle</span> Create Tunnel
-                            </button>
-                        </div>
-                    </div>
+          <div class="field remote-link-provider-field">
+            <div class="field-label">
+              <div class="field-title">Link provider</div>
+              <div class="field-description">
+                Cloudflare is the quickest path for a shareable URL. Microsoft Dev Tunnels may ask you to sign in.
+              </div>
+            </div>
+            <div class="field-control">
+              <select
+                id="tunnel-provider"
+                x-model="$store.tunnelStore.provider"
+                :disabled="$store.tunnelStore.isLoading"
+              >
+                <option value="cloudflared">Cloudflare</option>
+                <option value="microsoft">Microsoft Dev Tunnels</option>
+                <option value="serveo">Serveo</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="remote-link-loading" x-show="$store.tunnelStore.isLoading" style="display: none;">
+            <span class="material-symbols-outlined spin" aria-hidden="true">progress_activity</span>
+            <span x-text="$store.tunnelStore.loadingText || 'Preparing remote link...'"></span>
+          </div>
+
+          <div class="microsoft-login-box" x-show="$store.tunnelStore.microsoftLoginCode" x-transition style="display: none;">
+            <div class="microsoft-login-header">
+              <span class="material-symbols-outlined" aria-hidden="true">key</span>
+              <div>
+                <div class="microsoft-login-title">Microsoft sign-in</div>
+                <div class="microsoft-login-copy">Approve the tunnel request, then Agent Zero will finish creating the link.</div>
+              </div>
+            </div>
+            <a class="microsoft-login-link" :href="$store.tunnelStore.microsoftLoginUrl" target="_blank" rel="noopener noreferrer">
+              <span class="material-symbols-outlined" aria-hidden="true">open_in_new</span>
+              <span x-text="$store.tunnelStore.microsoftLoginUrl"></span>
+            </a>
+            <div class="microsoft-login-code-row">
+              <div class="microsoft-login-code" x-text="$store.tunnelStore.microsoftLoginCode"></div>
+              <button
+                type="button"
+                class="btn btn-field btn-copy-code"
+                @click="$store.tunnelStore.copyLoginCode()"
+                :class="$store.tunnelStore.codeCopied ? 'copied' : ''"
+              >
+                <span class="material-symbols-outlined" aria-hidden="true" x-text="$store.tunnelStore.codeCopied ? 'check' : 'content_copy'"></span>
+                <span x-text="$store.tunnelStore.codeCopied ? 'Copied' : 'Copy code'"></span>
+              </button>
+            </div>
+          </div>
+
+          <div x-show="!$store.tunnelStore.isLoading">
+            <div class="remote-link-live" x-show="$store.tunnelStore.linkGenerated" style="display: none;">
+              <div class="remote-link-url-row">
+                <input
+                  type="text"
+                  class="remote-link-input"
+                  :value="$store.tunnelStore.tunnelLink"
+                  readonly
+                  aria-label="Remote link URL"
+                >
+                <button
+                  type="button"
+                  class="remote-link-action copy-link-button"
+                  @click="$store.tunnelStore.copyToClipboard()"
+                  :class="{
+                    'copy-success': $store.tunnelStore.copyState === 'success',
+                    'copy-error': $store.tunnelStore.copyState === 'error'
+                  }"
+                >
+                  <span class="material-symbols-outlined" aria-hidden="true" x-text="$store.tunnelStore.copyLinkIcon"></span>
+                  <span x-text="$store.tunnelStore.copyLinkLabel"></span>
+                </button>
+                <button
+                  type="button"
+                  class="remote-link-action refresh-link-button"
+                  @click="$store.tunnelStore.refreshLink()"
+                  :disabled="$store.tunnelStore.isLoading"
+                >
+                  <span class="material-symbols-outlined" aria-hidden="true">refresh</span>
+                  <span>New link</span>
+                </button>
+              </div>
+
+              <div class="remote-link-share-layout">
+                <div class="remote-link-qr-panel">
+                  <div class="tunnel-qr-code" id="qrcode-tunnel"></div>
+                  <div>
+                    <div class="remote-link-qr-title">Open on mobile</div>
+                    <div class="remote-link-qr-copy">Scan the code with your phone to connect without retyping the URL.</div>
+                  </div>
                 </div>
+                <div class="remote-link-status-panel">
+                  <span class="material-symbols-outlined" aria-hidden="true">verified</span>
+                  <div>
+                    <div class="remote-link-status-title">Link is active</div>
+                    <div class="remote-link-status-copy">
+                      It stays available until you stop it or the container restarts.
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="remote-link-footer-actions">
+                <button
+                  type="button"
+                  class="btn btn-cancel"
+                  @click="$store.tunnelStore.stopTunnel()"
+                  :disabled="$store.tunnelStore.isLoading"
+                >
+                  <span class="material-symbols-outlined" aria-hidden="true">stop_circle</span>
+                  <span>Stop link</span>
+                </button>
+              </div>
             </div>
 
-        </template>
+            <div class="remote-link-empty" x-show="!$store.tunnelStore.linkGenerated">
+              <span class="material-symbols-outlined" aria-hidden="true">link</span>
+              <strong>No remote link yet</strong>
+              <span>Create one when you want to reach Agent Zero from another device or share access temporarily.</span>
+              <button
+                type="button"
+                class="btn btn-ok remote-link-primary"
+                @click="$store.tunnelStore.generateLink()"
+                :disabled="$store.tunnelStore.isLoading"
+              >
+                <span class="material-symbols-outlined" aria-hidden="true">share</span>
+                <span>Create remote link</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </template>
     </div>
 
-    <!-- Optional style for the component -->
     <style>
-        /* Tunnel Modal Styles */
-        .tunnel-container {
-            padding: 1rem;
-            width: 100%;
+      .modal-inner.remote-link-modal {
+        width: min(92vw, 760px);
+        max-height: min(88vh, 820px);
+      }
+
+      .modal-inner.remote-link-modal .modal-scroll {
+        padding: 0;
+      }
+
+      .modal-inner.remote-link-modal .modal-bd {
+        padding: 22px 24px 26px;
+      }
+
+      .remote-link-surface {
+        width: 100%;
+        margin: 0 auto;
+      }
+
+      .remote-link-hero {
+        display: grid;
+        grid-template-columns: auto minmax(0, 1fr);
+        gap: 14px;
+        align-items: start;
+        margin-bottom: 16px;
+      }
+
+      .remote-link-hero-icon {
+        display: grid;
+        place-items: center;
+        width: 42px;
+        height: 42px;
+        border-radius: 8px;
+        background: color-mix(in srgb, var(--color-primary) 16%, transparent);
+        color: color-mix(in srgb, var(--color-primary) 82%, var(--color-text));
+      }
+
+      .remote-link-hero-icon .material-symbols-outlined {
+        font-size: 24px;
+      }
+
+      .remote-link-safety-note,
+      .remote-link-loading,
+      .remote-link-status-panel,
+      .remote-link-qr-panel {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        border: 1px solid color-mix(in srgb, var(--color-border) 68%, transparent);
+        border-radius: 8px;
+        background: color-mix(in srgb, var(--color-panel) 58%, transparent);
+      }
+
+      .remote-link-safety-note {
+        margin: 10px 0 14px;
+        padding: 10px 12px;
+        color: var(--color-text);
+        font-size: 0.86rem;
+        line-height: 1.35;
+      }
+
+      .remote-link-safety-note .material-symbols-outlined {
+        color: #f2bf4b;
+        font-size: 20px;
+      }
+
+      .remote-link-provider-field {
+        margin-bottom: 12px;
+      }
+
+      .remote-link-loading {
+        justify-content: center;
+        min-height: 46px;
+        margin: 16px 0;
+        padding: 10px 12px;
+        color: var(--color-text);
+        opacity: 0.86;
+      }
+
+      .remote-link-url-row {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto auto;
+        gap: 8px;
+        align-items: center;
+        margin: 16px 0 12px;
+      }
+
+      .remote-link-input {
+        min-height: 38px;
+        font-family: "Roboto Mono", monospace;
+        font-size: 0.82rem;
+      }
+
+      .remote-link-action,
+      .remote-link-primary,
+      .btn-copy-code,
+      .remote-link-footer-actions .btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        white-space: nowrap;
+      }
+
+      .remote-link-action {
+        min-height: 38px;
+        padding: 0 11px;
+        border: 1px solid color-mix(in srgb, var(--color-border) 76%, transparent);
+        border-radius: 7px;
+        background: color-mix(in srgb, var(--color-background) 72%, transparent);
+        color: var(--color-text);
+        cursor: pointer;
+        font: inherit;
+        font-size: 0.82rem;
+        font-weight: 700;
+      }
+
+      .remote-link-action:hover:not(:disabled) {
+        border-color: color-mix(in srgb, var(--color-primary) 34%, var(--color-border));
+        background: color-mix(in srgb, var(--color-background-hover) 74%, transparent);
+      }
+
+      .remote-link-action:disabled {
+        cursor: not-allowed;
+        opacity: 0.52;
+      }
+
+      .remote-link-share-layout {
+        display: grid;
+        grid-template-columns: minmax(0, 1.35fr) minmax(220px, 0.8fr);
+        gap: 10px;
+        margin-top: 10px;
+      }
+
+      .remote-link-qr-panel,
+      .remote-link-status-panel {
+        padding: 12px;
+        align-items: center;
+      }
+
+      .remote-link-status-panel {
+        align-items: flex-start;
+      }
+
+      .remote-link-status-panel > .material-symbols-outlined {
+        color: #63c98b;
+        font-size: 22px;
+      }
+
+      .tunnel-qr-code {
+        display: grid;
+        place-items: center;
+        width: 116px;
+        min-width: 116px;
+        height: 116px;
+        padding: 8px;
+        border-radius: 8px;
+        background: #fff;
+      }
+
+      .tunnel-qr-code canvas,
+      .tunnel-qr-code img {
+        max-width: 100%;
+        max-height: 100%;
+        border-radius: 4px;
+      }
+
+      .remote-link-qr-title,
+      .remote-link-status-title,
+      .microsoft-login-title {
+        color: color-mix(in srgb, var(--color-text) 88%, var(--color-primary));
+        font-weight: 800;
+      }
+
+      .remote-link-qr-copy,
+      .remote-link-status-copy,
+      .microsoft-login-copy {
+        margin-top: 4px;
+        color: var(--color-text);
+        font-size: 0.84rem;
+        line-height: 1.35;
+        opacity: 0.76;
+      }
+
+      .remote-link-footer-actions {
+        display: flex;
+        justify-content: flex-end;
+        margin-top: 14px;
+      }
+
+      .remote-link-empty {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        min-height: 190px;
+        margin-top: 14px;
+        padding: 22px;
+        border: 1px dashed color-mix(in srgb, var(--color-border) 78%, transparent);
+        border-radius: 8px;
+        text-align: center;
+        color: var(--color-text);
+      }
+
+      .remote-link-empty > .material-symbols-outlined {
+        color: var(--color-primary);
+        font-size: 30px;
+      }
+
+      .remote-link-empty strong {
+        font-size: 1rem;
+      }
+
+      .remote-link-empty > span:not(.material-symbols-outlined) {
+        max-width: 46ch;
+        opacity: 0.74;
+        line-height: 1.35;
+      }
+
+      .remote-link-primary {
+        margin-top: 6px;
+      }
+
+      .copy-success {
+        border-color: color-mix(in srgb, #63c98b 58%, var(--color-border)) !important;
+        color: #63c98b !important;
+        background: color-mix(in srgb, #63c98b 12%, transparent) !important;
+      }
+
+      .copy-error {
+        border-color: color-mix(in srgb, #ff6b7a 56%, var(--color-border)) !important;
+        color: #ff6b7a !important;
+        background: color-mix(in srgb, #ff6b7a 12%, transparent) !important;
+      }
+
+      .microsoft-login-box {
+        margin: 14px 0;
+        padding: 14px;
+        border: 1px solid color-mix(in srgb, #4da3ff 36%, var(--color-border));
+        border-radius: 8px;
+        background:
+          linear-gradient(120deg, color-mix(in srgb, #4da3ff 12%, transparent), transparent 62%),
+          color-mix(in srgb, var(--color-panel) 68%, transparent);
+      }
+
+      .microsoft-login-header {
+        display: flex;
+        align-items: flex-start;
+        gap: 10px;
+        margin-bottom: 12px;
+      }
+
+      .microsoft-login-header .material-symbols-outlined {
+        color: #4da3ff;
+        font-size: 22px;
+      }
+
+      .microsoft-login-link {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        min-width: 0;
+        margin-bottom: 12px;
+        padding: 9px 10px;
+        border: 1px solid color-mix(in srgb, #4da3ff 34%, var(--color-border));
+        border-radius: 7px;
+        color: color-mix(in srgb, #4da3ff 82%, var(--color-text));
+        background: color-mix(in srgb, #4da3ff 8%, transparent);
+        text-decoration: none;
+        word-break: break-all;
+      }
+
+      .microsoft-login-code-row {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 10px;
+      }
+
+      .microsoft-login-code {
+        min-height: 38px;
+        padding: 7px 12px;
+        border: 1px dashed color-mix(in srgb, #4da3ff 44%, var(--color-border));
+        border-radius: 7px;
+        font-family: "Roboto Mono", monospace;
+        font-size: 1.1rem;
+        font-weight: 800;
+        color: var(--color-text);
+        background: color-mix(in srgb, var(--color-background) 56%, transparent);
+        user-select: all;
+      }
+
+      .spin {
+        animation: remote-link-spin 0.8s linear infinite;
+      }
+
+      @keyframes remote-link-spin {
+        from { transform: rotate(0deg); }
+        to { transform: rotate(360deg); }
+      }
+
+      @media (max-width: 720px) {
+        .modal-inner.remote-link-modal .modal-bd {
+          padding: 16px;
         }
 
-        .tunnel-description {
-            margin-bottom: 1.5rem;
-            text-align: center;
+        .remote-link-url-row,
+        .remote-link-share-layout {
+          grid-template-columns: 1fr;
         }
 
-        .tunnel-actions {
-            display: flex;
-            justify-content: center;
-            margin-top: 2rem;
-            margin-bottom: 2rem;
+        .remote-link-action {
+          width: 100%;
         }
 
-        .tunnel-link-container {
-            margin-top: 1rem;
-            display: flex;
-            flex-direction: column;
-            gap: 1rem;
+        .remote-link-qr-panel {
+          align-items: center;
+        }
+      }
+
+      @media (max-width: 520px) {
+        .remote-link-hero {
+          grid-template-columns: 1fr;
         }
 
-        .tunnel-link-field {
-            display: flex;
-            align-items: center;
-            margin-bottom: 0.5rem;
-            background-color: var(--bg-color-secondary);
-            border: 1px solid var(--border-color);
-            border-radius: 4px;
+        .remote-link-hero-icon {
+          width: 38px;
+          height: 38px;
         }
 
-        .tunnel-link-input {
-            flex: 1;
-            padding: 0.75rem;
-            background-color: transparent;
-            border: none;
-            color: var(--text-color);
-            font-size: 0.9rem;
-            outline: none;
+        .remote-link-qr-panel {
+          flex-direction: column;
+          text-align: center;
         }
 
-        .copy-link-button {
-            padding: 0.5rem 0.75rem;
-            background: none;
-            border: none;
-            border-left: 1px solid var(--border-color);
-            color: var(--text-color);
-            cursor: pointer;
-            transition: background-color 0.2s;
+        .remote-link-footer-actions .btn {
+          width: 100%;
         }
-
-        .copy-link-button:hover {
-            background-color: var(--bg-color-tertiary);
-        }
-
-        .copy-link-button i,
-        .refresh-link-button i,
-        .btn i {
-            margin-right: 6px;
-        }
-
-        .tunnel-link-info {
-            margin-top: 1rem;
-            font-size: 1rem;
-            color: var(--text-color);
-            text-align: center;
-            line-height: 1.5;
-        }
-
-        .tunnel-loading-status {
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            margin-top: 2rem;
-            margin-bottom: 2rem;
-            min-height: 38px;
-            font-style: italic;
-            color: var(--text-color-secondary);
-        }
-
-        .tunnel-loading-status .icon {
-            font-size: 1.5rem;
-            margin-right: 10px;
-            color: var(--accent-color);
-        }
-
-        .refresh-link-button {
-            padding: 0.5rem 0.75rem;
-            background: none;
-            border: none;
-            border-left: 1px solid var(--border-color);
-            color: var(--text-color);
-            cursor: pointer;
-            transition: background-color 0.2s;
-        }
-
-        .refresh-link-button:hover {
-            background-color: var(--bg-color-tertiary);
-            color: var(--accent-color);
-        }
-
-        .tunnel-link-persistence {
-            margin-top: 0.75rem;
-            font-size: 0.95rem;
-            color: rgba(255, 255, 255, 0.7);
-            text-align: center;
-            font-style: italic;
-        }
-
-        .btn-danger {
-            background-color: #dc3545;
-            color: white;
-            border: none;
-        }
-
-        .btn-danger:hover {
-            background-color: #bd2130;
-        }
-
-        .stop-tunnel-container {
-            margin-top: 20px;
-            display: flex;
-            justify-content: center;
-        }
-
-        /* Section title icon styling */
-        .section-title i {
-            margin-right: 8px;
-        }
-
-        /* Copy button states */
-        .copy-success {
-            background-color: rgba(40, 167, 69, 0.15) !important;
-            color: #28a745 !important;
-            border-left: 1px solid rgba(40, 167, 69, 0.5) !important;
-            transition: all 0.3s ease-in-out;
-        }
-
-        .copy-error {
-            background-color: rgba(220, 53, 69, 0.15) !important;
-            color: #dc3545 !important;
-            border-left: 1px solid rgba(220, 53, 69, 0.5) !important;
-            transition: all 0.3s ease-in-out;
-        }
-
-        /* Animation for copy button */
-        @keyframes pulse {
-            0% {
-                transform: scale(1);
-            }
-
-            50% {
-                transform: scale(1.05);
-            }
-
-            100% {
-                transform: scale(1);
-            }
-        }
-
-        .copy-success,
-        .copy-error {
-            animation: pulse 0.5s;
-        }
-
-        /* Refresh button state */
-        .refreshing {
-            opacity: 0.7;
-            pointer-events: none;
-            background-color: rgba(108, 117, 125, 0.15) !important;
-            border-left: 1px solid rgba(108, 117, 125, 0.5) !important;
-        }
-
-        /* Create and Stop button states */
-        .creating,
-        .stopping {
-            opacity: 0.8;
-            pointer-events: none;
-            cursor: not-allowed;
-        }
-
-        .creating {
-            background-color: rgba(0, 123, 255, 0.7) !important;
-        }
-
-        .stopping {
-            background-color: rgba(220, 53, 69, 0.7) !important;
-        }
-
-        /* QR Code Styles */
-        .tunnel-qr-container {
-            display: flex;
-            align-items: center;
-            justify-content: flex-start;
-            gap: 1rem;
-            margin: 0.5rem 0;
-            padding: 1rem;
-            background-color: var(--bg-color-secondary);
-            border: 1px solid var(--border-color);
-            border-radius: 8px;
-        }
-
-        .tunnel-qr-code {
-            flex-shrink: 0;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            min-width: 128px;
-            min-height: 128px;
-            background-color: white;
-            border-radius: 8px;
-            padding: 8px;
-        }
-
-        .tunnel-qr-code canvas,
-        .tunnel-qr-code img {
-            border-radius: 4px;
-            max-width: 100%;
-            max-height: 100%;
-        }
-
-        .tunnel-qr-label {
-            font-size: 0.9rem;
-            color: var(--text-color-secondary);
-            text-align: center;
-            line-height: 1.4;
-            flex: 1;
-        }
-
-        .qr-error {
-            color: var(--error-color, #dc3545);
-            font-size: 0.8rem;
-            text-align: center;
-            padding: 1rem;
-            background-color: rgba(220, 53, 69, 0.1);
-            border-radius: 4px;
-            border: 1px solid rgba(220, 53, 69, 0.2);
-        }
-
-        /* Responsive design for QR code container */
-        @media (max-width: 640px) {
-            .tunnel-qr-container {
-                flex-direction: column;
-                text-align: center;
-                gap: 0.75rem;
-                padding: 0.75rem;
-            }
-
-            .tunnel-qr-code {
-                min-width: 100px;
-                min-height: 100px;
-                align-self: center;
-            }
-
-            .tunnel-qr-label {
-                text-align: center;
-            }
-        }
-
-        /* Light mode adjustments */
-        .light-mode .tunnel-qr-code {
-            background-color: #ffffff;
-            border: 1px solid #e0e0e0;
-        }
-
-        .light-mode .qr-error {
-            background-color: rgba(220, 53, 69, 0.05);
-            color: #dc3545;
-        }
-
-        /* Microsoft Login Box */
-        .microsoft-login-box {
-            margin: 1.5rem 0;
-            padding: 1.5rem;
-            background: linear-gradient(135deg, rgba(0, 120, 212, 0.12), rgba(0, 120, 212, 0.04));
-            border: 1px solid rgba(0, 120, 212, 0.35);
-            border-radius: 12px;
-            text-align: center;
-            box-shadow: 0 4px 20px rgba(0, 120, 212, 0.1);
-        }
-
-        .microsoft-login-header {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 0.5rem;
-            margin-bottom: 1.25rem;
-        }
-
-        .microsoft-login-icon {
-            font-size: 1.5rem;
-            color: #0078d4;
-            background: rgba(0, 120, 212, 0.15);
-            padding: 0.5rem;
-            border-radius: 50%;
-        }
-
-        .microsoft-login-title {
-            font-size: 1.1rem;
-            font-weight: 600;
-            color: #0078d4;
-        }
-
-        .microsoft-login-steps {
-            text-align: left;
-            margin-bottom: 1rem;
-        }
-
-        .microsoft-login-step {
-            display: flex;
-            align-items: center;
-            gap: 0.75rem;
-            margin: 0.75rem 0 0.5rem 0;
-            font-size: 0.9rem;
-            color: var(--text-color);
-        }
-
-        .step-number {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            width: 24px;
-            height: 24px;
-            background-color: #0078d4;
-            color: white;
-            border-radius: 50%;
-            font-size: 0.8rem;
-            font-weight: 600;
-            flex-shrink: 0;
-        }
-
-        .step-text {
-            color: var(--text-color-secondary);
-        }
-
-        .microsoft-login-link {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 0.5rem;
-            padding: 0.75rem 1rem;
-            margin: 0.5rem 0 0.75rem 2.25rem;
-            background-color: rgba(0, 120, 212, 0.1);
-            border: 1px solid rgba(0, 120, 212, 0.3);
-            border-radius: 8px;
-            color: #0078d4;
-            text-decoration: none;
-            font-size: 0.85rem;
-            transition: all 0.2s ease;
-            word-break: break-all;
-        }
-
-        .microsoft-login-link:hover {
-            background-color: rgba(0, 120, 212, 0.2);
-            border-color: rgba(0, 120, 212, 0.5);
-            transform: translateY(-1px);
-        }
-
-        .microsoft-login-link .icon {
-            font-size: 1.1rem;
-            flex-shrink: 0;
-        }
-
-        .microsoft-login-code-container {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            gap: 0.75rem;
-            margin: 1rem 0;
-            padding: 1rem;
-            background-color: var(--bg-color-secondary);
-            border-radius: 10px;
-            border: 1px solid var(--border-color);
-        }
-
-        .microsoft-login-code {
-            font-family: 'JetBrains Mono', 'Fira Code', 'Courier New', monospace;
-            font-size: 2rem;
-            font-weight: 700;
-            letter-spacing: 0.2em;
-            color: var(--text-color);
-            background: linear-gradient(135deg, rgba(0, 120, 212, 0.1), transparent);
-            padding: 0.75rem 1.5rem;
-            border-radius: 8px;
-            border: 2px dashed rgba(0, 120, 212, 0.4);
-            user-select: all;
-            cursor: text;
-        }
-
-        .btn-copy-code {
-            background-color: #0078d4;
-            color: white;
-            border: none;
-            padding: 0.6rem 1.25rem;
-            border-radius: 6px;
-            cursor: pointer;
-            font-size: 0.9rem;
-            font-weight: 500;
-            display: inline-flex;
-            align-items: center;
-            gap: 0.4rem;
-            transition: all 0.2s ease;
-        }
-
-        .btn-copy-code:hover {
-            background-color: #106ebe;
-            transform: translateY(-1px);
-            box-shadow: 0 2px 8px rgba(0, 120, 212, 0.3);
-        }
-
-        .btn-copy-code.copied {
-            background-color: #28a745;
-        }
-
-        .btn-copy-code.copied:hover {
-            background-color: #218838;
-        }
-
-        .microsoft-login-footer {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 0.5rem;
-            margin-top: 1rem;
-            padding-top: 1rem;
-            border-top: 1px solid rgba(0, 120, 212, 0.2);
-            font-size: 0.85rem;
-            color: var(--text-color-secondary);
-            font-style: italic;
-        }
-
-        .microsoft-login-footer .icon {
-            font-size: 1.1rem;
-            color: #0078d4;
-        }
-
-        @keyframes spin-slow {
-            from { transform: rotate(0deg); }
-            to { transform: rotate(360deg); }
-        }
-
-        .spin-slow {
-            animation: spin-slow 2s linear infinite;
-        }
-
-        /* Responsive adjustments for Microsoft login */
-        @media (max-width: 480px) {
-            .microsoft-login-box {
-                padding: 1rem;
-            }
-
-            .microsoft-login-code {
-                font-size: 1.5rem;
-                letter-spacing: 0.15em;
-                padding: 0.5rem 1rem;
-            }
-
-            .microsoft-login-link {
-                margin-left: 0;
-                font-size: 0.8rem;
-            }
-
-            .microsoft-login-step {
-                font-size: 0.85rem;
-            }
-        }
+      }
     </style>
-
-</body>
-
+  </body>
 </html>

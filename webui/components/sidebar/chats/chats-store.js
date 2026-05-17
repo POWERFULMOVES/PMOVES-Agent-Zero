@@ -12,6 +12,7 @@ import {
 import { store as notificationStore } from "/components/notifications/notification-store.js";
 import { store as tasksStore } from "/components/sidebar/tasks/tasks-store.js";
 import { store as syncStore } from "/components/sync/sync-store.js";
+import { store as chatInputStore } from "/components/chat/input/input-store.js";
 
 const model = {
   contexts: [],
@@ -30,6 +31,18 @@ const model = {
 
   init() {
     this.loggedIn = Boolean(window.runtimeInfo && window.runtimeInfo.loggedIn);
+
+    // URL parameter takes priority (e.g. ?ctxid=abc from "open in new window")
+    const urlParams = new URL(window.location.href).searchParams;
+    const urlCtxId = urlParams.get("ctxid");
+    if (urlCtxId) {
+      const cleanUrl = new URL(window.location.href);
+      cleanUrl.searchParams.delete("ctxid");
+      window.history.replaceState({}, "", cleanUrl);
+      this.selectChat(urlCtxId);
+      return;
+    }
+
     // Initialize from sessionStorage
     const lastSelectedChat = sessionStorage.getItem("lastSelectedChat");
     if (lastSelectedChat) {
@@ -86,8 +99,6 @@ const model = {
       return;
     }
 
-    console.log("Deleting chat with ID:", id);
-
     try {
       // Switch to another context if deleting current
       if (this.selected === id) {
@@ -99,11 +110,6 @@ const model = {
 
       // Update the UI - remove from contexts
       const updatedContexts = this.contexts.filter((ctx) => ctx.id !== id);
-      console.log(
-        "Updated contexts after deletion:",
-        JSON.stringify(updatedContexts.map((c) => ({ id: c.id, name: c.name })))
-      );
-
       // Force UI update by creating a new array
       this.contexts = [...updatedContexts];
 
@@ -162,7 +168,8 @@ const model = {
       });
 
       if (response.ok) {
-        this.selectChat(response.ctxid);
+        await this.selectChat(response.ctxid);
+        document.dispatchEvent(new CustomEvent("chat-created", { detail: { ctxid: response.ctxid } }));
         return;
       }
 

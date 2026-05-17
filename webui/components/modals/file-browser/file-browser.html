@@ -28,29 +28,142 @@
                 </button>
                 <div id="current-path"><span id="path-text" x-text="$store.fileBrowser.browser.currentPath"></span></div>
               </div>
-              <div class="new-item-buttons">
-                <button class="btn btn-ok btn-new-item" @click="$store.fileBrowser.openNewFile()">
-                  <span class="material-symbols-outlined">note_add</span>
-                  New File
-                </button>
-                <button class="btn btn-ok btn-new-item" @click="$store.fileBrowser.openNewFolderModal()">
-                  <span class="material-symbols-outlined">create_new_folder</span>
-                  New Folder
-                </button>
+              <div class="file-browser-toolbar">
+                <div class="file-search-shell">
+                  <span class="material-symbols-outlined file-search-icon" aria-hidden="true">search</span>
+                  <input
+                    type="search"
+                    class="file-search-input"
+                    x-model="$store.fileBrowser.searchQuery"
+                    @keydown.escape="$store.fileBrowser.clearSearch()"
+                    placeholder="Search files..."
+                    aria-label="Search files"
+                  />
+                  <button
+                    type="button"
+                    class="btn-icon-action file-search-clear"
+                    x-show="$store.fileBrowser.searchQuery"
+                    @click="$store.fileBrowser.clearSearch()"
+                    aria-label="Clear search"
+                    title="Clear search"
+                  >
+                    <span class="material-symbols-outlined">close</span>
+                  </button>
+                </div>
+
+                <div class="new-item-buttons">
+                  <button class="btn btn-ok btn-new-item" @click="$store.fileBrowser.openNewFile()">
+                    <span class="material-symbols-outlined">note_add</span>
+                    New File
+                  </button>
+                  <button class="btn btn-ok btn-new-item" @click="$store.fileBrowser.openNewFolderModal()">
+                    <span class="material-symbols-outlined">create_new_folder</span>
+                    New Folder
+                  </button>
+                </div>
+              </div>
+
+              <div class="data-status-bar data-status-bar-standalone file-status-bar">
+                <div class="status-info">
+                  <span class="status-item">
+                    <span class="material-symbols-outlined">folder</span>
+                    Total: <strong x-text="$store.fileBrowser.browser.entries.length"></strong>
+                  </span>
+                  <span class="status-separator">•</span>
+                  <span class="status-item">
+                    Filtered: <strong x-text="$store.fileBrowser.filteredEntries.length"></strong>
+                  </span>
+                  <template x-if="$store.fileBrowser.selectedCount > 0">
+                    <span class="status-separator">•</span>
+                  </template>
+                  <template x-if="$store.fileBrowser.selectedCount > 0">
+                    <span class="status-item">
+                      Selected: <strong x-text="$store.fileBrowser.selectedCount"></strong>
+                    </span>
+                  </template>
+                </div>
+              </div>
+
+              <div x-show="$store.fileBrowser.selectedCount > 0" class="mass-action-toolbar file-mass-toolbar">
+                <div class="selection-info" x-text="$store.fileBrowser.selectedCountLabel"></div>
+
+                <div class="mass-actions">
+                  <button
+                    type="button"
+                    class="btn btn-mass copy"
+                    @click="$store.fileBrowser.copySelectedPaths()"
+                    :disabled="$store.fileBrowser.isBulkBusy"
+                    title="Copy Selected Paths"
+                  >
+                    <span class="material-symbols-outlined">content_copy</span>
+                    Copy Paths
+                  </button>
+
+                  <button
+                    type="button"
+                    class="btn btn-mass export"
+                    @click="$store.fileBrowser.bulkDownloadFiles()"
+                    :disabled="$store.fileBrowser.isBulkBusy"
+                    title="Download Selected Items"
+                  >
+                    <span class="material-symbols-outlined">folder_zip</span>
+                    Download ZIP
+                  </button>
+
+                  <button
+                    type="button"
+                    class="btn btn-mass delete"
+                    @click="$confirmClick($event, () => $store.fileBrowser.bulkDeleteFiles())"
+                    :disabled="$store.fileBrowser.isBulkBusy"
+                    title="Delete Selected Items"
+                  >
+                    <span class="material-symbols-outlined">delete</span>
+                    Delete
+                  </button>
+
+                  <button
+                    type="button"
+                    class="btn btn-mass clear"
+                    @click="$store.fileBrowser.clearSelection()"
+                    :disabled="$store.fileBrowser.isBulkBusy"
+                    title="Clear Selection"
+                  >
+                    <span class="material-symbols-outlined">close</span>
+                    Clear
+                  </button>
+                </div>
               </div>
 
               <!-- Files list -->
               <div class="files-list">
                 <div class="file-header">
+                  <div class="file-cell-select">
+                    <input
+                      type="checkbox"
+                      :checked="$store.fileBrowser.allVisibleSelected"
+                      :indeterminate="$store.fileBrowser.someVisibleSelected && !$store.fileBrowser.allVisibleSelected"
+                      @change="$store.fileBrowser.toggleSelectAllVisible()"
+                      title="Select visible items"
+                      aria-label="Select visible items"
+                    />
+                  </div>
                   <div class="file-cell" @click="$store.fileBrowser.toggleSort('name')">Name <span x-show="$store.fileBrowser.browser.sortBy === 'name'" x-text="$store.fileBrowser.browser.sortDirection === 'asc' ? '↑' : '↓'"></span></div>
                   <div class="file-cell-size" @click="$store.fileBrowser.toggleSort('size')">Size <span x-show="$store.fileBrowser.browser.sortBy === 'size'" x-text="$store.fileBrowser.browser.sortDirection === 'asc' ? '↑' : '↓'"></span></div>
                   <div class="file-cell-date" @click="$store.fileBrowser.toggleSort('date')">Modified <span x-show="$store.fileBrowser.browser.sortBy === 'date'" x-text="$store.fileBrowser.browser.sortDirection === 'asc' ? '↑' : '↓'"></span></div>
+                  <div class="file-cell-actions"></div>
                 </div>
 
                 <!-- File list entries -->
-                <template x-if="$store.fileBrowser.browser.entries.length">
-                  <template x-for="file in $store.fileBrowser.sortFiles($store.fileBrowser.browser.entries)" :key="file.path">
-                    <div class="file-item" :data-is-dir="file.is_dir">
+                <template x-if="$store.fileBrowser.visibleEntries.length">
+                  <template x-for="file in $store.fileBrowser.visibleEntries" :key="file.path">
+                    <div class="file-item" :data-is-dir="file.is_dir" :class="{ 'selected': file.selected }">
+                      <label class="file-select-cell" @click.stop>
+                        <input
+                          type="checkbox"
+                          x-model="file.selected"
+                          :aria-label="`Select ${file.name}`"
+                        />
+                      </label>
                       <div class="file-name" @click="file.is_dir && $store.fileBrowser.navigateToFolder(file.path)">
                         <img :src="'/public/' + (file.type === 'unknown' ? 'file' : ($store.fileBrowser.isArchive(file.name) ? 'archive' : file.type)) + '.svg'" class="file-icon" :alt="file.type" />
                         <span x-text="file.name"></span>
@@ -96,6 +209,16 @@
                             <button
                               type="button"
                               class="dropdown-item"
+                              x-show="file.is_dir"
+                              @click="$store.fileBrowser.downloadFile(file)"
+                            >
+                              <span class="material-symbols-outlined">folder_zip</span>
+                              <span>Download ZIP</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              class="dropdown-item"
                               @click="$store.fileBrowser.openRenameModal(file)"
                             >
                               <span class="material-symbols-outlined">drive_file_rename_outline</span>
@@ -106,7 +229,7 @@
                         <button class="btn-icon-action" x-show="!file.is_dir" @click.stop="$store.fileBrowser.downloadFile(file)" title="Download file">
                           <span class="material-symbols-outlined">download</span>
                         </button>
-                        <button class="btn-icon-action" @click.stop="$confirmClick($event, () => $store.fileBrowser.deleteFile(file))" title="Delete item">
+                        <button class="btn-icon-action danger" @click.stop="$confirmClick($event, () => $store.fileBrowser.deleteFile(file))" title="Delete item">
                           <span class="material-symbols-outlined">delete</span>
                         </button>
                       </div>
@@ -117,6 +240,15 @@
                 <!-- Empty state -->
                 <template x-if="!$store.fileBrowser.browser.entries.length">
                   <div class="no-files">No files found</div>
+                </template>
+                <template x-if="$store.fileBrowser.browser.entries.length && !$store.fileBrowser.visibleEntries.length">
+                  <div class="no-files">
+                    <div>No matching files found</div>
+                    <button class="btn btn-cancel btn-clear-search" @click="$store.fileBrowser.clearSearch()">
+                      <span class="material-symbols-outlined">close</span>
+                      Clear
+                    </button>
+                  </div>
                 </template>
               </div>
             </div>
@@ -183,6 +315,7 @@
       display: flex;
       flex-direction: column;
       padding: var(--spacing-sm) var(--spacing-sm);
+      gap: var(--spacing-sm);
     }
 
     /* File Browser Styles */
@@ -198,12 +331,18 @@
       border-radius: 4px;
       overflow: hidden;
       display: grid;
-      grid-template-columns: 1.5fr 0.71fr 1.05fr 0.6fr;
+      grid-template-columns: 2.5rem minmax(0, 1.5fr) minmax(5.5rem, 0.7fr) minmax(9rem, 1fr) 7.5rem;
       background: var(--secondary-bg);
       padding: 8px 0;
       font-weight: bold;
       border-bottom: 1px solid var(--border-color);
       color: var(--color-primary);
+    }
+    .file-cell-select,
+    .file-cell-actions {
+    display: flex;
+    align-items: center;
+    justify-content: center;
     }
     .file-cell,
     .file-cell-size,
@@ -216,7 +355,7 @@
     /* File Item Styles */
     .file-item {
     display: grid;
-    grid-template-columns: 1.5fr 0.7fr 1fr 0.6fr;
+    grid-template-columns: 2.5rem minmax(0, 1.5fr) minmax(5.5rem, 0.7fr) minmax(9rem, 1fr) 7.5rem;
     align-items: center;
     padding: 8px 0;
     font-size: 0.875rem;
@@ -229,6 +368,25 @@
     }
     .file-item:hover {
     background-color: var(--color-secondary);
+    }
+    .file-item.selected {
+    background: color-mix(in srgb, var(--color-primary) 12%, transparent);
+    }
+
+    .file-select-cell {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    min-height: 1.75rem;
+    }
+
+    .file-cell-select input,
+    .file-select-cell input {
+    width: 1rem;
+    height: 1rem;
+    accent-color: var(--color-primary);
+    cursor: pointer;
     }
 
     /* File Icon and Name */
@@ -261,6 +419,12 @@
     text-align: center;
     color: var(--text-secondary);
     }
+    .no-files .btn-clear-search {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    margin-top: 0.75rem;
+    }
     /* Light Mode Adjustments */
     .light-mode .file-item:hover {
     background-color: var(--color-secondary-light);
@@ -274,19 +438,85 @@
     gap: 24px;
     background-color: var(--color-message-bg);
     padding: 0.5rem var(--spacing-sm);
-    margin: 0 0 var(--spacing-sm) 0;
+    margin: 0;
     border: 1px solid var(--color-border);
     border-radius: 8px;
+    }
+
+    .file-browser-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--spacing-sm);
+    }
+
+    .file-search-shell {
+    position: relative;
+    display: flex;
+    align-items: center;
+    min-width: 16rem;
+    flex: 1;
+    }
+
+    .file-search-icon {
+    position: absolute;
+    left: 0.65rem;
+    font-size: 1.1rem;
+    color: var(--color-primary);
+    opacity: 0.72;
+    pointer-events: none;
+    }
+
+    .file-search-input {
+    width: 100%;
+    height: 2.4rem;
+    border: 1px solid var(--color-border);
+    border-radius: 6px;
+    background: var(--color-input);
+    color: var(--color-text);
+    padding: 0 2.35rem 0 2.2rem;
+    font: inherit;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease;
+    }
+
+    .file-search-input:focus {
+    outline: none;
+    border-color: var(--color-primary);
+    background: var(--color-input-focus);
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-primary) 20%, transparent);
+    }
+
+    .file-search-clear {
+    position: absolute;
+    right: 0.35rem;
+    width: 1.65rem;
+    height: 1.65rem;
+    color: var(--color-text);
     }
 
     .new-item-buttons {
     display: flex;
     justify-content: flex-end;
     gap: 0.5em;
-    margin-bottom: 0.5em;
     }
     .new-item-buttons button {
     margin-left: 0.5em;
+    }
+
+    .file-status-bar {
+    border-radius: 8px 8px 0 0;
+    margin-bottom: calc(-1 * var(--spacing-sm));
+    }
+
+    .file-mass-toolbar {
+    border-left: 1px solid var(--color-border);
+    border-right: 1px solid var(--color-border);
+    border-bottom: 1px solid var(--color-border);
+    }
+
+    .file-mass-toolbar .btn-mass:disabled {
+    opacity: 0.55;
+    cursor: wait;
     }
     
     .nav-button {
@@ -352,6 +582,8 @@
     .file-actions {
     display: flex;
     gap: var(--spacing-xs);
+    justify-content: flex-end;
+    padding-right: 0.5rem;
     }
     .file-actions .dropdown-menu {
     top: auto !important;
@@ -378,11 +610,26 @@
     }
     /* Responsive Design */
     @media (max-width: 768px) {
+    .file-browser-toolbar {
+      align-items: stretch;
+      flex-direction: column;
+    }
+    .file-search-shell {
+      min-width: 0;
+      width: 100%;
+    }
+    .new-item-buttons {
+      width: 100%;
+    }
+    .new-item-buttons .btn-new-item {
+      flex: 1;
+      justify-content: center;
+    }
     .file-header {
-      grid-template-columns: 1fr 0.52fr 120px;
+      grid-template-columns: 2.25rem minmax(0, 1fr) minmax(5rem, 0.52fr) 7.5rem;
     }
     .file-item {
-        grid-template-columns: 1fr 0.5fr 120px;
+        grid-template-columns: 2.25rem minmax(0, 1fr) minmax(5rem, 0.5fr) 7.5rem;
     }
     .file-cell-date,
     .file-date {
@@ -392,7 +639,7 @@
     @media (max-width: 540px) {
     .file-header,
     .file-item {
-        grid-template-columns: 1fr 120px;
+        grid-template-columns: 2.25rem minmax(0, 1fr) 7.5rem;
     }
     .file-cell-size,
     .file-size,

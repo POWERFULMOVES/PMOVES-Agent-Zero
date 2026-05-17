@@ -2,34 +2,50 @@
 <head>
     <script type="module">
         import { store as speechStore } from "/components/chat/speech/speech-store.js";
-        import { store as attachmentsStore } from "/components/chat/attachments/attachmentsStore.js";
         import { store as fullScreenStore } from "/components/modals/full-screen-input/full-screen-store.js";
         import { store as messageQueueStore } from "/components/chat/message-queue/message-queue-store.js";
         import { store as chatInputStore } from "/components/chat/input/input-store.js";
     </script>
 </head>
 <body>
-    <div class="input-row">
-        <!-- Attachment icon with tooltip -->
-        <div class="attachment-wrapper">
-            <label for="file-input" class="attachment-icon" title="Add attachments to the message" data-bs-placement="top" data-bs-trigger="hover">
-                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M16.5 6v11.5c0 2.21-1.79 4-4 4s-4-1.79-4-4V5c0-1.38 1.12-2.5 2.5-2.5s2.5 1.12 2.5 2.5v10.5c0 .55-.45 1-1 1s-1-.45-1-1V6H10v9.5c0 1.38 1.12 2.5 2.5 2.5s2.5-1.12 2.5-2.5V5c0-2.21-1.79-4-4-4S7 2.79 7 5v12.5c0 3.04 2.46 5.5 5.5 5.5s5.5-2.46 5.5-5.5V6h-1.5z" />
-                </svg>
-            </label>
-            <input type="file" id="file-input" accept="*" multiple style="display: none" @change="$store.chatAttachments.handleFileUpload($event)">
+    <div x-data>
+        <x-extension id="chat-input-box-start"></x-extension>
+        <div class="input-row">
+        <!-- More actions (+): opens upward; content lives in bottom-actions.html -->
+        <div
+            class="attachment-wrapper chat-more-dropdown"
+            @click.outside="$store.chatInput.closeChatMoreMenu()"
+            @keydown.escape.window="$store.chatInput.closeChatMoreMenu()"
+        >
+            <button
+                type="button"
+                class="chat-more-trigger"
+                @click.stop="$store.chatInput.toggleChatMoreMenu()"
+                :aria-expanded="$store.chatInput.chatMoreMenuOpen.toString()"
+                aria-label="More actions"
+            >
+                <span class="material-symbols-outlined" aria-hidden="true">add</span>
+            </button>
+            <div
+                class="chat-more-panel"
+                x-show="$store.chatInput.chatMoreMenuOpen"
+                x-transition
+                style="display: none;"
+            >
+                <x-component path="chat/input/bottom-actions.html"></x-component>
+            </div>
         </div>
 
         <!-- Container for textarea and expand button -->
         <div id="chat-input-container" style="position: relative;">
             <textarea id="chat-input" :placeholder="$store.chatInput.inputPlaceholder" rows="1"
                       @keydown.enter="if (!$event.shiftKey && !$event.isComposing && $event.keyCode !== 229) { $event.preventDefault(); $store.chatInput.sendMessage(); }"
+                      @keydown.up="$store.chatInput.historyPrev($event)"
+                      @keydown.down="$store.chatInput.historyNext($event)"
                       @input="$store.chatInput.adjustTextareaHeight()"
                       x-model="$store.chatInput.message"></textarea>
             <button id="expand-button" @click="$store.fullScreenInputModal.openModal()" aria-label="Expand input">
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/>
-                </svg>
+                <span class="material-symbols-outlined" aria-hidden="true">open_in_full</span>
             </button>
         </div>
 
@@ -50,21 +66,63 @@
                 </svg>
             </button>
         </div>
-    </div>
+        </div>
 
-    <!-- Full Screen Input Modal -->
-    <x-component path="modals/full-screen-input/full-screen-input.html"></x-component>
+        <!-- Full Screen Input Modal -->
+        <x-component path="modals/full-screen-input/full-screen-input.html"></x-component>
+        <x-extension id="chat-input-box-end"></x-extension>
+    </div>
 
 
     <style>
     /* Layout rows */
     .input-row { display: flex; align-items: center; gap: var(--spacing-xs); width: 100%; white-space: nowrap; }
     
-    /* Attachments icon + tooltip */
     .attachment-wrapper { position: relative; flex-shrink: 0; }
-    .attachment-icon { cursor: pointer; color: var(--color-text); opacity: 0.7; transition: opacity 0.2s ease; display: flex; align-items: center; }
-    .attachment-icon:hover { opacity: 1; }
-    .attachment-icon:active { opacity: 0.5; }
+
+    /* Composer + menu: custom panel (edit here; not shared with file-browser dropdown) */
+    .chat-more-dropdown { z-index: 1; }
+    .chat-more-trigger {
+      cursor: pointer;
+      color: var(--color-text);
+      opacity: 0.75;
+      transition: opacity 0.2s ease;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 2.25rem;
+      height: 2.25rem;
+      padding: 0;
+      border: none;
+      border-radius: 50%;
+      background: transparent;
+    }
+    .chat-more-trigger:hover { opacity: 1; }
+    .chat-more-trigger:active { opacity: 0.5; }
+    .chat-more-trigger .material-symbols-outlined {
+      font-size: 1.5rem;
+      line-height: 1;
+    }
+    .chat-more-panel {
+      position: absolute;
+      left: 0;
+      bottom: 100%;
+      margin-bottom: 0.25rem;
+      min-width: 11rem;
+      max-width: min(18rem, 92vw);
+      max-height: min(70vh, 20rem);
+      overflow-x: hidden;
+      overflow-y: auto;
+      background-color: var(--color-panel);
+      border: 1px solid var(--color-border);
+      border-radius: 0.4rem;
+      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.22);
+      z-index: 1050;
+      padding: 0.2rem 0;
+    }
+    .light-mode .chat-more-panel {
+      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12);
+    }
 /* Text input */
     #chat-input-container {
     position: relative;
@@ -80,7 +138,7 @@
     font-optical-sizing: auto;
     -webkit-font-optical-sizing: auto;
     font-size: 0.9rem;
-    max-height: 7rem;
+    max-height: 60vh;
     min-height: 3.05rem;
     width: 100%;
     padding: 0.48rem 40px var(--spacing-sm) var(--spacing-sm);
@@ -100,26 +158,49 @@
     #chat-input::-webkit-scrollbar-thumb { background-color: rgba(155,155,155,0.5); border-radius: 6px; -webkit-transition: background-color 0.2s ease; transition: background-color 0.2s ease; }
     #chat-input::-webkit-scrollbar-thumb:hover { background-color: rgba(155,155,155,0.7); }
     #chat-input:focus { outline: 0.05rem solid rgba(155,155,155,0.5); font-size: 0.955rem; padding-top: 0.45rem; background-color: var(--color-input-focus); }
-    #chat-input::placeholder { color: var(--color-text-muted); opacity: 0.7; }
+    #chat-input::placeholder { color: var(--color-text-muted); opacity: 0.7; transition: color 0.3s ease; }
 
-    #expand-button { position: absolute; top: 12px; right: 10px; background: transparent; border: none; cursor: pointer; font-size: 1.2rem; color: var(--color-text); opacity: 0.4; transition: opacity 0.2s; }
+    /* Progress ghost text animation — gentle pulse on placeholder */
+    #chat-input.progress-active::placeholder {
+      animation: placeholder-pulse 2s ease-in-out infinite;
+    }
+    @keyframes placeholder-pulse {
+      0%, 100% { opacity: 0.45; }
+      50% { opacity: 0.85; }
+    }
+    #chat-input.progress-active {
+      border-color: color-mix(in srgb, var(--color-highlight) 20%, transparent);
+      outline-color: color-mix(in srgb, var(--color-highlight) 15%, transparent);
+    }
+
+    #expand-button { 
+    position: absolute;
+    top: 12px;
+    right: 6px;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    transform: scale(0.8);
+    font-size: 1.2rem;
+    color: var(--color-text);
+    opacity: 0.2;
+    transition: opacity 0.2s;
+    }
     #expand-button:hover { opacity: 0.7; }
     #expand-button:active { opacity: 1; }
-    #expand-button svg { width: 1.3rem; height: 1.3rem; }
+    #expand-button .material-symbols-outlined { display: block; font-size: 1.3rem; line-height: 1; }
 
     /* Chat buttons (Send/Mic) */
     #chat-buttons-wrapper { gap: var(--spacing-xs); padding-left: var(--spacing-xs); line-height: 0.5rem; display: -webkit-flex; display: flex; }
-    .chat-button { border: none; border-radius: 50%; color: var(--color-background); cursor: pointer; font-size: var(--font-size-normal); height: 2.525rem; width: 2.525rem; margin: 0 0.18rem 0 0 var(--spacing-xs); display: -webkit-flex; display: flex; align-items: center; justify-content: center; flex-shrink: 0; flex-grow: 0; min-width: 2.525rem; -webkit-transition: all var(--transition-speed), transform 0.1s ease-in-out; transition: all var(--transition-speed), transform 0.1s ease-in-out; }
+    .chat-button { border: none; border-radius: 50%; color: var(--color-background); cursor: pointer; font-size: var(--font-size-normal); height: 2.525rem; width: 2.525rem; margin: 0 0.18rem 0 0 var(--spacing-xs); display: -webkit-flex; display: flex; align-items: center; justify-content: center; flex-shrink: 0; flex-grow: 0; min-width: 2.525rem; -webkit-transition: background-color var(--transition-speed), box-shadow 0.12s ease-in-out, filter 0.12s ease-in-out; transition: background-color var(--transition-speed), box-shadow 0.12s ease-in-out, filter 0.12s ease-in-out; }
     #send-button { background-color: #4248f1; }
     #send-button.send-queue { background-color: #e67e22; }
-    #send-button:hover { -webkit-transform: scale(1.05); transform: scale(1.05); transform-origin: center; background-color: #353bc5; }
+    #send-button:hover { background-color: #353bc5; box-shadow: 0 0 0 1px rgba(255,255,255,0.08), 0 6px 14px rgba(0,0,0,0.2); }
     #send-button.send-queue:hover { background-color: #d35400; }
-    #send-button:active { -webkit-transform: scale(1); transform: scale(1); transform-origin: center; background-color: #2b309c; }
+    #send-button:active { background-color: #2b309c; filter: brightness(0.96); }
     .chat-button svg { width: 1.5rem; height: 1.5rem; }
     #send-button .material-symbols-outlined { font-size: 1.5rem; }
     
-    /* Microphone button */
-    .chat-button.mic-inactive svg { /* Add specific styles if needed */ }
     /* Responsive tweaks */
     @media (max-width: 640px) {
       #chat-input { min-height: 5.3rem; align-content: start; }

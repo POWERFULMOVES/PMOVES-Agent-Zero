@@ -137,6 +137,20 @@ html {
 body {
   overscroll-behavior: none;
   -webkit-overscroll-behavior: none;
+  overflow-x: hidden;
+}
+
+x-extension:not(:empty) {
+  display: contents;
+}
+
+x-extension:empty {
+  display: none;
+}
+
+x-extension > x-component,
+x-extension > x-component > div[x-data] {
+  display: contents;
 }
 
 p:last-child {
@@ -380,6 +394,8 @@ img {
   display: -webkit-flex;
   display: flex;
   height: 100%;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .panel {
@@ -395,11 +411,54 @@ img {
 #right-panel {
   display: -webkit-flex;
   display: flex;
-  width: 100%;
+  width: auto;
+  min-width: 0;
   flex-direction: column;
-  flex-grow: 1;
+  flex: 1 1 0;
   -webkit-transition: margin-left var(--transition-speed) ease-in-out;
   transition: margin-left var(--transition-speed) ease-in-out;
+}
+
+/* Chat area wrapper – contains chat-history + floating nav buttons */
+#chat-area-wrapper {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex-grow: 1;
+  min-height: 0;
+}
+
+/* Chat Navigation Buttons – vertical, floating bottom-right of chat area */
+#chat-nav-buttons {
+  position: absolute;
+  right: var(--spacing-md);
+  bottom: var(--spacing-md);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  z-index: 100;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  pointer-events: none;
+}
+#chat-area-wrapper:hover #chat-nav-buttons,
+#chat-nav-buttons:hover {
+  opacity: 0.85;
+  pointer-events: auto;
+}
+#chat-nav-buttons .btn-icon-action {
+  padding: var(--spacing-xs);
+  border: none !important;
+  border-radius: 50%;
+  background: var(--color-panel);
+  box-shadow: 0 1px 4px rgba(0,0,0,0.18);
+}
+@media (max-width: 768px) {
+  #chat-nav-buttons {
+    opacity: 0.85;
+    pointer-events: auto;
+  }
 }
 
 /* Scrollbar styles for right panel */
@@ -422,7 +481,8 @@ div#right-panel::-webkit-scrollbar-thumb:hover {
 
 #time-date-container {
   z-index: 1000;
-  position: fixed;
+  position: absolute;
+  top: 0;
   right: var(--spacing-md);
   display: flex;
   align-items: center;
@@ -491,7 +551,8 @@ h4 {
   justify-content: center;
   overflow: hidden;
   cursor: pointer;
-  transition: all 0.3s ease;
+  transition: border-color 0.3s ease, box-shadow 0.3s ease,
+    filter 0.3s ease;
   animation: fadeIn 0.3s ease;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
@@ -499,7 +560,7 @@ h4 {
 .preview-item:hover {
   border-color: var(--color-primary);
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
-  transform: translateY(-2px);
+  filter: brightness(1.02);
 }
 
 .preview-item.image-preview img {
@@ -566,21 +627,19 @@ h4 {
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all 0.2s ease;
+  transition: background-color 0.2s ease, box-shadow 0.2s ease,
+    opacity 0.2s ease;
   z-index: 2;
   opacity: 0;
-  transform: scale(0.8);
 }
 
 .device-pointer .preview-item:hover .remove-attachment,
 .device-pointer .attachment-item:hover .remove-attachment {
   opacity: 1;
-  transform: scale(1);
 }
 
 .device-touch .remove-attachment {
   opacity: 1 !important;
-  transform: scale(1.25) !important;
   /* font-size: 1.5em; */
   top: 0.5em;
   right: 0.5em;
@@ -588,15 +647,15 @@ h4 {
 
 .remove-attachment:hover {
   background-color: var(--color-accent-dark);
-  transform: scale(1.1) !important;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.18), 0 6px 14px rgba(0, 0, 0, 0.24);
 }
 
 .device-touch .remove-attachment:active {
-  transform: scale(1.1) !important;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.12) !important;
 }
 
 .remove-attachment:active {
-  transform: scale(0.9) !important;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.12) !important;
 }
 
 .image-error {
@@ -685,7 +744,8 @@ h4 {
   justify-content: center;
   overflow: hidden;
   cursor: pointer;
-  transition: all 0.3s ease;
+  transition: border-color 0.3s ease, box-shadow 0.3s ease,
+    filter 0.3s ease;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
   border-radius: var(--border-radius);
 }
@@ -693,7 +753,7 @@ h4 {
 .attachment-item:hover {
   border-color: var(--color-primary);
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
-  transform: translateY(-2px);
+  filter: brightness(1.02);
 }
 
 .light-mode .attachment-item:hover {
@@ -844,11 +904,11 @@ h4 {
 
 .remove-attachment:hover {
   background-color: var(--color-accent);
-  transform: scale(1.1);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.18), 0 6px 14px rgba(0, 0, 0, 0.24);
 }
 
 .remove-attachment:active {
-  transform: scale(0.9);
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.12);
 }
 
 /* Error handling */
@@ -1009,6 +1069,10 @@ input:checked + .slider:before {
 /* Media Queries */
 @media (max-width: 640px) {
   /* Responsive tiles for mobile */
+  #time-date {
+    display: none;
+  }
+
   .preview-section {
     grid-template-columns: repeat(auto-fill, minmax(90px, 1fr));
     gap: 8px;
@@ -1271,7 +1335,7 @@ a:active {
 .settings-modal-title {
   margin-top: 0;
   margin-bottom: 24px;
-  font-size: 1.8rem;
+  font-size: 0.95rem;
   text-align: center;
   border-bottom: 1px solid var(--color-border);
   padding-bottom: 12px;

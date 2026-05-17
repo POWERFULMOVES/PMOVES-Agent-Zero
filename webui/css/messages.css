@@ -440,6 +440,134 @@
   overflow: hidden;
 }
 
+.document-response-file-cards {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+  margin: var(--spacing-sm) 0 0;
+  width: min(100%, 34rem);
+}
+
+.document-file-card {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--spacing-sm);
+  width: min(100%, 34rem);
+  min-height: 3.25rem;
+  padding: var(--spacing-sm);
+  box-sizing: border-box;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.035);
+  color: var(--color-text);
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 0.15s ease, background-color 0.15s ease, transform 0.15s ease;
+}
+
+.document-file-card:hover,
+.document-file-card:focus-visible {
+  border-color: var(--color-primary);
+  background: rgba(255, 255, 255, 0.06);
+  outline: none;
+}
+
+.document-file-card:active {
+  transform: translateY(1px);
+}
+
+.document-file-card[aria-disabled="true"] {
+  cursor: default;
+  opacity: 0.72;
+}
+
+.document-file-card-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.075);
+  color: var(--color-primary);
+  font-size: 1.2rem;
+  flex-shrink: 0;
+}
+
+.document-file-card-meta {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.document-file-card-name {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--color-text);
+  font-size: var(--font-size-small);
+  font-weight: 600;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.document-file-card-path {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--color-text-muted);
+  font-family: var(--font-family-code);
+  font-size: var(--font-size-xs);
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.document-file-card-badge {
+  align-self: start;
+  padding: 0.15rem 0.35rem;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  color: var(--color-text-muted);
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0;
+  line-height: 1;
+}
+
+.step-action-buttons .document-file-action {
+  padding: 2px;
+  border: 0;
+  border-radius: 4px;
+  color: var(--color-message-text);
+  line-height: 1;
+}
+
+.step-action-buttons .document-file-action:hover,
+.step-action-buttons .document-file-action:focus-visible {
+  background: transparent;
+  color: var(--color-text);
+  outline: none;
+}
+
+.step-action-buttons .document-file-action .material-symbols-outlined {
+  font-size: 0.9rem;
+}
+
+.light-mode .document-file-card {
+  background: rgba(0, 0, 0, 0.025);
+}
+
+.light-mode .document-file-card:hover,
+.light-mode .document-file-card:focus-visible {
+  background: rgba(0, 0, 0, 0.045);
+}
+
+.light-mode .document-file-card-icon {
+  background: rgba(0, 0, 0, 0.055);
+}
+
 /* Math (KaTeX) */
 .katex {
   line-height: 1.2 !important;
@@ -513,6 +641,19 @@
     word-break: break-word;
     overflow-wrap: anywhere;
   }
+
+  .document-file-card {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .document-file-card-badge {
+    grid-column: 2;
+    justify-self: start;
+  }
+
+  .step-action-buttons .document-file-action {
+    padding-inline: 2px;
+  }
 }
 
 .light-mode .msg-kvps tr {
@@ -545,7 +686,7 @@
 }
 
 .message-agent-response .msg-content .message-markdown-image-wrap img:hover {
-  transform: translateY(-2px);
+  filter: brightness(1.02);
 }
 
 .msg-content h1 {
@@ -733,6 +874,19 @@
 /* No fade when content fits */
 .message.message-collapsible:not(.has-overflow) .message-body::after {
   opacity: 0;
+}
+
+/* ALL detail mode: force full response bodies and hide the expand control */
+#chat-history[data-detail-mode="expanded"] .message.message-collapsible .message-body {
+  max-height: none !important;
+}
+
+#chat-history[data-detail-mode="expanded"] .message.message-collapsible .message-body::after {
+  opacity: 0;
+}
+
+#chat-history[data-detail-mode="expanded"] .message.message-collapsible .expand-btn {
+  display: none !important;
 }
 
 /* Smooth Render */

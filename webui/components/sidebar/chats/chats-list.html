@@ -10,12 +10,14 @@
   <div x-data>
     <template x-if="$store.chats">
       <div class="chats-list-container" x-data>
+        <x-extension id="sidebar-chats-list-start"></x-extension>
         <div class="section-header-row">
           <h3 class="section-header">Chats</h3>
           <!-- New Chat Button -->
           <button id="newChat" class="btn-icon-action chat-list-action-btn" @click="$store.chats.newChat()" aria-label="New Chat" title="New Chat" data-bs-placement="top" data-bs-trigger="hover">
-            <span class="material-symbols-outlined">edit_square</span>
+            <span class="material-symbols-outlined">chat_add_on</span>
           </button>
+          <x-extension id="chats-header-controls"></x-extension>
         </div>
 
 
@@ -41,6 +43,7 @@
         <div class="empty-list-message" x-show="$store.chats.contexts.length === 0">
           <p><i>No chats to list.</i></p>
         </div>
+        <x-extension id="sidebar-chats-list-end"></x-extension>
       </div>
     </template>
   </div>
