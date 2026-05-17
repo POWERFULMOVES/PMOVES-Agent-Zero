@@ -22,7 +22,7 @@ jobs:
 
       - name: Python compile check
         run: |
-          find . -name '*.py' -path '*/python/*' | head -20 | xargs -I{} python -m py_compile {}
+          find . -name '*.py' -not -path '*/.git/*' -not -path '*/node_modules/*' -not -path '*/venv/*' | head -20 | xargs -I{} python -m py_compile {}
 
       - name: Validate integration manifest
         run: |
@@ -41,7 +41,7 @@ jobs:
         with:
           python-version: '3.11'
       - run: pip install ruff
-      - run: ruff check python/ --ignore=python/tests/
+      - run: ruff check . --ignore=tests/
 
   security-scan:
     runs-on: ubuntu-latest
