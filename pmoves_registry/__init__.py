@@ -22,7 +22,7 @@ import asyncio
 import os
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Optional
+from typing import Any
 
 
 class ServiceTier(str, Enum):
@@ -149,7 +149,7 @@ async def get_service_info(
         return ServiceInfo(
             slug=slug,
             name=f"{slug} (from env)",
-            description=f"Service URL from environment variable",
+            description="Service URL from environment variable",
             health_check_url=env_url,
             default_port=default_port,
             tier=ServiceTier.API,  # Default tier
@@ -160,7 +160,7 @@ async def get_service_info(
     return ServiceInfo(
         slug=slug,
         name=f"{slug} (fallback)",
-        description=f"Service resolved via Docker DNS fallback",
+        description="Service resolved via Docker DNS fallback",
         health_check_url=fallback_url,
         default_port=default_port,
         tier=ServiceTier.API,

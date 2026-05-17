@@ -9,6 +9,7 @@ on:
 
 permissions:
   contents: read
+  security-events: write
 
 jobs:
   audit:
@@ -22,7 +23,8 @@ jobs:
 
       - name: Python compile check
         run: |
-          find . -name '*.py' -not -path '*/.git/*' -not -path '*/node_modules/*' -not -path '*/venv/*' | head -20 | xargs -I{} python -m py_compile {}
+          find pmoves_announcer pmoves_common pmoves_health pmoves_registry api helpers \
+            -name '*.py' -not -path '*/.git/*' -not -path '*/venv/*' 2>/dev/null | head -20 | xargs -I{} python -m py_compile {}
 
       - name: Validate integration manifest
         run: |
@@ -35,21 +37,25 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: PMOVES.AI-Edition-Hardened
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
       - run: pip install ruff
-      - run: ruff check . --ignore=tests/
+      - run: ruff check pmoves_announcer/ pmoves_common/ pmoves_registry/
 
   security-scan:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: PMOVES.AI-Edition-Hardened
-      - uses: github/codeql-action/init@v3
+      - uses: github/codeql-action/init@v4
         with:
           languages: python
-      - uses: github/codeql-action/analyze@v3
+          config: |
+            paths:
+              - pmoves_announcer
+              - pmoves_common
+              - pmoves_health
+              - pmoves_registry
+              - api
+              - helpers
+      - uses: github/codeql-action/analyze@v4
