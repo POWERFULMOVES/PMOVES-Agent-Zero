@@ -1,16 +1,19 @@
 from __future__ import annotations
 
 import base64
+import errno
 import hashlib
 import json
 import os
 import secrets
 import subprocess
+import threading
 import time
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Iterable, Mapping
+from typing import Any, BinaryIO, Iterable, Iterator, Mapping
 from urllib.parse import parse_qs, urlencode, urljoin, urlparse
 
 import requests
@@ -18,18 +21,30 @@ import requests
 from helpers import files
 from plugins._oauth.helpers.config import codex_config
 
+try:
+    import fcntl
+except ImportError:
+    fcntl = None
+
+try:
+    import msvcrt
+except ImportError:
+    msvcrt = None
+
 
 AUTH_FILENAME = "auth.json"
 ACCESS_EXPIRY_MARGIN = timedelta(minutes=5)
 REFRESH_INTERVAL = timedelta(minutes=55)
 FALLBACK_CODEX_VERSION = "0.124.0"
-OAUTH_ERROR_KEYS = {"error", "error_description"}
+OAUTH_ERROR_KEYS = ("error_description", "error")
 DEVICE_CODE_TIMEOUT_SECONDS = 15 * 60
+WINDOWS_LOCK_RETRY_SECONDS = 0.05
 USAGE_ENDPOINT_PATHS = (
     "/backend-api/codex/usage",
     "/backend-api/wham/usage",
     "/api/codex/usage",
 )
+_AUTH_THREAD_LOCK = threading.RLock()
 
 
 @dataclass(frozen=True)
@@ -240,53 +255,63 @@ def poll_device_authorization(device_auth_id: str, user_code: str) -> dict[str, 
 
 
 def load_auth(*, ensure_fresh: bool = True) -> EffectiveAuth:
-    path, data = read_auth_file()
-    tokens = data.get("tokens") if isinstance(data, dict) else {}
-    tokens = tokens if isinstance(tokens, dict) else {}
+    path = resolve_auth_write_path()
+    with _auth_file_lock(path):
+        data = _read_auth_file_unlocked(path)
+        tokens = data.get("tokens") if isinstance(data, dict) else {}
+        tokens = tokens if isinstance(tokens, dict) else {}
 
-    access_token = _string(tokens.get("access_token"))
-    id_token = _string(tokens.get("id_token"))
-    refresh_token = _string(tokens.get("refresh_token"))
-    account_id = _string(tokens.get("account_id")) or derive_account_id(id_token)
-    last_refresh = _string(data.get("last_refresh")) if isinstance(data, dict) else ""
+        access_token = _string(tokens.get("access_token"))
+        id_token = _string(tokens.get("id_token"))
+        refresh_token = _string(tokens.get("refresh_token"))
+        account_id = _string(tokens.get("account_id")) or derive_account_id(id_token)
+        last_refresh = _string(data.get("last_refresh")) if isinstance(data, dict) else ""
 
-    if ensure_fresh and refresh_token and should_refresh(access_token, last_refresh):
-        refreshed = refresh_tokens(refresh_token)
-        access_token = refreshed.get("access_token") or access_token
-        id_token = refreshed.get("id_token") or id_token
-        refresh_token = refreshed.get("refresh_token") or refresh_token
-        account_id = derive_account_id(id_token) or account_id
-        last_refresh = utc_now_iso()
-        data["tokens"] = {
-            "id_token": id_token,
-            "access_token": access_token,
-            "refresh_token": refresh_token,
-            "account_id": account_id,
-        }
-        data["last_refresh"] = last_refresh
-        write_auth_file(path, data)
+        if ensure_fresh and refresh_token and should_refresh(access_token, last_refresh):
+            refreshed = refresh_tokens(refresh_token)
+            access_token = refreshed.get("access_token") or access_token
+            id_token = refreshed.get("id_token") or id_token
+            refresh_token = refreshed.get("refresh_token") or refresh_token
+            account_id = derive_account_id(id_token) or account_id
+            last_refresh = utc_now_iso()
+            data["tokens"] = {
+                "id_token": id_token,
+                "access_token": access_token,
+                "refresh_token": refresh_token,
+                "account_id": account_id,
+            }
+            data["last_refresh"] = last_refresh
+            _write_auth_file_unlocked(path, data)
 
-    if not access_token:
-        raise RuntimeError("Codex/ChatGPT account access token not found. Connect the account first.")
-    if not account_id:
-        raise RuntimeError("Codex/ChatGPT account id not found. Connect the account again.")
+        if not access_token:
+            raise RuntimeError("Codex/ChatGPT account access token not found. Connect the account first.")
+        if not account_id:
+            raise RuntimeError("Codex/ChatGPT account id not found. Connect the account again.")
 
-    return EffectiveAuth(
-        access_token=access_token,
-        account_id=account_id,
-        id_token=id_token,
-        refresh_token=refresh_token,
-        source_path=str(path),
-        last_refresh=last_refresh,
-    )
+        return EffectiveAuth(
+            access_token=access_token,
+            account_id=account_id,
+            id_token=id_token,
+            refresh_token=refresh_token,
+            source_path=str(path),
+            last_refresh=last_refresh,
+        )
 
 
 def status() -> dict[str, Any]:
-    candidates = resolve_auth_file_candidates()
-    existing = [str(path) for path in candidates if path.is_file()]
+    try:
+        path = resolve_auth_write_path()
+    except Exception as exc:
+        return {
+            "connected": False,
+            "auth_file_path": "",
+            "discovered_auth_files": [],
+            "message": str(exc),
+        }
+    existing = [str(path)] if path.is_file() else []
     result: dict[str, Any] = {
         "connected": False,
-        "auth_file_path": str(resolve_auth_write_path()),
+        "auth_file_path": str(path),
         "discovered_auth_files": existing,
     }
     try:
@@ -323,16 +348,23 @@ def disconnect_auth() -> dict[str, Any]:
     removed_paths: list[str] = []
     preserved_paths: list[str] = []
 
-    for path in resolve_auth_file_candidates():
+    path = resolve_auth_write_path()
+    with _auth_file_lock(path):
         if not path.is_file():
-            continue
-        try:
-            with path.open("r", encoding="utf-8") as handle:
-                data = json.load(handle)
-        except Exception:
-            continue
+            return {
+                "disconnected": False,
+                "cleared_auth_files": [],
+                "removed_auth_files": [],
+                "preserved_auth_files": [],
+            }
+        data = _read_auth_file_unlocked(path)
         if not isinstance(data, dict) or not _contains_chatgpt_auth(data):
-            continue
+            return {
+                "disconnected": False,
+                "cleared_auth_files": [],
+                "removed_auth_files": [],
+                "preserved_auth_files": [],
+            }
 
         cleaned = dict(data)
         cleaned.pop("tokens", None)
@@ -342,12 +374,11 @@ def disconnect_auth() -> dict[str, Any]:
 
         cleared_paths.append(str(path))
         if _has_meaningful_auth_data(cleaned):
-            write_auth_file(path, cleaned)
+            _write_auth_file_unlocked(path, cleaned)
             preserved_paths.append(str(path))
-            continue
-
-        path.unlink(missing_ok=True)
-        removed_paths.append(str(path))
+        else:
+            path.unlink(missing_ok=True)
+            removed_paths.append(str(path))
 
     return {
         "disconnected": bool(cleared_paths),
@@ -469,7 +500,10 @@ def refresh_tokens(refresh_token: str) -> dict[str, str]:
     cfg = codex_config()
     response = requests.post(
         cfg["token_url"],
-        headers={"Content-Type": "application/json"},
+        headers={
+            "Content-Type": "application/json",
+            "User-Agent": resolve_agent_zero_user_agent(),
+        },
         json={
             "client_id": cfg["client_id"],
             "grant_type": "refresh_token",
@@ -489,6 +523,16 @@ def refresh_tokens(refresh_token: str) -> dict[str, str]:
         "access_token": _string(payload.get("access_token")),
         "refresh_token": _string(payload.get("refresh_token")) or refresh_token,
     }
+
+
+def resolve_agent_zero_user_agent() -> str:
+    try:
+        from helpers import git
+
+        version = git.get_version()
+    except Exception:
+        version = "unknown"
+    return f"agent-zero/{version or 'unknown'}"
 
 
 def should_refresh(access_token: str, last_refresh: str) -> bool:
@@ -718,12 +762,14 @@ def chat_messages_to_response_body(body: dict[str, Any]) -> dict[str, Any]:
             continue
         role = str(message.get("role") or "user")
         content = message.get("content", "")
-        text = normalize_message_content(content)
         if role in {"system", "developer"}:
+            text = normalize_message_content(content)
             if text:
                 instructions.append(text)
             continue
-        response_input.append({"role": role, "content": text})
+        response_input.append(
+            {"role": role, "content": response_message_content(content)}
+        )
 
     response_body: dict[str, Any] = {
         "model": body.get("model") or "gpt-5.2",
@@ -756,6 +802,81 @@ def normalize_message_content(content: Any) -> str:
     if content is None:
         return ""
     return str(content)
+
+
+def response_message_content(content: Any) -> str | list[dict[str, Any]]:
+    if not isinstance(content, list):
+        return normalize_message_content(content)
+
+    converted: list[dict[str, Any]] = []
+    has_media = False
+    for item in content:
+        if isinstance(item, str):
+            if item:
+                converted.append({"type": "input_text", "text": item})
+            continue
+        if not isinstance(item, dict):
+            continue
+
+        item_type = str(item.get("type") or "").strip()
+        if item_type == "text":
+            text = item.get("text")
+            if isinstance(text, str) and text:
+                converted.append({"type": "input_text", "text": text})
+            continue
+        if item_type == "input_text":
+            text = item.get("text")
+            if isinstance(text, str) and text:
+                converted.append({"type": "input_text", "text": text})
+            continue
+        if item_type == "image_url":
+            image_url = item.get("image_url")
+            url = ""
+            detail = item.get("detail")
+            if isinstance(image_url, dict):
+                url = str(image_url.get("url") or "").strip()
+                detail = image_url.get("detail", detail)
+            elif isinstance(image_url, str):
+                url = image_url.strip()
+            if url:
+                converted.append(
+                    {
+                        "type": "input_image",
+                        "image_url": url,
+                        "detail": str(detail or "auto"),
+                    }
+                )
+                has_media = True
+            continue
+        if item_type == "input_image":
+            image_url = item.get("image_url")
+            file_id = item.get("file_id")
+            image: dict[str, Any] = {"type": "input_image"}
+            if isinstance(image_url, str) and image_url.strip():
+                image["image_url"] = image_url.strip()
+            if isinstance(file_id, str) and file_id.strip():
+                image["file_id"] = file_id.strip()
+            if "image_url" in image or "file_id" in image:
+                image["detail"] = str(item.get("detail") or "auto")
+                converted.append(image)
+                has_media = True
+            continue
+
+        text = item.get("text")
+        if isinstance(text, str) and text:
+            converted.append({"type": "input_text", "text": text})
+            continue
+        nested_content = item.get("content")
+        if isinstance(nested_content, str) and nested_content:
+            converted.append({"type": "input_text", "text": nested_content})
+
+    if has_media:
+        return converted
+    return "\n".join(
+        part["text"]
+        for part in converted
+        if part.get("type") == "input_text" and isinstance(part.get("text"), str)
+    )
 
 
 def response_text(response: dict[str, Any]) -> str:
@@ -863,57 +984,174 @@ def resolve_codex_version() -> str:
 
 
 def resolve_auth_file_candidates() -> list[Path]:
-    cfg = codex_config()
-    explicit = cfg["auth_file_path"]
-    if explicit:
-        return [Path(explicit).expanduser()]
-
-    candidates: list[Path] = []
-    for env_name in ("CHATGPT_LOCAL_HOME", "CODEX_HOME"):
-        env_home = os.getenv(env_name)
-        if env_home:
-            candidates.append(Path(env_home).expanduser() / AUTH_FILENAME)
-
-    home = Path.home()
-    candidates.extend(
-        [
-            home / ".codex" / AUTH_FILENAME,
-            home / ".chatgpt-local" / AUTH_FILENAME,
-            Path(files.get_abs_path("usr", "plugins", "_oauth", "codex", AUTH_FILENAME)),
-        ]
-    )
-    return _unique_paths(candidates)
+    return [resolve_auth_write_path()]
 
 
 def resolve_auth_write_path() -> Path:
-    for candidate in resolve_auth_file_candidates():
-        if candidate.is_file():
-            return candidate
-    return resolve_auth_file_candidates()[-1]
+    explicit = codex_config()["auth_file_path"]
+    path = (
+        Path(explicit).expanduser()
+        if explicit
+        else Path(files.get_abs_path("usr", "plugins", "_oauth", "codex", AUTH_FILENAME))
+    )
+    return _validate_private_auth_path(path)
 
 
 def read_auth_file() -> tuple[Path, dict[str, Any]]:
-    candidates = resolve_auth_file_candidates()
-    for candidate in candidates:
-        try:
-            with candidate.open("r", encoding="utf-8") as handle:
-                payload = json.load(handle)
-            if isinstance(payload, dict):
-                return candidate, payload
-        except FileNotFoundError:
-            continue
-        except Exception:
-            continue
-    return resolve_auth_write_path(), {}
+    path = resolve_auth_write_path()
+    with _auth_file_lock(path):
+        return path, _read_auth_file_unlocked(path)
 
 
 def write_auth_file(path: Path, data: dict[str, Any]) -> None:
+    with _auth_file_lock(path):
+        _write_auth_file_unlocked(path, data)
+
+
+@contextmanager
+def _auth_file_lock(path: Path) -> Iterator[None]:
+    lock_path = _auth_lock_path(path)
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    with _AUTH_THREAD_LOCK:
+        with lock_path.open("a+b") as handle:
+            _lock_file(handle)
+            try:
+                yield
+            finally:
+                _unlock_file(handle)
+
+
+def _lock_file(handle: BinaryIO) -> None:
+    if fcntl is not None:
+        fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+        return
+    if msvcrt is not None:
+        handle.seek(0, os.SEEK_END)
+        if handle.tell() == 0:
+            handle.write(b"\0")
+            handle.flush()
+        handle.seek(0)
+        while True:
+            try:
+                msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+                return
+            except OSError as exc:
+                if exc.errno not in {errno.EACCES, errno.EDEADLK}:
+                    raise
+                time.sleep(WINDOWS_LOCK_RETRY_SECONDS)
+                handle.seek(0)
+    raise RuntimeError("This platform does not support locking the Agent Zero OAuth auth file.")
+
+
+def _unlock_file(handle: BinaryIO) -> None:
+    if fcntl is not None:
+        fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+        return
+    if msvcrt is not None:
+        handle.seek(0)
+        msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+
+
+def _read_auth_file_unlocked(path: Path) -> dict[str, Any]:
+    try:
+        with path.open("r", encoding="utf-8") as handle:
+            payload = json.load(handle)
+        return payload if isinstance(payload, dict) else {}
+    except FileNotFoundError:
+        return {}
+    except Exception:
+        return {}
+
+
+def _write_auth_file_unlocked(path: Path, data: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+    temporary_path = path.with_name(f".{path.name}.{os.getpid()}.{secrets.token_hex(8)}.tmp")
+    try:
+        try:
+            descriptor = os.open(temporary_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        except OSError as exc:
+            if exc.errno not in {errno.EACCES, errno.EROFS}:
+                raise
+            _write_auth_file_in_place(path, data)
+            return
+        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+            handle.write(json.dumps(data, indent=2) + "\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        try:
+            os.replace(temporary_path, path)
+        except OSError as exc:
+            if exc.errno != errno.EBUSY:
+                raise
+            # Linux rejects replacement when a supported custom auth path is a file bind mount.
+            _write_auth_file_in_place(path, data)
+        try:
+            path.chmod(0o600)
+        except OSError:
+            pass
+    finally:
+        temporary_path.unlink(missing_ok=True)
+
+
+def _write_auth_file_in_place(path: Path, data: dict[str, Any]) -> None:
+    with path.open("w", encoding="utf-8") as handle:
+        handle.write(json.dumps(data, indent=2) + "\n")
+        handle.flush()
+        os.fsync(handle.fileno())
     try:
         path.chmod(0o600)
     except OSError:
         pass
+
+
+def _validate_private_auth_path(path: Path) -> Path:
+    resolved_path = path.expanduser().resolve(strict=False)
+    for candidate in _known_codex_auth_paths():
+        if _path_key(resolved_path) == _path_key(candidate) or _same_existing_file(
+            resolved_path, candidate
+        ):
+            raise _private_auth_path_error()
+    try:
+        if resolved_path.stat().st_nlink > 1:
+            raise _private_auth_path_error()
+    except FileNotFoundError:
+        pass
+    return resolved_path
+
+
+def _private_auth_path_error() -> RuntimeError:
+    return RuntimeError(
+        "Agent Zero OAuth credentials must use an Agent Zero-owned auth file. "
+        "Choose a private auth_file_path or leave it empty for the default private store."
+    )
+
+
+def _known_codex_auth_paths() -> list[Path]:
+    candidates = [
+        Path.home() / ".codex" / AUTH_FILENAME,
+        Path.home() / ".chatgpt-local" / AUTH_FILENAME,
+    ]
+    for env_name in ("CODEX_HOME", "CHATGPT_LOCAL_HOME"):
+        env_home = os.getenv(env_name)
+        if env_home:
+            candidates.append(Path(env_home).expanduser() / AUTH_FILENAME)
+    return _unique_paths(candidates)
+
+
+def _path_key(path: Path) -> str:
+    return os.path.normcase(str(path.expanduser().resolve(strict=False)))
+
+
+def _same_existing_file(path: Path, candidate: Path) -> bool:
+    try:
+        return path.samefile(candidate)
+    except OSError:
+        return False
+
+
+def _auth_lock_path(path: Path) -> Path:
+    digest = hashlib.sha256(_path_key(path).encode("utf-8")).hexdigest()
+    return Path(files.get_abs_path("usr", "plugins", "_oauth", "codex", "locks", f"{digest}.lock"))
 
 
 def parse_jwt_claims(token: str) -> dict[str, Any]:

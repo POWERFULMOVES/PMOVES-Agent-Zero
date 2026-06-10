@@ -94,6 +94,7 @@ runtime = _load_skills_helper_module()
 class DummyContext:
     def __init__(self):
         self.data = {}
+        self.agent = None
 
     def get_data(self, key, recursive=True):
         return self.data.get(key)
@@ -101,20 +102,52 @@ class DummyContext:
     def set_data(self, key, value, recursive=True):
         self.data[key] = value
 
+    def get_agent(self):
+        return self.agent
+
 
 class DummyAgent:
     def __init__(self):
         self.context = DummyContext()
+        self.context.agent = self
         self.data = {}
 
 
-def _scope_config(entries):
-    return {"active_skills": entries}
+def _scope_config(entries=None, *, hidden_entries=None, max_active_skills=None):
+    config = {}
+    if entries is not None:
+        config["active_skills"] = entries
+    if hidden_entries is not None:
+        config["hidden_skills"] = hidden_entries
+    if max_active_skills is not None:
+        config["max_active_skills"] = max_active_skills
+    return config
 
 
 def test_active_skills_cap_is_twenty():
     assert runtime.MAX_ACTIVE_SKILLS == 20
     assert runtime.get_max_active_skills() == 20
+
+
+def test_skills_config_can_raise_active_cap_above_default():
+    config = runtime.normalize_skills_config(
+        {
+            "max_active_skills": 25,
+            "active_skills": [{"name": f"Skill {index}"} for index in range(25)],
+        }
+    )
+
+    assert config["max_active_skills"] == 25
+    assert len(config["active_skills"]) == 25
+
+
+def test_hidden_skills_are_not_capped_like_active_skills():
+    agent = DummyAgent()
+    entries = [{"name": f"Hidden {index}"} for index in range(25)]
+    agent.context.set_data(runtime.CONTEXT_DATA_NAME_CHAT_DISABLED_SKILLS, entries)
+
+    assert len(runtime.get_chat_disabled_skills(agent.context)) == 25
+    assert len(runtime.get_hidden_skills(agent)) == 25
 
 
 def test_chat_activation_can_override_scope_defaults(monkeypatch):
@@ -253,7 +286,7 @@ def test_skill_runtime_does_not_alias_old_office_skill_references():
 
 def test_builtin_plugin_skill_delete_is_rejected_before_filesystem_delete():
     with pytest.raises(PermissionError, match="Built-in plugin skills cannot be deleted"):
-        runtime.delete_skill("/a0/plugins/_office/skills/document-artifacts")
+        runtime.delete_skill("/a0/plugins/_office/skills/office-artifacts")
 
 
 def test_invalid_skill_frontmatter_reports_yaml_errors():
@@ -282,6 +315,8 @@ def test_renamed_skills_use_standard_frontmatter_only():
         PROJECT_ROOT / "skills" / "scheduled-tasks" / "SKILL.md",
         PROJECT_ROOT / "plugins" / "_a0_connector" / "skills" / "host-code-execution" / "SKILL.md",
         PROJECT_ROOT / "plugins" / "_a0_connector" / "skills" / "host-computer-use" / "SKILL.md",
+        PROJECT_ROOT / "plugins" / "_a0_connector" / "skills" / "host-computer-use-macos" / "SKILL.md",
+        PROJECT_ROOT / "plugins" / "_a0_connector" / "skills" / "host-computer-use-windows" / "SKILL.md",
         PROJECT_ROOT / "plugins" / "_a0_connector" / "skills" / "host-file-editing" / "SKILL.md",
         PROJECT_ROOT / "plugins" / "_a0_connector" / "skills" / "setup-a0-cli" / "SKILL.md",
         PROJECT_ROOT / "plugins" / "_browser" / "skills" / "browser-automation" / "SKILL.md",
@@ -292,10 +327,40 @@ def test_renamed_skills_use_standard_frontmatter_only():
     for path in skill_paths:
         frontmatter, body, errors = runtime.split_frontmatter(path.read_text(encoding="utf-8"))
         assert errors == []
-        assert set(frontmatter) == {"name", "description"}
+        expected_keys = {"name", "description"}
+        if path.parent.name == "host-computer-use":
+            expected_keys.update({"tags", "triggers"})
+        assert set(frontmatter) == expected_keys
         assert frontmatter["name"] == path.parent.name
         assert frontmatter["description"]
         assert body
+
+
+def test_host_computer_use_ranks_before_linux_desktop_for_host_screen_queries(monkeypatch):
+    host_skill = runtime.skill_from_markdown(
+        PROJECT_ROOT / "plugins" / "_a0_connector" / "skills" / "host-computer-use" / "SKILL.md"
+    )
+    linux_skill = runtime.skill_from_markdown(
+        PROJECT_ROOT / "plugins" / "_desktop" / "skills" / "linux-desktop" / "SKILL.md"
+    )
+    assert host_skill is not None
+    assert linux_skill is not None
+    monkeypatch.setattr(runtime, "list_skills", lambda *args, **kwargs: [linux_skill, host_skill])
+
+    host_queries = (
+        "hide a window on my host computer screen with computer use",
+        "take screenshot of my local Ubuntu Wayland desktop",
+        "minimize a window on my screen",
+    )
+    for query in host_queries:
+        results = runtime.search_skills(query, limit=2)
+        assert results[0].name == "host-computer-use"
+
+    xpra_results = runtime.search_skills(
+        "operate Agent Zero built-in Xpra Desktop LibreOffice GUI",
+        limit=2,
+    )
+    assert xpra_results[0].name == "linux-desktop"
 
 
 def test_unload_agent_skill_removes_loaded_skill_by_name():
@@ -336,6 +401,7 @@ def test_clearing_chat_overrides_restores_scope_defaults(monkeypatch):
     ]
     assert runtime.get_chat_active_skills(agent.context) == []
     assert runtime.get_chat_disabled_skills(agent.context) == []
+    assert runtime.get_chat_visible_skills(agent.context) == []
 
 
 def test_activating_new_skill_fails_once_limit_is_full(monkeypatch):
@@ -352,3 +418,98 @@ def test_activating_new_skill_fails_once_limit_is_full(monkeypatch):
         runtime.activate_chat_skill(agent, {"name": "Overflow"})
 
     assert len(runtime.get_active_skills(agent)) == 20
+
+
+def test_chat_activation_respects_scope_configured_cap(monkeypatch):
+    monkeypatch.setattr(
+        runtime.plugin_helpers,
+        "get_plugin_config",
+        lambda *args, **kwargs: _scope_config(max_active_skills=25),
+    )
+    agent = DummyAgent()
+
+    for index in range(21):
+        runtime.activate_chat_skill(agent, {"name": f"Extra {index}"})
+
+    assert len(runtime.get_chat_active_skills(agent.context)) == 21
+    assert len(runtime.get_active_skills(agent)) == 21
+
+
+def test_activating_new_skill_uses_scope_configured_limit(monkeypatch):
+    monkeypatch.setattr(
+        runtime.plugin_helpers,
+        "get_plugin_config",
+        lambda *args, **kwargs: _scope_config(
+            [{"name": f"Pinned {index}"} for index in range(3)],
+            max_active_skills=3,
+        ),
+    )
+    agent = DummyAgent()
+
+    with pytest.raises(ValueError, match="at most 3"):
+        runtime.activate_chat_skill(agent, {"name": "Overflow"})
+
+    assert len(runtime.get_active_skills(agent)) == 3
+
+
+def test_hidden_skills_filter_agent_visible_skill_catalog(monkeypatch, tmp_path: Path):
+    skills_root = tmp_path / "skills"
+    for name in ("alpha-skill", "beta-skill"):
+        skill_dir = skills_root / name
+        skill_dir.mkdir(parents=True)
+        (skill_dir / "SKILL.md").write_text(
+            f"---\nname: {name}\ndescription: {name} description\n---\nBody\n",
+            encoding="utf-8",
+        )
+
+    monkeypatch.setattr(
+        runtime.subagents,
+        "get_paths",
+        lambda agent, *parts: [str(skills_root)],
+    )
+    monkeypatch.setattr(runtime.files, "exists", lambda path: Path(str(path)) == skills_root)
+    monkeypatch.setattr(
+        runtime.plugin_helpers,
+        "get_plugin_config",
+        lambda *args, **kwargs: {"hidden_skills": [{"name": "beta-skill"}]},
+    )
+
+    agent = DummyAgent()
+
+    assert [skill.name for skill in runtime.list_skills(agent)] == ["alpha-skill"]
+    assert [skill.name for skill in runtime.list_skills(agent, include_hidden=True)] == [
+        "alpha-skill",
+        "beta-skill",
+    ]
+    assert runtime.search_skills("beta", agent=agent) == []
+    assert [skill.name for skill in runtime.search_skills("beta", agent=agent, include_hidden=True)] == [
+        "beta-skill"
+    ]
+    assert runtime.find_skill("beta-skill", agent=agent) is None
+    assert runtime.find_skill("beta-skill", agent=agent, include_hidden=True).name == "beta-skill"
+
+    catalog = runtime.list_skill_catalog(agent=agent)
+    hidden_by_name = {item["name"]: item["hidden"] for item in catalog}
+    assert hidden_by_name == {
+        "alpha-skill": False,
+        "beta-skill": True,
+    }
+
+
+def test_chat_visible_override_restores_scope_hidden_skill(monkeypatch):
+    monkeypatch.setattr(
+        runtime.plugin_helpers,
+        "get_plugin_config",
+        lambda *args, **kwargs: {"hidden_skills": [{"name": "beta-skill"}]},
+    )
+    agent = DummyAgent()
+
+    assert runtime.get_hidden_skills(agent) == [{"name": "beta-skill"}]
+
+    runtime.show_chat_skill(agent, {"name": "beta-skill"})
+    assert runtime.get_hidden_skills(agent) == []
+    assert runtime.get_chat_visible_skills(agent.context) == [{"name": "beta-skill"}]
+
+    runtime.hide_chat_skill(agent, {"name": "beta-skill"})
+    assert runtime.get_hidden_skills(agent) == [{"name": "beta-skill"}]
+    assert runtime.get_chat_visible_skills(agent.context) == []

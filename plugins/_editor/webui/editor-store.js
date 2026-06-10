@@ -2,6 +2,7 @@ import { createStore } from "/js/AlpineStore.js";
 import { callJsonApi } from "/js/api.js";
 import { getNamespacedClient } from "/js/websocket.js";
 import { store as fileBrowserStore } from "/components/modals/file-browser/file-browser-store.js";
+import { placeSurfaceModalHeaderAction } from "/js/surfaces.js";
 import {
   buildMarkdownPages,
   isExternalHref,
@@ -224,7 +225,6 @@ const model = {
   _previewEnhanceTimer: null,
   _staticHighlightPromise: null,
   _pendingPreviewFragment: "",
-  _initialCreatePromise: null,
 
   async init() {
     if (this._initialized) return;
@@ -243,7 +243,6 @@ const model = {
     this._mode = options?.mode === "canvas" ? "canvas" : "modal";
     if (this._mode === "modal") {
       this.setupMarkdownModal(element);
-      await this.ensureInitialMarkdownFile();
     }
     this.scheduleSourceEditorInit();
   },
@@ -260,7 +259,6 @@ const model = {
       });
       return;
     }
-    await this.ensureInitialMarkdownFile();
   },
 
   beforeHostHidden() {
@@ -847,24 +845,20 @@ const model = {
     });
   },
 
-  async ensureInitialMarkdownFile() {
-    if (this.session || this.visibleTabs().length > 0 || this.loading) return null;
-    if (!this._root || this._initialCreatePromise) return this._initialCreatePromise;
-    this._initialCreatePromise = this.create("document", "md").finally(() => {
-      this._initialCreatePromise = null;
-    });
-    return await this._initialCreatePromise;
-  },
-
   async openFileBrowser() {
     let workdirPath = "/a0/usr/workdir";
     try {
-      const response = await callJsonApi("settings_get", null);
-      workdirPath = response?.settings?.workdir_path || workdirPath;
+      const home = await callEditor("home");
+      if (home?.path) {
+        workdirPath = home.path;
+      } else {
+        const response = await callJsonApi("settings_get", null);
+        workdirPath = response?.settings?.workdir_path || workdirPath;
+      }
     } catch {
       try {
-        const home = await callEditor("home");
-        workdirPath = home?.path || workdirPath;
+        const response = await callJsonApi("settings_get", null);
+        workdirPath = response?.settings?.workdir_path || workdirPath;
       } catch {
         // The file browser can still open with the static fallback.
       }
@@ -872,8 +866,12 @@ const model = {
     await fileBrowserStore.open(workdirPath);
   },
 
-  async openPath(path) {
-    await this.openSession({ path: String(path || "") });
+  async openPath(path, options = {}) {
+    return await this.openSession({
+      path: String(path || ""),
+      source: options?.source || "",
+      refresh: options?.refresh === true,
+    });
   },
 
   async openSession(payload = {}) {
@@ -1591,9 +1589,9 @@ const model = {
     if (!header || header.querySelector(".editor-header-actions")) return () => {};
 
     const root = document.createElement("div");
-    root.className = "editor-header-actions";
+    root.className = "editor-header-actions surface-modal-new-action";
     root.innerHTML = `
-      <button type="button" class="editor-header-new-button" aria-haspopup="menu" aria-expanded="false">
+      <button type="button" class="editor-header-new-button surface-modal-new-button" aria-haspopup="menu" aria-expanded="false">
         <span class="material-symbols-outlined" aria-hidden="true">add</span>
         <span>New</span>
         <span class="material-symbols-outlined editor-new-chevron" aria-hidden="true">expand_more</span>
@@ -1642,12 +1640,7 @@ const model = {
     document.addEventListener("click", onMarkdownClick);
     document.addEventListener("keydown", onMarkdownKeydown);
 
-    const firstHeaderAction = header.querySelector(".modal-close");
-    if (firstHeaderAction) {
-      firstHeaderAction.insertAdjacentElement("beforebegin", root);
-    } else {
-      header.appendChild(root);
-    }
+    placeSurfaceModalHeaderAction(header, root, "new");
 
     setOpen(false);
     return () => {
@@ -1666,10 +1659,9 @@ const model = {
     inner.dataset.editorModalReady = "1";
     inner.classList.add("editor-modal");
     const cleanup = [];
-    const closeButton = inner.querySelector(".modal-close");
     const focusButton = document.createElement("button");
     focusButton.type = "button";
-    focusButton.className = "modal-dock-button editor-modal-focus-button";
+    focusButton.className = "surface-button editor-modal-focus-button";
     focusButton.innerHTML = '<span class="material-symbols-outlined" aria-hidden="true">fullscreen</span>';
     const updateFocusButton = (active) => {
       const label = active ? "Restore size" : "Focus mode";
@@ -1684,11 +1676,7 @@ const model = {
       updateFocusButton(active);
     };
     focusButton.addEventListener("click", onFocusClick);
-    if (closeButton) {
-      closeButton.insertAdjacentElement("beforebegin", focusButton);
-    } else {
-      header.appendChild(focusButton);
-    }
+    placeSurfaceModalHeaderAction(header, focusButton, "window");
     cleanup.push(() => focusButton.removeEventListener("click", onFocusClick));
     cleanup.push(() => focusButton.remove());
 

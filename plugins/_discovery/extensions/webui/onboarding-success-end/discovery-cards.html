@@ -53,7 +53,7 @@
                 </div>
 
 
-                <template x-for="card in $store.discoveryStore.heroCards.filter(card => card.id !== 'discovery-codex-oauth')" :key="card.id">
+                <template x-for="card in $store.discoveryStore.heroCards.filter(card => !['discovery-codex-oauth', 'discovery-oauth-accounts'].includes(card.id))" :key="card.id">
                     <article class="discovery-hero"
                              role="button"
                              tabindex="0"

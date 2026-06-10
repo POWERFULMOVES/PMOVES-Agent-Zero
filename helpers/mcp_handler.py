@@ -21,6 +21,7 @@ from contextlib import AsyncExitStack
 from shutil import which
 from datetime import timedelta
 import json
+import uuid
 from helpers import errors
 from helpers import settings
 from helpers.log import LogItem
@@ -39,9 +40,19 @@ from anyio.streams.memory import (
 )
 
 from pydantic import BaseModel, Field, Discriminator, Tag, PrivateAttr
-from helpers import dirty_json
+from helpers import dirty_json, media_artifacts
 from helpers.print_style import PrintStyle
 from helpers.tool import Tool, Response
+
+
+MCP_MEDIA_TOKENS_ESTIMATE = 1500
+MAX_MCP_RESOURCE_TEXT_CHARS = 12_000
+
+
+def _mcp_get(item: Any, key: str, default: Any = None) -> Any:
+    if isinstance(item, dict):
+        return item.get(key, default)
+    return getattr(item, key, default)
 
 
 def normalize_name(name: str) -> str:
@@ -102,7 +113,6 @@ class MCPTool(Tool):
     """MCP Tool wrapper"""
 
     def get_log_object(self) -> LogItem:
-        import uuid
         return self.agent.context.log.log(
             type="mcp",
             heading=f"icon://extension {self.agent.agent_name}: Using MCP tool '{self.name}'",
@@ -111,17 +121,235 @@ class MCPTool(Tool):
             id=str(uuid.uuid4()),
         )
 
+    def _context_id(self) -> str:
+        return str(getattr(getattr(self.agent, "context", None), "id", "") or "").strip()
+
+    def _raw_tool_response(self, response: Response) -> str:
+        raw_tool_response = response.message.strip() if response.message else ""
+        if not raw_tool_response:
+            PrintStyle(font_color="red").print(
+                f"Warning: Tool '{self.name}' returned an empty message."
+            )
+            raw_tool_response = "[Tool returned no textual content]"
+        return raw_tool_response
+
+    def _coerce_media_token_estimate(self, value: object) -> int:
+        try:
+            estimate = int(value or 0)
+        except (TypeError, ValueError):
+            estimate = 0
+        return estimate if estimate > 0 else MCP_MEDIA_TOKENS_ESTIMATE
+
+    def _format_image_content(
+        self,
+        *,
+        encoded: str,
+        mime_type: str,
+        label: str,
+    ) -> tuple[str, dict[str, Any] | None]:
+        try:
+            image = media_artifacts.image_data_url_from_base64(
+                encoded,
+                mime_type=mime_type,
+            )
+        except media_artifacts.EmptyBase64Data:
+            return f"MCP returned an empty {label} attachment.", None
+        except media_artifacts.InvalidBase64Data:
+            return f"MCP returned a {label} attachment that could not be decoded.", None
+
+        return (
+            f"MCP returned {label} attachment ({image.mime}, {image.size} bytes).",
+            {
+                "type": "image_url",
+                "image_url": {"url": image.url},
+            },
+        )
+
+    def _materialize_binary_content(
+        self,
+        *,
+        encoded: str,
+        mime_type: str,
+        label: str,
+        index: int,
+        preferred_name: str = "",
+    ) -> str:
+        try:
+            safe_mime = media_artifacts.normalize_mime(mime_type)
+            artifact = media_artifacts.save_base64_artifact(
+                encoded,
+                mime_type=safe_mime,
+                directory_parts=self._artifact_directory_parts(),
+                preferred_name=preferred_name,
+                default_filename=self._default_artifact_filename(
+                    label=label,
+                    index=index,
+                    mime_type=safe_mime,
+                ),
+            )
+        except media_artifacts.EmptyBase64Data:
+            return f"MCP returned an empty {label} attachment."
+        except media_artifacts.InvalidBase64Data:
+            return f"MCP returned a {label} attachment that could not be decoded."
+
+        return f"Saved MCP {label} attachment ({artifact.mime}, {artifact.size} bytes) to {artifact.path}."
+
+    def _artifact_directory_parts(self) -> tuple[str, ...]:
+        context_id = normalize_name(self._context_id() or "shared") or "shared"
+        tool_name = normalize_name(self.name or "mcp_tool") or "mcp_tool"
+        return ("tmp", "mcp", context_id, tool_name)
+
+    def _default_artifact_filename(self, *, label: str, index: int, mime_type: str) -> str:
+        tool_name = normalize_name(self.name or "mcp_tool") or "mcp_tool"
+        ext = media_artifacts.guess_extension(mime_type, ".bin")
+        return f"{tool_name}_{label}_{index}{ext}"
+
+    def _format_resource_text(self, text: str, uri: str = "") -> str:
+        body = str(text or "").strip()
+        if not body:
+            return ""
+        if len(body) > MAX_MCP_RESOURCE_TEXT_CHARS:
+            body = body[:MAX_MCP_RESOURCE_TEXT_CHARS].rstrip() + "\n...[truncated]"
+        if uri:
+            return f"Resource {uri}:\n{body}"
+        return body
+
+    def _content_item_dump(self, item: Any) -> dict[str, Any]:
+        if isinstance(item, dict):
+            return dict(item)
+        model_dump = getattr(item, "model_dump", None)
+        if callable(model_dump):
+            dumped = model_dump(mode="python")
+            if isinstance(dumped, dict):
+                return dumped
+        item_vars = getattr(item, "__dict__", None)
+        if isinstance(item_vars, dict):
+            return dict(item_vars)
+        return {}
+
+    def _summarize_unknown_item(self, item: Any, item_type: str) -> str:
+        dumped = self._content_item_dump(item)
+        if dumped:
+            dumped.pop("data", None)
+            resource = dumped.get("resource")
+            if isinstance(resource, dict):
+                resource.pop("blob", None)
+            summary = json.dumps(dumped, ensure_ascii=False)
+            if len(summary) > 600:
+                summary = summary[:600] + "...[truncated]"
+            return f"MCP returned unsupported content item type '{item_type}': {summary}"
+        return f"MCP returned unsupported content item type '{item_type}'."
+
+    def _format_tool_result(
+        self, response: CallToolResult
+    ) -> tuple[str, dict[str, Any] | None]:
+        text_parts: list[str] = []
+        notes: list[str] = []
+        raw_images: list[dict[str, Any]] = []
+        content_items = list(getattr(response, "content", []) or [])
+
+        for index, item in enumerate(content_items, start=1):
+            item_type = str(_mcp_get(item, "type", "") or "").strip().lower()
+
+            if item_type == "text":
+                text = str(_mcp_get(item, "text", "") or "").strip()
+                if text:
+                    text_parts.append(text)
+                continue
+
+            if item_type == "image":
+                note, raw_content = self._format_image_content(
+                    encoded=str(_mcp_get(item, "data", "") or ""),
+                    mime_type=str(_mcp_get(item, "mimeType", "") or "image/png"),
+                    label="image",
+                )
+                notes.append(note)
+                if raw_content:
+                    raw_images.append(raw_content)
+                continue
+
+            if item_type == "audio":
+                note = self._materialize_binary_content(
+                    encoded=str(_mcp_get(item, "data", "") or ""),
+                    mime_type=str(_mcp_get(item, "mimeType", "") or "audio/wav"),
+                    label="audio",
+                    index=index,
+                )
+                notes.append(note)
+                continue
+
+            if item_type == "resource":
+                resource = _mcp_get(item, "resource", None)
+                uri = str(_mcp_get(resource, "uri", "") or "").strip()
+                text = _mcp_get(resource, "text", None)
+                if isinstance(text, str) and text.strip():
+                    text_parts.append(self._format_resource_text(text, uri))
+                    continue
+
+                blob = str(_mcp_get(resource, "blob", "") or "").strip()
+                if blob:
+                    mime_type = str(
+                        _mcp_get(resource, "mimeType", "") or "application/octet-stream"
+                    ).strip().lower()
+                    if mime_type.startswith("image/"):
+                        note, raw_content = self._format_image_content(
+                            encoded=blob,
+                            mime_type=mime_type,
+                            label="resource image",
+                        )
+                    else:
+                        note = self._materialize_binary_content(
+                            encoded=blob,
+                            mime_type=mime_type,
+                            label="resource",
+                            index=index,
+                            preferred_name=uri,
+                        )
+                        raw_content = None
+                    notes.append(note)
+                    if raw_content:
+                        raw_images.append(raw_content)
+                    continue
+
+                if uri:
+                    mime_type = str(_mcp_get(resource, "mimeType", "") or "").strip()
+                    details = f" ({mime_type})" if mime_type else ""
+                    notes.append(f"MCP returned a resource reference: {uri}{details}.")
+                    continue
+
+                notes.append("MCP returned a resource item without text or binary data.")
+                continue
+
+            if item_type:
+                notes.append(self._summarize_unknown_item(item, item_type))
+                continue
+
+            notes.append(self._summarize_unknown_item(item, "unknown"))
+
+        message = "\n\n".join(part for part in [*text_parts, *notes] if part.strip())
+        if not message and content_items:
+            message = "MCP tool returned content that could not be rendered as text."
+
+        additional = None
+        if raw_images:
+            additional = {
+                "raw_content": raw_images,
+                "preview": f"<MCP image attachments: {len(raw_images)}>",
+                "_tokens": MCP_MEDIA_TOKENS_ESTIMATE * len(raw_images),
+            }
+
+        return message, additional
+
     async def execute(self, **kwargs: Any):
         error = ""
+        additional: dict[str, Any] | None = None
         try:
             response: CallToolResult = await MCPConfig.get_instance().call_tool(
                 self.name, kwargs
             )
-            message = "\n\n".join(
-                [item.text for item in response.content if item.type == "text"]
-            )
+            message, additional = self._format_tool_result(response)
             if response.isError:
-                error = message
+                error = message or "MCP tool returned an error without textual content."
         except Exception as e:
             error = f"MCP Tool Exception: {str(e)}"
             message = f"ERROR: {str(e)}"
@@ -139,7 +367,7 @@ class MCPTool(Tool):
                 content=f"{self.name}: {error}",
             )
 
-        return Response(message=message, break_loop=False)
+        return Response(message=message, break_loop=False, additional=additional)
 
     async def before_execution(self, **kwargs: Any):
         (
@@ -159,48 +387,29 @@ class MCPTool(Tool):
             PrintStyle().print()
 
     async def after_execution(self, response: Response, **kwargs: Any):
-        raw_tool_response = response.message.strip() if response.message else ""
-        if not raw_tool_response:
-            PrintStyle(font_color="red").print(
-                f"Warning: Tool '{self.name}' returned an empty message."
+        final_text_for_agent = self._raw_tool_response(response)
+        additional = dict(response.additional or {})
+        raw_content = additional.pop("raw_content", None)
+        preview = str(additional.pop("preview", "") or "").strip()
+        token_estimate = self._coerce_media_token_estimate(additional.pop("_tokens", 0))
+
+        self.agent.hist_add_tool_result(
+            self.name,
+            final_text_for_agent,
+            id=self.log.id if self.log else "",
+            **additional,
+        )
+        if raw_content:
+            from helpers import history
+
+            self.agent.hist_add_message(
+                False,
+                content=history.RawMessage(
+                    raw_content=raw_content,
+                    preview=preview or final_text_for_agent,
+                ),
+                tokens=token_estimate,
             )
-            # Even if empty, we might still want to provide context for the agent
-            raw_tool_response = "[Tool returned no textual content]"
-
-        # Prepare user message context
-        # user_message_text = (
-        #     "No specific user message context available for this exact step."
-        # )
-        # if (
-        #     self.agent
-        #     and self.agent.last_user_message
-        #     and self.agent.last_user_message.content
-        # ):
-        #     content = self.agent.last_user_message.content
-        #     if isinstance(content, dict):
-        #         # Attempt to get a 'message' field, otherwise stringify the dict
-        #         user_message_text = str(content.get(
-        #             "message", json.dumps(content, indent=2)
-        #         ))
-        #     elif isinstance(content, str):
-        #         user_message_text = content
-        #     else:
-        #         # Fallback for any other types (e.g. list, if that were possible for content)
-        #         user_message_text = str(content)
-
-        # # Ensure user_message_text is a string before length check and slicing
-        # user_message_text = str(user_message_text)
-
-        # # Truncate user message context if it's too long to avoid overwhelming the prompt
-        # max_user_context_len = 500  # characters
-        # if len(user_message_text) > max_user_context_len:
-        #     user_message_text = (
-        #         user_message_text[:max_user_context_len] + "... (truncated)"
-        #     )
-
-        final_text_for_agent = raw_tool_response
-
-        self.agent.hist_add_tool_result(self.name, final_text_for_agent, id=self.log.id if self.log else "")
         (
             PrintStyle(
                 font_color="#1B4F72", background_color="white", padding=True, bold=True
@@ -210,8 +419,8 @@ class MCPTool(Tool):
         )
         # Print only the raw response to console for brevity, agent gets the full context.
         PrintStyle(font_color="#85C1E9").print(
-            raw_tool_response
-            if raw_tool_response
+            final_text_for_agent
+            if final_text_for_agent
             else "[No direct textual output from tool]"
         )
         if self.log:

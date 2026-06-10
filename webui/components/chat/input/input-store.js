@@ -5,6 +5,46 @@ import { store as messageQueueStore } from "/components/chat/message-queue/messa
 import { store as attachmentsStore } from "/components/chat/attachments/attachmentsStore.js";
 import { store as chatsStore } from "/components/sidebar/chats/chats-store.js";
 
+const ICON_MARKER_RE = /icon:\/\/([a-zA-Z0-9_]+)(\[(?:\\.|[^\]])*\])?/g;
+
+function escapeHTML(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+function unescapeIconTooltip(block) {
+  if (!block) return "";
+  return block
+    .slice(1, -1)
+    .replace(/\\\[/g, "[")
+    .replace(/\\\]/g, "]")
+    .replace(/\\\\/g, "\\");
+}
+
+function convertIconMarkersToHtml(value) {
+  const text = String(value ?? "");
+  let html = "";
+  let lastIndex = 0;
+
+  text.replace(ICON_MARKER_RE, (match, iconName, tooltipBlock, offset) => {
+    html += escapeHTML(text.slice(lastIndex, offset));
+    const tooltip = unescapeIconTooltip(tooltipBlock) || iconName;
+    html += (
+      `<span class="icon material-symbols-outlined chat-input-progress-icon" ` +
+      `title="${escapeHTML(tooltip)}">${escapeHTML(iconName)}</span>`
+    );
+    lastIndex = offset + match.length;
+    return match;
+  });
+
+  html += escapeHTML(text.slice(lastIndex));
+  return html;
+}
+
 const model = {
   paused: false,
   message: "",
@@ -38,11 +78,23 @@ const model = {
   get inputPlaceholder() {
     const state = this._getSendState();
     if (state === "all") return "Press Enter to send queued messages";
-    // Show progress as ghost text when agent is working and input is empty
-    if (this.progressText && !this.message) {
-      return "|>  " + this.progressText;
-    }
+    if (this.showProgressPlaceholder) return "";
     return "Type your message here...";
+  },
+
+  get showProgressPlaceholder() {
+    return (
+      this._getSendState() !== "all" &&
+      !!this.progressText &&
+      !this.message
+    );
+  },
+
+  get progressPlaceholderHtml() {
+    return (
+      `<span class="chat-input-progress-cue">|&gt;</span> ` +
+      convertIconMarkersToHtml(this.progressText)
+    );
   },
 
   // Computed: send button icon type

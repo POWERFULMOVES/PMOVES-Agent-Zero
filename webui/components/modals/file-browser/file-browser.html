@@ -19,14 +19,41 @@
         <!-- File Browser Content -->
         <div x-show="!$store.fileBrowser.isLoading" class="file-browser-content">
                 <!-- Path navigator -->
-              <div class="path-navigator">
-                <button class="text-button back-button" @click="$store.fileBrowser.navigateUp()" aria-label="Navigate Up">
-                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10.5 15">
-                    <path d="m.75,5.25L5.25.75m0,0l4.5,4.5M5.25.75v13.5" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" />
-                  </svg>
-                  Up
-                </button>
-                <div id="current-path"><span id="path-text" x-text="$store.fileBrowser.browser.currentPath"></span></div>
+              <div class="path-navigator-wrap">
+                <form class="path-navigator" @submit.prevent="$store.fileBrowser.submitPath()">
+                  <button type="button" class="text-button back-button" @click="$store.fileBrowser.navigateUp()" aria-label="Navigate Up">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10.5 15">
+                      <path d="m.75,5.25L5.25.75m0,0l4.5,4.5M5.25.75v13.5" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" />
+                    </svg>
+                    Up
+                  </button>
+                  <div class="path-input-shell" :class="{ 'has-error': $store.fileBrowser.pathError }">
+                    <span class="material-symbols-outlined path-input-icon" aria-hidden="true">folder_open</span>
+                    <input
+                      id="current-path"
+                      class="path-input"
+                      type="text"
+                      x-model="$store.fileBrowser.pathInput"
+                      @focus="$event.target.select()"
+                      @keydown.escape.stop.prevent="$store.fileBrowser.resetPathInput()"
+                      :aria-invalid="$store.fileBrowser.pathError ? 'true' : 'false'"
+                      aria-label="Directory path"
+                      spellcheck="false"
+                      autocomplete="off"
+                    />
+                    <button
+                      type="submit"
+                      class="btn-icon-action path-submit"
+                      :disabled="$store.fileBrowser.isPathSubmitting || $store.fileBrowser.isLoading"
+                      aria-label="Go to directory"
+                    >
+                      <span class="material-symbols-outlined">arrow_forward</span>
+                    </button>
+                  </div>
+                </form>
+                <template x-if="$store.fileBrowser.pathError">
+                  <div class="path-error" x-text="$store.fileBrowser.pathError"></div>
+                </template>
               </div>
               <div class="file-browser-toolbar">
                 <div class="file-search-shell">
@@ -199,7 +226,18 @@
                             <button
                               type="button"
                               class="dropdown-item"
-                              x-show="!file.is_dir && file.size <= 1048576"
+                              x-show="$store.fileBrowser.canOpenInSurface(file)"
+                              @click="$store.fileBrowser.openInSurface(file)"
+                              :title="$store.fileBrowser.surfaceActionTitle(file)"
+                            >
+                              <span class="material-symbols-outlined" x-text="$store.fileBrowser.surfaceActionIcon(file)"></span>
+                              <span x-text="$store.fileBrowser.surfaceActionLabel(file)"></span>
+                            </button>
+
+                            <button
+                              type="button"
+                              class="dropdown-item"
+                              x-show="!file.is_dir && file.size <= 1048576 && !$store.fileBrowser.canOpenInSurface(file)"
                               @click="$store.fileBrowser.openFileEditor(file)"
                             >
                               <span class="material-symbols-outlined">file_open</span>
@@ -431,16 +469,91 @@
     }
 
     /* Path Navigator Styles */
+    .path-navigator-wrap {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    }
+
     .path-navigator {
     overflow: hidden;
     display: flex;
     align-items: center;
-    gap: 24px;
+    gap: 0.75rem;
     background-color: var(--color-message-bg);
     padding: 0.5rem var(--spacing-sm);
     margin: 0;
     border: 1px solid var(--color-border);
     border-radius: 8px;
+    }
+
+    .path-navigator .back-button {
+    flex: 0 0 auto;
+    }
+
+    .path-input-shell {
+    position: relative;
+    display: flex;
+    align-items: center;
+    flex: 1;
+    min-width: 0;
+    }
+
+    .path-input-icon {
+    position: absolute;
+    left: 0.75rem;
+    font-size: 1.15rem;
+    color: var(--color-primary);
+    opacity: 0.8;
+    pointer-events: none;
+    }
+
+    .path-input {
+    width: 100%;
+    height: 2.25rem;
+    min-width: 0;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    background: color-mix(in srgb, var(--color-input) 78%, transparent);
+    color: var(--color-text);
+    padding: 0 2.5rem 0 2.35rem;
+    font: inherit;
+    font-family: 'Roboto Mono', monospace;
+    -webkit-font-optical-sizing: auto;
+    font-optical-sizing: auto;
+    line-height: 1;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease;
+    }
+
+    .path-input:focus {
+    outline: none;
+    border-color: var(--color-primary);
+    background: var(--color-input-focus);
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-primary) 20%, transparent);
+    }
+
+    .path-input-shell.has-error .path-input {
+    border-color: var(--color-error);
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-error) 18%, transparent);
+    }
+
+    .path-submit {
+    position: absolute;
+    right: 0.35rem;
+    width: 1.75rem;
+    height: 1.75rem;
+    color: var(--color-text);
+    }
+
+    .path-submit:disabled {
+    opacity: 0.5;
+    cursor: wait;
+    }
+
+    .path-error {
+    color: var(--color-error);
+    font-size: 0.8rem;
+    padding: 0 0.25rem;
     }
 
     .file-browser-toolbar {
@@ -538,16 +651,6 @@
     .nav-button.back-button:hover {
     background-color: var(--color-secondary-dark);
     }
-    #current-path {
-    opacity: 0.9;
-    }
-    #path-text {
-    font-family: 'Roboto Mono', monospace;
-    -webkit-font-optical-sizing: auto;
-    font-optical-sizing: auto;
-    opacity: 0.9;
-    }
-
     /* Folder Specific Styles */
     .file-item[data-is-dir="true"] {
     cursor: pointer;
@@ -610,6 +713,14 @@
     }
     /* Responsive Design */
     @media (max-width: 768px) {
+    .path-navigator {
+      align-items: stretch;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+    .path-navigator .back-button {
+      align-self: flex-start;
+    }
     .file-browser-toolbar {
       align-items: stretch;
       flex-direction: column;

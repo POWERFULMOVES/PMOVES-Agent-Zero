@@ -1,5 +1,5 @@
 import os
-from typing import Literal, TypedDict, TYPE_CHECKING, cast
+from typing import Literal, NotRequired, TypedDict, TYPE_CHECKING, cast
 
 from helpers import files, dirty_json, persist_chat, file_tree
 from helpers.print_style import PrintStyle
@@ -13,6 +13,7 @@ PROJECT_META_DIR = ".a0proj"
 PROJECT_INSTRUCTIONS_DIR = "instructions"
 PROJECT_KNOWLEDGE_DIR = "knowledge"
 PROJECT_HEADER_FILE = "project.json"
+PROJECT_AGENTS_MD_FILES = ("AGENTS.md", "Agents.md", "agents.md")
 
 CONTEXT_DATA_KEY_PROJECT = "project"
 
@@ -32,6 +33,7 @@ class BasicProjectData(TypedDict):
     title: str
     description: str
     instructions: str
+    include_agents_md: NotRequired[bool]
     color: str
     git_url: str
     file_structure: FileStructureInjectionSettings
@@ -159,6 +161,9 @@ def _normalizeBasicData(data: BasicProjectData) -> BasicProjectData:
         "title": data.get("title", ""),
         "description": data.get("description", ""),
         "instructions": data.get("instructions", ""),
+        "include_agents_md": _normalize_include_agents_md(
+            data.get("include_agents_md", True)
+        ),
         "color": data.get("color", ""),
         "git_url": data.get("git_url", ""),
         "file_structure": data.get(
@@ -174,6 +179,9 @@ def _normalizeEditData(data: EditProjectData) -> EditProjectData:
         "title": data.get("title", ""),
         "description": data.get("description", ""),
         "instructions": data.get("instructions", ""),
+        "include_agents_md": _normalize_include_agents_md(
+            data.get("include_agents_md", True)
+        ),
         "variables": data.get("variables", ""),
         "color": data.get("color", ""),
         "git_url": data.get("git_url", ""),
@@ -270,7 +278,7 @@ def load_edit_project_data(name: str) -> EditProjectData:
 
 def save_project_header(name: str, data: BasicProjectData):
     # save project header file
-    header = dirty_json.stringify(data)
+    header = dirty_json.stringify(_project_header_for_save(data))
     abs_path = files.get_abs_path(
         PROJECTS_PARENT_DIR, name, PROJECT_META_DIR, PROJECT_HEADER_FILE
     )
@@ -423,12 +431,16 @@ def deactivate_project_in_chats(name: str):
 def build_system_prompt_vars(name: str):
     project_data = load_basic_project_data(name)
     main_instructions = project_data.get("instructions", "") or ""
-    additional_instructions = get_additional_instructions_files(name)
-    complete_instructions = (
-        main_instructions
-        + "\n\n".join(
-            additional_instructions[k] for k in sorted(additional_instructions)
-        )
+    instruction_files = get_project_instruction_files(
+        name,
+        include_agents_md=project_data.get("include_agents_md", True),
+    )
+    instruction_parts = [
+        main_instructions,
+        _format_project_instruction_files(instruction_files),
+    ]
+    complete_instructions = "\n\n".join(
+        part.strip() for part in instruction_parts if part.strip()
     ).strip()
     return {
         "project_name": project_data.get("title", ""),
@@ -444,6 +456,71 @@ def get_additional_instructions_files(name: str):
         get_project_folder(name), PROJECT_META_DIR, PROJECT_INSTRUCTIONS_DIR
     )
     return files.read_text_files_in_dir(instructions_folder)
+
+
+def get_project_instruction_files(
+    name: str,
+    include_agents_md: bool = True,
+) -> list[tuple[str, str]]:
+    project_folder = get_project_folder(name)
+    result: list[tuple[str, str]] = []
+
+    if include_agents_md:
+        agents_md = get_project_agents_md_instruction_file(name)
+        if agents_md:
+            result.append(agents_md)
+
+    additional_instructions = get_additional_instructions_files(name)
+    for filename in sorted(additional_instructions):
+        path = files.get_abs_path(
+            project_folder,
+            PROJECT_META_DIR,
+            PROJECT_INSTRUCTIONS_DIR,
+            filename,
+        )
+        result.append(
+            (files.normalize_a0_path(path), additional_instructions[filename])
+        )
+
+    return result
+
+
+def get_project_agents_md_instruction_file(name: str) -> tuple[str, str] | None:
+    project_folder = get_project_folder(name)
+    for filename in PROJECT_AGENTS_MD_FILES:
+        matches = files.read_text_files_in_dir(project_folder, pattern=filename)
+        if filename in matches:
+            path = files.get_abs_path(project_folder, filename)
+            return (files.normalize_a0_path(path), matches[filename])
+    return None
+
+
+def _format_project_instruction_files(instruction_files: list[tuple[str, str]]) -> str:
+    if not instruction_files:
+        return ""
+
+    parts = ["## project instruction files"]
+    for path, content in instruction_files:
+        parts.append(f"### path: {path}\n\n{content}")
+    return "\n\n".join(parts)
+
+
+def _normalize_include_agents_md(value: object) -> bool:
+    if value is None:
+        return True
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() not in {"0", "false", "no", "off"}
+    return bool(value)
+
+
+def _project_header_for_save(data: BasicProjectData) -> dict:
+    header = dict(data)
+    header["include_agents_md"] = _normalize_include_agents_md(
+        header.get("include_agents_md", True)
+    )
+    return header
 
 
 def get_context_project_name(context: "AgentContext") -> str | None:

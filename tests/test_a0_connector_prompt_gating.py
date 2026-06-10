@@ -95,31 +95,61 @@ def _apply_gate(context_id: str) -> str:
     return data["result"]
 
 
-def _subscribe(
-    context_id: str,
-    *,
-    remote_files: dict | None = None,
-    remote_exec: dict | None = None,
-    computer_use: dict | None = None,
-) -> str:
-    sid = _sid()
-    ws_runtime.register_sid(sid)
-    ws_runtime.subscribe_sid_to_context(sid, context_id)
-    if remote_files is not None:
-        ws_runtime.store_sid_remote_file_metadata(sid, remote_files)
-    if remote_exec is not None:
-        ws_runtime.store_sid_remote_exec_metadata(sid, remote_exec)
-    if computer_use is not None:
-        ws_runtime.store_sid_computer_use_metadata(sid, computer_use)
-    return sid
-
-
-def test_legacy_dynamic_remote_tool_gate_is_noop():
+def test_remote_tool_gate_includes_runtime_checked_computer_use_contract():
     prompt = _apply_gate(_context_id())
 
     assert "text_editor_remote tool" not in prompt
     assert "code_execution_remote tool" not in prompt
-    assert "computer_use_remote tool" not in prompt
+    assert '"tool_name": "computer_use_remote"' in prompt
+    assert "### computer_use_remote" in prompt
+    assert "checked when the tool runs" in prompt
+
+
+def test_computer_use_remote_prompt_is_cli_session_wide_not_context_scoped():
+    prompt = _apply_gate(_context_id())
+
+    assert "### computer_use_remote" in prompt
+    assert '"tool_name": "computer_use_remote"' in prompt
+    assert "scoped to the current CLI session" in prompt
+    assert "not scoped to a single chat context" in prompt
+
+
+def test_computer_use_remote_prompt_keeps_runtime_failures_actionable():
+    prompt = _apply_gate(_context_id())
+
+    assert "no CLI" in prompt
+    assert "disabled computer use" in prompt
+    assert "COMPUTER_USE_REARM_REQUIRED" in prompt
+    assert "/computer-use on" in prompt
+
+
+def test_computer_use_remote_prompt_requires_visual_verification_after_actions():
+    prompt = _apply_gate(_context_id())
+    skill = (
+        PROJECT_ROOT
+        / "plugins"
+        / "_a0_connector"
+        / "skills"
+        / "host-computer-use"
+        / "SKILL.md"
+    ).read_text(encoding="utf-8")
+
+    assert "Treat key presses, clicks, scrolling, and typing" in prompt
+    assert "attempts, not success" in prompt
+    assert "visual verification is unavailable" in prompt
+    assert "do not continue by assuming the host state" in prompt
+    assert "Super+H" not in prompt
+    assert "Alt+F9" not in prompt
+    assert "hide" not in prompt.lower()
+    assert "minimize" not in prompt.lower()
+    assert "window-manager" not in prompt
+    assert "cannot actually see the image" in skill
+    assert "A `type` tool result only confirms keystrokes were sent" in skill
+    assert "visibly confirms" in skill
+    assert "hide window" not in skill
+    assert "minimize window" not in skill
+    assert "hide/minimize" not in skill
+    assert "window-manager" not in skill
 
 
 def test_remote_file_and_exec_tools_are_standard_tool_prompts_independent_from_context():
@@ -132,7 +162,7 @@ def test_remote_file_and_exec_tools_are_standard_tool_prompts_independent_from_c
     assert "Availability and permissions are checked when the tool runs" in exec_stub
 
 
-def test_beta_computer_use_remote_is_skill_only_not_standard_tool_prompt():
+def test_computer_use_remote_is_standard_prompt_with_runtime_checks():
     skill = (
         PROJECT_ROOT
         / "plugins"
@@ -141,8 +171,12 @@ def test_beta_computer_use_remote_is_skill_only_not_standard_tool_prompt():
         / "host-computer-use"
         / "SKILL.md"
     )
+    standard_prompt = PROMPT_ROOT / "agent.system.tool.computer_use_remote.md"
 
-    assert not (PROMPT_ROOT / "agent.system.tool.computer_use_remote.md").exists()
+    assert not (PROMPT_ROOT / "agent.system.runtime_tool.computer_use_remote.md").exists()
+    assert standard_prompt.exists()
+    assert '"tool_name": "computer_use_remote"' in standard_prompt.read_text(encoding="utf-8")
+    assert "checked when the tool runs" in standard_prompt.read_text(encoding="utf-8")
     assert '"tool_name": "computer_use_remote"' in skill.read_text(encoding="utf-8")
 
 
@@ -314,6 +348,22 @@ def test_remote_affordance_skills_parse():
         / "host-computer-use"
         / "SKILL.md"
     )
+    macos_computer_skill = _parse_skill_frontmatter(
+        PROJECT_ROOT
+        / "plugins"
+        / "_a0_connector"
+        / "skills"
+        / "host-computer-use-macos"
+        / "SKILL.md"
+    )
+    windows_computer_skill = _parse_skill_frontmatter(
+        PROJECT_ROOT
+        / "plugins"
+        / "_a0_connector"
+        / "skills"
+        / "host-computer-use-windows"
+        / "SKILL.md"
+    )
 
     assert not legacy_connector_skill.exists()
     assert text_editor_skill["name"] == "host-file-editing"
@@ -324,11 +374,19 @@ def test_remote_affordance_skills_parse():
     assert "not Docker" in code_execution_skill["description"]
     assert computer_skill["name"] == "host-computer-use"
     assert "computer_use_remote" in computer_skill["description"]
+    assert "Use instead of linux-desktop" in computer_skill["description"]
+    assert "host computer" in computer_skill["triggers"]
+    assert "Ubuntu Wayland desktop" in computer_skill["triggers"]
+    assert macos_computer_skill["name"] == "host-computer-use-macos"
+    assert "macOS guidance" in macos_computer_skill["description"]
+    assert windows_computer_skill["name"] == "host-computer-use-windows"
+    assert "Windows guidance" in windows_computer_skill["description"]
 
 
 def test_remote_tool_stubs_are_self_contained_and_reference_per_tool_skills():
     text_stub = (PROMPT_ROOT / "agent.system.tool.text_editor_remote.md").read_text(encoding="utf-8")
     exec_stub = (PROMPT_ROOT / "agent.system.tool.code_execution_remote.md").read_text(encoding="utf-8")
+    computer_stub = (PROMPT_ROOT / "agent.system.tool.computer_use_remote.md").read_text(encoding="utf-8")
     computer_skill = (
         PROJECT_ROOT
         / "plugins"
@@ -337,18 +395,56 @@ def test_remote_tool_stubs_are_self_contained_and_reference_per_tool_skills():
         / "host-computer-use"
         / "SKILL.md"
     ).read_text(encoding="utf-8")
+    macos_computer_skill = (
+        PROJECT_ROOT
+        / "plugins"
+        / "_a0_connector"
+        / "skills"
+        / "host-computer-use-macos"
+        / "SKILL.md"
+    ).read_text(encoding="utf-8")
+    windows_computer_skill = (
+        PROJECT_ROOT
+        / "plugins"
+        / "_a0_connector"
+        / "skills"
+        / "host-computer-use-windows"
+        / "SKILL.md"
+    ).read_text(encoding="utf-8")
 
     assert "optionally load skill `host-file-editing`" in text_stub
     assert "optionally load skill `host-code-execution`" in exec_stub
     assert '"tool_name": "text_editor_remote"' in text_stub
     assert '"tool_name": "code_execution_remote"' in exec_stub
+    assert '"tool_name": "computer_use_remote"' in computer_stub
+    assert "load and follow skill `host-computer-use`" in computer_stub
+    assert "host-computer-use-macos" in computer_stub
+    assert "host-computer-use-windows" in computer_stub
+    assert "ax_snapshot" not in computer_stub
+    assert "ax_action" not in computer_stub
+    assert "uia_snapshot" not in computer_stub
+    assert "uia_action" not in computer_stub
+    assert "Do not substitute the `linux-desktop` skill" in computer_stub
     assert '"tool_name": "computer_use_remote"' in computer_skill
-    assert "Availability, backend support, and trust mode are checked when the tool runs" in computer_skill
+    assert '"tool_name": "computer_use_remote"' in macos_computer_skill
+    assert '"tool_name": "computer_use_remote"' in windows_computer_skill
+    assert "ax_snapshot" in macos_computer_skill
+    assert "ax_snapshot" not in computer_skill
+    assert "ax_action" not in computer_skill
+    assert "uia_snapshot" in windows_computer_skill
+    assert "uia_action" in windows_computer_skill
+    assert "focus_window" in windows_computer_skill
+    assert "minimize" in windows_computer_skill
+    assert "If a node offers `invoke`, use `invoke`, not `click`" in windows_computer_skill
+    assert "uia_snapshot" not in computer_skill
+    assert "uia_action" not in computer_skill
+    assert "Availability, backend support, and trust mode are checked when the tool runs" in computer_stub
     assert "not `code_execution_tool`" in exec_stub
     assert "not to" in exec_stub
     assert "Docker/server/container execution" in exec_stub
     assert "a0-cli-remote-workflows" not in text_stub
     assert "a0-cli-remote-workflows" not in exec_stub
+    assert "a0-cli-remote-workflows" not in computer_stub
     assert "a0-cli-remote-workflows" not in computer_skill
 
 
@@ -387,3 +483,40 @@ def test_host_browser_requests_route_to_browser_tool_not_desktop_or_shell_fallba
     assert "do not use shell launchers" in exec_skill
     assert "Use a shell launcher only when the user explicitly wants" not in exec_skill
     assert "Do not use this tool as a fallback for host-browser navigation/control" in exec_stub
+
+
+def test_host_computer_use_does_not_fall_back_to_linux_desktop_skill():
+    computer_stub = (PROMPT_ROOT / "agent.system.tool.computer_use_remote.md").read_text(encoding="utf-8")
+    host_skill_path = (
+        PROJECT_ROOT
+        / "plugins"
+        / "_a0_connector"
+        / "skills"
+        / "host-computer-use"
+        / "SKILL.md"
+    )
+    linux_skill_path = (
+        PROJECT_ROOT
+        / "plugins"
+        / "_desktop"
+        / "skills"
+        / "linux-desktop"
+        / "SKILL.md"
+    )
+    host_skill = host_skill_path.read_text(encoding="utf-8")
+    linux_skill = linux_skill_path.read_text(encoding="utf-8")
+    linux_frontmatter = _parse_skill_frontmatter(linux_skill_path)
+
+    assert "only desktop-control path for the user's connected host/local computer" in computer_stub
+    assert "Do not substitute the `linux-desktop` skill" in computer_stub
+    assert "Never switch to `linux-desktop`" in host_skill
+    assert "Those paths only see the internal Agent Zero runtime" in host_skill
+    assert "built-in Docker/Xpra Linux Desktop" in linux_frontmatter["description"]
+    assert "Not for A0 CLI /computer-use" in linux_frontmatter["description"]
+    assert "A0 CLI /computer-use" in linux_frontmatter["description"]
+    assert "host-computer-use" in linux_skill
+    assert "computer_use_remote" in linux_skill
+    assert "`desktopctl.sh` only targets the internal Agent Zero Xpra display" in linux_skill
+    assert "use the OS" not in linux_frontmatter["triggers"]
+    assert "terminal app" not in linux_frontmatter["triggers"]
+    assert any("Xpra" in trigger for trigger in linux_frontmatter["triggers"])

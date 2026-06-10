@@ -24,6 +24,7 @@ const model = {
     settingsSnapshotJson: "",
     previousProjectName: "",
     previousAgentProfileKey: "",
+    openOptions: {},
 
     _toComparableJson(value) {
         try {
@@ -47,7 +48,15 @@ const model = {
     },
 
     get modalTitle() {
+        if (this.openOptions?.title) return this.openOptions.title;
+        if (this.openOptions?.focus === "chat" && this.pluginName === "_skills") {
+            return "Skills";
+        }
         return `${this.pluginTitle} Settings`;
+    },
+
+    get hideSettingsActions() {
+        return !!this.openOptions?.hideSettingsActions || this.openOptions?.focus === "chat";
     },
 
     confirmDiscardUnsavedChanges() {
@@ -89,12 +98,17 @@ const model = {
         };
     },
 
-    _applyPluginState(pluginMeta, { projectName = "", agentProfileKey = "" } = {}) {
+    _applyPluginState(
+        pluginMeta,
+        { projectName = "", agentProfileKey = "" } = {},
+        openOptions = {},
+    ) {
         this.pluginName = pluginMeta?.name || null;
         this.pluginMeta = pluginMeta || null;
         this.settings = {};
         this.settingsSnapshotJson = "";
         this.wizardFooter = null;
+        this.openOptions = openOptions && typeof openOptions === "object" ? openOptions : {};
         this.error = null;
         this.projectName = projectName;
         this.agentProfileKey = agentProfileKey;
@@ -112,6 +126,19 @@ const model = {
         pluginToggleStore.projectName = projectName;
         pluginToggleStore.agentProfileKey = agentProfileKey;
         await pluginToggleStore.loadToggleStatus();
+    },
+
+    async setPluginEnabled(enabled) {
+        if (!pluginToggleStore?.setEnabled) return;
+        this.error = null;
+        try {
+            await pluginToggleStore.setEnabled(enabled, {
+                projectName: this.projectName || "",
+                agentProfileKey: this.agentProfileKey || "",
+            });
+        } catch (e) {
+            this.error = e?.message || "Failed to save activation state";
+        }
     },
 
     async onScopeChanged() {
@@ -243,7 +270,7 @@ const model = {
     isSaving: false,
     error: null,
 
-    async openConfig(pluginName, projectName = "", agentProfile = "") {
+    async openConfig(pluginName, projectName = "", agentProfile = "", openOptions = {}) {
         if (!pluginName) {
             throw new Error("Missing plugin name.");
         }
@@ -259,7 +286,7 @@ const model = {
 
         await Promise.all([this.loadProjects(), this.loadAgentProfiles()]);
         const resolvedScope = this._resolveScope(pluginMeta, projectName || "", agentProfile || "");
-        this._applyPluginState(pluginMeta, resolvedScope);
+        this._applyPluginState(pluginMeta, resolvedScope, openOptions);
         await this.loadSettings();
 
         if (!pluginToggleStore?.open) {
@@ -388,6 +415,7 @@ const model = {
         this.agentProfileKey = "";
         this.settings = {};
         this.settingsSnapshotJson = "";
+        this.openOptions = {};
         this.wizardFooter = null;
         this.previousProjectName = "";
         this.previousAgentProfileKey = "";

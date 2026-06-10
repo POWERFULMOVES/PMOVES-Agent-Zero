@@ -2,7 +2,7 @@ import { createStore } from "/js/AlpineStore.js";
 import { callJsonApi } from "/js/api.js";
 import { getNamespacedClient } from "/js/websocket.js";
 import { store as fileBrowserStore } from "/components/modals/file-browser/file-browser-store.js";
-import { handleUrlIntent } from "/js/surfaces.js";
+import { handleUrlIntent, placeSurfaceModalHeaderAction } from "/js/surfaces.js";
 
 const officeSocket = getNamespacedClient("/ws");
 officeSocket.addHandlers(["ws_webui"]);
@@ -42,7 +42,7 @@ function extensionOf(path = "") {
 }
 
 function isOfficialExtension(extension = "") {
-  return ["odt", "ods", "odp", "docx", "xlsx", "pptx"].includes(String(extension || "").toLowerCase());
+  return ["odt", "ods", "odp", "docx", "xlsx", "pptx", "txt"].includes(String(extension || "").toLowerCase());
 }
 
 function parentPath(path = "") {
@@ -258,6 +258,7 @@ const model = {
   _desktopFrameHost: null,
   _desktopFrameLoadHandler: null,
   _desktopKeepaliveHost: null,
+  _desktopDisplaySizes: {},
   _desktopIntentionalShutdown: false,
 
   async init(element = null) {
@@ -579,7 +580,7 @@ const model = {
   },
 
   async openPath(path) {
-    await this.openSession({ path: String(path || "") });
+    return await this.openSession({ path: String(path || "") });
   },
 
   async openSession(payload = {}) {
@@ -1047,7 +1048,7 @@ const model = {
 
   isBinaryOffice(tab = this.session) {
     const ext = String(tab?.extension || tab?.document?.extension || "").toLowerCase();
-    return ["odt", "ods", "odp", "docx", "xlsx", "pptx"].includes(ext);
+    return ["odt", "ods", "odp", "docx", "xlsx", "pptx", "txt"].includes(ext);
   },
 
   hasOfficialOffice(tab = this.session) {
@@ -1499,7 +1500,7 @@ const model = {
       this.stopXpraDesktopPrime();
       this._desktopPrimeAttempts = 0;
     }
-    if (this.applyXpraDesktopFrameMode(options.frame || null)) return;
+    if (this.applyXpraDesktopFrameMode(options.frame || null, options)) return;
     if (this._desktopPrimeAttempts >= XPRA_DESKTOP_PRIME_ATTEMPTS) return;
     this._desktopPrimeAttempts += 1;
     if (this._desktopPrimeTimer) globalThis.clearTimeout(this._desktopPrimeTimer);
@@ -1540,8 +1541,12 @@ const model = {
       const windows = Object.values(client.id_to_window || {});
       if (!client.connected || !windows.length) return false;
 
-      const width = Math.round(container.clientWidth || remoteWindow.innerWidth || 0);
-      const height = Math.round(container.clientHeight || remoteWindow.innerHeight || 0);
+      const token = options.token || this.session?.desktop?.token || "";
+      const displaySize = options.displaySize || this.desktopDisplaySizeForToken(token);
+      const viewportWidth = Math.round(container.clientWidth || remoteWindow.innerWidth || 0);
+      const viewportHeight = Math.round(container.clientHeight || remoteWindow.innerHeight || 0);
+      const width = Math.round(displaySize?.width || viewportWidth || 0);
+      const height = Math.round(displaySize?.height || viewportHeight || 0);
       if (width > 0 && height > 0) {
         client.desktop_width = width;
         client.desktop_height = height;
@@ -1574,6 +1579,26 @@ const model = {
     }
   },
 
+  desktopDisplaySizeForToken(token = "") {
+    const key = String(token || "").trim();
+    const size = key ? this._desktopDisplaySizes?.[key] : null;
+    const width = Math.round(Number(size?.width || 0));
+    const height = Math.round(Number(size?.height || 0));
+    return width > 0 && height > 0 ? { width, height } : null;
+  },
+
+  rememberDesktopDisplaySize(token = "", width = 0, height = 0) {
+    const key = String(token || "").trim();
+    const normalizedWidth = Math.round(Number(width || 0));
+    const normalizedHeight = Math.round(Number(height || 0));
+    if (!key || normalizedWidth <= 0 || normalizedHeight <= 0) return null;
+    this._desktopDisplaySizes = {
+      ...(this._desktopDisplaySizes || {}),
+      [key]: { width: normalizedWidth, height: normalizedHeight },
+    };
+    return this._desktopDisplaySizes[key];
+  },
+
   installXpraDesktopAgentBridge(frame, remoteWindow, remoteDocument, client, container) {
     if (!frame || !remoteWindow || !remoteDocument || !client) return null;
     const store = this;
@@ -1584,8 +1609,10 @@ const model = {
     const metrics = () => {
       const desktopWidth = Math.max(1, finite(client.desktop_width || container?.clientWidth || remoteWindow.innerWidth, 1));
       const desktopHeight = Math.max(1, finite(client.desktop_height || container?.clientHeight || remoteWindow.innerHeight, 1));
-      const clientWidth = Math.max(1, finite(container?.clientWidth || remoteWindow.innerWidth, desktopWidth));
-      const clientHeight = Math.max(1, finite(container?.clientHeight || remoteWindow.innerHeight, desktopHeight));
+      const primaryWindow = Object.values(client.id_to_window || {})[0];
+      const canvas = primaryWindow?.canvas;
+      const clientWidth = Math.max(1, finite(canvas?.clientWidth || canvas?.width || container?.clientWidth || remoteWindow.innerWidth, desktopWidth));
+      const clientHeight = Math.max(1, finite(canvas?.clientHeight || canvas?.height || container?.clientHeight || remoteWindow.innerHeight, desktopHeight));
       return {
         desktopWidth,
         desktopHeight,
@@ -1683,8 +1710,10 @@ const model = {
   },
 
   fitXpraDesktopWindowElement(xpraWindow, width, height) {
-    const cssWidth = `${Math.max(1, Number(width || 0))}px`;
-    const cssHeight = `${Math.max(1, Number(height || 0))}px`;
+    const normalizedWidth = Math.max(1, Math.round(Number(width || 0)));
+    const normalizedHeight = Math.max(1, Math.round(Number(height || 0)));
+    const cssWidth = `${normalizedWidth}px`;
+    const cssHeight = `${normalizedHeight}px`;
     const windowElement = xpraWindow?.div;
     const canvas = xpraWindow?.canvas;
     windowElement?.style?.setProperty("left", "0px", "important");
@@ -1698,6 +1727,12 @@ const model = {
     canvas?.style?.setProperty("height", cssHeight, "important");
     canvas?.style?.setProperty("display", "block", "important");
     canvas?.style?.setProperty("margin", "0", "important");
+    if (canvas) {
+      if (canvas.width !== normalizedWidth) canvas.width = normalizedWidth;
+      if (canvas.height !== normalizedHeight) canvas.height = normalizedHeight;
+      canvas.setAttribute("width", String(normalizedWidth));
+      canvas.setAttribute("height", String(normalizedHeight));
+    }
   },
 
   installXpraDesktopWheelBridge(remoteWindow, xpraWindow) {
@@ -1783,7 +1818,7 @@ const model = {
       html, body, #screen {
         width: 100% !important;
         height: 100% !important;
-        overflow: hidden !important;
+        overflow: auto !important;
       }
       #float_menu,
       .windowhead,
@@ -2139,6 +2174,11 @@ const model = {
         const response = await fetch(`/desktop/resize?${params.toString()}`, { credentials: "same-origin" });
         if (response.ok) {
           const result = await response.json().catch(() => ({}));
+          const displaySize = this.rememberDesktopDisplaySize(
+            token,
+            result?.width || width,
+            result?.height || height,
+          );
           this._desktopResizeKey = key;
           const activeFrame = this.desktopFrame(frame);
           const activeTarget = activeFrame?.parentElement || activeFrame;
@@ -2153,7 +2193,7 @@ const model = {
             }
           }
           if (result?.reload) this.reloadDesktopFrame(activeFrame || frame);
-          this.primeXpraDesktopFrame({ reset: true, frame: activeFrame || frame });
+          this.primeXpraDesktopFrame({ reset: true, frame: activeFrame || frame, token, displaySize });
         }
       } catch (error) {
         console.warn("Desktop resize skipped", error);
@@ -2321,6 +2361,7 @@ const model = {
     if (ext === "odt" || ext === "docx") return "description";
     if (ext === "ods" || ext === "xlsx") return "table_chart";
     if (ext === "odp" || ext === "pptx") return "co_present";
+    if (ext === "txt") return "notes";
     return "draft";
   },
 
@@ -2337,9 +2378,9 @@ const model = {
     if (!header || header.querySelector(".office-header-actions")) return () => {};
 
     const root = globalThis.document.createElement("div");
-    root.className = "office-header-actions";
+    root.className = "office-header-actions surface-modal-new-action";
     root.innerHTML = `
-      <button type="button" class="office-header-new-button" aria-haspopup="menu" aria-expanded="false">
+      <button type="button" class="office-header-new-button surface-modal-new-button" aria-haspopup="menu" aria-expanded="false">
         <span class="material-symbols-outlined" aria-hidden="true">add</span>
         <span>New</span>
         <span class="material-symbols-outlined office-new-chevron" aria-hidden="true">expand_more</span>
@@ -2396,14 +2437,7 @@ const model = {
     globalThis.document.addEventListener("click", onDocumentClick);
     globalThis.document.addEventListener("keydown", onDocumentKeydown);
 
-    const firstHeaderAction = header.querySelector(
-      ".modal-surface-switcher, .modal-dock-button, .office-modal-focus-button, .modal-close",
-    );
-    if (firstHeaderAction) {
-      firstHeaderAction.insertAdjacentElement("beforebegin", root);
-    } else {
-      header.appendChild(root);
-    }
+    placeSurfaceModalHeaderAction(header, root, "new");
 
     setOpen(false);
     return () => {
@@ -2501,20 +2535,16 @@ const model = {
 
     const focusButton = globalThis.document.createElement("button");
     focusButton.type = "button";
-    focusButton.className = "modal-dock-button office-modal-focus-button";
+    focusButton.className = "surface-button office-modal-focus-button";
     focusButton.innerHTML = '<span class="material-symbols-outlined" aria-hidden="true">fullscreen</span>';
     const updateFocusButton = (active) => {
       const label = active ? "Restore size" : "Focus mode";
       focusButton.setAttribute("aria-label", label);
+      focusButton.setAttribute("title", label);
       focusButton.querySelector(".material-symbols-outlined").textContent = active ? "fullscreen_exit" : "fullscreen";
     };
     updateFocusButton(false);
-    const closeButton = inner.querySelector(".modal-close");
-    if (closeButton) {
-      closeButton.insertAdjacentElement("beforebegin", focusButton);
-    } else {
-      header.appendChild(focusButton);
-    }
+    placeSurfaceModalHeaderAction(header, focusButton, "window");
     cleanup.push(() => focusButton.remove());
 
     const setFocusMode = (enabled) => {

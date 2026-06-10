@@ -22,6 +22,10 @@ class SkillsCatalog(ApiHandler):
                 return self._activate(input, context_id=context_id)
             if action == "deactivate":
                 return self._deactivate(input, context_id=context_id)
+            if action == "hide":
+                return self._hide(input, context_id=context_id)
+            if action == "show":
+                return self._show(input, context_id=context_id)
             if action == "clear":
                 return self._clear(context_id=context_id)
             if action == "get_doc":
@@ -42,6 +46,20 @@ class SkillsCatalog(ApiHandler):
         skill_entry = self._require_skill_entry(input)
         skills.deactivate_chat_skill(context.get_agent(), skill_entry)
         skills.unload_agent_skill(context.get_agent(), skill_entry)
+        save_tmp_chat(context)
+        return self._build_state(context_id=context.id)
+
+    def _hide(self, input: dict, *, context_id: str) -> dict[str, Any]:
+        context = self._require_context(context_id)
+        skill_entry = self._require_skill_entry(input)
+        skills.hide_chat_skill(context.get_agent(), skill_entry)
+        save_tmp_chat(context)
+        return self._build_state(context_id=context.id)
+
+    def _show(self, input: dict, *, context_id: str) -> dict[str, Any]:
+        context = self._require_context(context_id)
+        skill_entry = self._require_skill_entry(input)
+        skills.show_chat_skill(context.get_agent(), skill_entry)
         save_tmp_chat(context)
         return self._build_state(context_id=context.id)
 
@@ -70,11 +88,17 @@ class SkillsCatalog(ApiHandler):
         }
 
         scope_entries = skills.get_scope_active_skills(agent)
+        scope_hidden_entries = skills.get_scope_hidden_skills(agent)
         chat_entries = skills.get_chat_active_skills(context)
         disabled_entries = skills.get_chat_disabled_skills(context)
+        visible_entries = skills.get_chat_visible_skills(context)
+        hidden_entries = skills.get_hidden_skills(agent)
         active_entries = self._merge_entries(
             skills.get_active_skills(agent),
-            self._get_loaded_skill_entries(agent),
+            self._filter_hidden_entries(
+                self._get_loaded_skill_entries(agent),
+                hidden_entries,
+            ),
         )
 
         scope_keys = {
@@ -90,7 +114,10 @@ class SkillsCatalog(ApiHandler):
             "context_id": context.id if context else "",
             "project_name": project_name,
             "skills": catalog,
-            "max_active_skills": skills.get_max_active_skills(),
+            "max_active_skills": skills.get_max_active_skills(
+                agent=agent,
+                project_name=project_name,
+            ),
             "active_skills": [
                 self._serialize_entry(
                     entry,
@@ -133,6 +160,37 @@ class SkillsCatalog(ApiHandler):
                     state_source="Hidden in chat",
                 )
                 for entry in disabled_entries
+            ],
+            "hidden_skills": [
+                self._serialize_entry(
+                    entry,
+                    catalog_by_key,
+                    catalog_by_name,
+                    state_source=(
+                        "Hidden default"
+                        if self._entry_matches_any(entry, scope_hidden_entries)
+                        else "Hidden in chat"
+                    ),
+                )
+                for entry in hidden_entries
+            ],
+            "scope_hidden_skills": [
+                self._serialize_entry(
+                    entry,
+                    catalog_by_key,
+                    catalog_by_name,
+                    state_source="Hidden default",
+                )
+                for entry in scope_hidden_entries
+            ],
+            "visible_skills": [
+                self._serialize_entry(
+                    entry,
+                    catalog_by_key,
+                    catalog_by_name,
+                    state_source="Visible in chat",
+                )
+                for entry in visible_entries
             ],
         }
 
@@ -217,6 +275,40 @@ class SkillsCatalog(ApiHandler):
                 merged.append(entry)
 
         return merged
+
+    def _filter_hidden_entries(
+        self,
+        entries: list[dict[str, Any]],
+        hidden_entries: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        return [
+            entry
+            for entry in entries
+            if not self._entry_matches_any(entry, hidden_entries)
+        ]
+
+    def _entry_matches_any(
+        self,
+        entry: dict[str, Any],
+        entries: list[dict[str, Any]],
+    ) -> bool:
+        keys = {
+            str(entry.get("path") or "").strip().lower(),
+            str(entry.get("name") or "").strip().lower(),
+        }
+        keys.discard("")
+        if not keys:
+            return False
+
+        for candidate in entries:
+            candidate_keys = {
+                str(candidate.get("path") or "").strip().lower(),
+                str(candidate.get("name") or "").strip().lower(),
+            }
+            candidate_keys.discard("")
+            if keys & candidate_keys:
+                return True
+        return False
 
     def _serialize_entry(
         self,

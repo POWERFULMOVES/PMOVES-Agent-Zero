@@ -58,7 +58,11 @@ class EditorSession(ApiHandler):
                 doc = (
                     document_store.get_document(file_id)
                     if file_id
-                    else document_store.register_document(str(input.get("path") or ""), context_id=context_id)
+                    else document_store.register_document(
+                        str(input.get("path") or ""),
+                        context_id=context_id,
+                        allow_base_dir=self._allow_base_dir_open(input),
+                    )
                 )
             except Exception as exc:
                 return {"ok": False, "error": str(exc)}
@@ -144,6 +148,11 @@ class EditorSession(ApiHandler):
     def _origin(self, request: Request) -> str:
         origin = request.headers.get("Origin") or request.host_url.rstrip("/")
         return origin.rstrip("/")
+
+    def _allow_base_dir_open(self, input: dict) -> bool:
+        if str(input.get("source") or "").strip() != "file-browser":
+            return False
+        return bool(str(input.get("path") or "").strip())
 
 
 def _public_doc(doc: dict) -> dict:

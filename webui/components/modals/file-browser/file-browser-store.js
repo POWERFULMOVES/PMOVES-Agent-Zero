@@ -1,6 +1,50 @@
 import { createStore } from "/js/AlpineStore.js";
-import { fetchApi } from "/js/api.js";
+import { callJsonApi, fetchApi } from "/js/api.js";
+import { formatDateTime } from "/js/time-utils.js";
 import { store as fileEditorStore } from "/components/modals/file-editor/file-editor-store.js";
+import { openLatest as openLatestSurface } from "/js/surfaces.js";
+
+const FILE_BROWSER_LAST_DIRECTORY_STORAGE_KEY = "fileBrowser.lastDirectory";
+const DEFAULT_REMEMBER_LAST_DIRECTORY = true;
+const MARKDOWN_EXTENSIONS = new Set(["md", "markdown", "mdown"]);
+const DESKTOP_EXTENSIONS = new Set(["odt", "ods", "odp", "docx", "xlsx", "pptx", "txt"]);
+const BROWSER_EXTENSIONS = new Set([
+  "html",
+  "htm",
+  "xhtml",
+  "svg",
+  "xml",
+  "pdf",
+  "png",
+  "jpg",
+  "jpeg",
+  "gif",
+  "webp",
+  "bmp",
+  "ico",
+]);
+
+const SURFACE_ACTIONS = {
+  editor: {
+    label: "Open in Editor",
+    icon: "article",
+    title: "Open Markdown in Editor",
+  },
+  desktop: {
+    label: "Open in Desktop",
+    icon: "desktop_windows",
+    title: "Open document in Desktop",
+  },
+  browser: {
+    label: "Open in Browser",
+    icon: "language",
+    title: "Open web-viewable file in Browser",
+  },
+};
+
+function delay(ms) {
+  return new Promise((resolve) => globalThis.setTimeout(resolve, ms));
+}
 
 // Model migrated from legacy file_browser.js (lift-and-shift)
 const model = {
@@ -18,6 +62,12 @@ const model = {
   initialPath: "", // Store path for open() call
   closePromise: null,
   error: null,
+  pathInput: "",
+  pathError: "",
+  isPathSubmitting: false,
+  rememberLastDirectory: DEFAULT_REMEMBER_LAST_DIRECTORY,
+  settingsLoadPromise: null,
+  settingsUpdatedHandler: null,
   renameTarget: null,
   renameName: "",
   renameMode: "rename",
@@ -32,7 +82,14 @@ const model = {
 
   // --- Lifecycle -----------------------------------------------------------
   init() {
-    // Nothing special to do here; all methods available immediately
+    if (this.settingsUpdatedHandler) return;
+    this.settingsUpdatedHandler = (event) => {
+      const value = event?.detail?.file_browser_remember_last_directory;
+      if (typeof value !== "boolean") return;
+      this.rememberLastDirectory = value;
+      if (!value) this.clearRememberedDirectory();
+    };
+    document.addEventListener("settings-updated", this.settingsUpdatedHandler);
   },
 
   // --- Public API (called from button/link) --------------------------------
@@ -43,6 +100,8 @@ const model = {
     this.history = [];
     this.searchQuery = "";
     this.isBulkBusy = false;
+    this.pathError = "";
+    this.isPathSubmitting = false;
 
     try {
       // Open modal FIRST (immediate UI feedback)
@@ -50,12 +109,22 @@ const model = {
         "modals/file-browser/file-browser.html"
       );
 
-      // Use stored initial path or default
-      path = path || this.initialPath || this.browser.currentPath || "$WORK_DIR";
+      await this.loadDirectoryPreference();
+      const explicitPath = this.normalizeOpeningPath(path || this.initialPath);
+      const rememberedPath = !explicitPath ? this.getRememberedDirectory() : "";
+      path = explicitPath || rememberedPath || "$WORK_DIR";
       this.browser.currentPath = path;
+      this.syncPathInput();
 
       // Fetch files
-      await this.fetchFiles(this.browser.currentPath);
+      const loaded = await this.fetchFiles(this.browser.currentPath, {
+        preserveOnError: Boolean(rememberedPath && path === rememberedPath),
+        suppressErrorToast: Boolean(rememberedPath && path === rememberedPath),
+      });
+      if (!loaded && rememberedPath && path === rememberedPath) {
+        this.clearRememberedDirectory();
+        await this.fetchFiles("$WORK_DIR");
+      }
 
       // await modal close
       await this.closePromise;
@@ -70,6 +139,7 @@ const model = {
 
   handleClose() {
     // Close the modal manually
+    this.disposeScopedTooltips();
     window.closeModal();
   },
 
@@ -82,6 +152,9 @@ const model = {
     this.openDropdownPath = null;
     this.searchQuery = "";
     this.isBulkBusy = false;
+    this.pathInput = "";
+    this.pathError = "";
+    this.isPathSubmitting = false;
     this.resetRenameState();
   },
 
@@ -134,14 +207,7 @@ const model = {
   },
 
   formatDate(dateString) {
-    const options = {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    };
-    return new Date(dateString).toLocaleDateString(undefined, options);
+    return formatDateTime(dateString, "short");
   },
 
   decorateEntries(entries = [], selectedPaths = new Set()) {
@@ -214,10 +280,140 @@ const model = {
     });
   },
 
+  normalizeOpeningPath(path) {
+    return String(path || "").trim();
+  },
+
+  normalizeSubmittedPath(path) {
+    const trimmed = String(path || "").trim();
+    if (!trimmed || trimmed === "$WORK_DIR") return trimmed;
+    return trimmed.startsWith("/") ? trimmed : `/${trimmed}`;
+  },
+
+  syncPathInput() {
+    this.pathInput = this.browser.currentPath || "";
+  },
+
+  resetPathInput() {
+    this.syncPathInput();
+    this.pathError = "";
+  },
+
+  async loadDirectoryPreference() {
+    if (this.settingsLoadPromise) return await this.settingsLoadPromise;
+
+    this.settingsLoadPromise = (async () => {
+      try {
+        const response = await callJsonApi("settings_get", null);
+        const remember = response?.settings?.file_browser_remember_last_directory;
+        this.rememberLastDirectory =
+          typeof remember === "boolean" ? remember : DEFAULT_REMEMBER_LAST_DIRECTORY;
+      } catch (error) {
+        console.warn("Failed to load file browser directory preference:", error);
+        this.rememberLastDirectory = DEFAULT_REMEMBER_LAST_DIRECTORY;
+      } finally {
+        if (!this.rememberLastDirectory) this.clearRememberedDirectory();
+        this.settingsLoadPromise = null;
+      }
+      return this.rememberLastDirectory;
+    })();
+
+    return await this.settingsLoadPromise;
+  },
+
+  getRememberedDirectory() {
+    if (!this.rememberLastDirectory) return "";
+    try {
+      return localStorage.getItem(FILE_BROWSER_LAST_DIRECTORY_STORAGE_KEY) || "";
+    } catch {
+      return "";
+    }
+  },
+
+  rememberCurrentDirectory(path = this.browser.currentPath) {
+    if (!this.rememberLastDirectory) return;
+    const directory = this.normalizeOpeningPath(path);
+    if (!directory || directory === "$WORK_DIR") return;
+    try {
+      localStorage.setItem(FILE_BROWSER_LAST_DIRECTORY_STORAGE_KEY, directory);
+    } catch {}
+  },
+
+  clearRememberedDirectory() {
+    try {
+      localStorage.removeItem(FILE_BROWSER_LAST_DIRECTORY_STORAGE_KEY);
+    } catch {}
+  },
+
+  disposeScopedTooltips() {
+    const root = document.querySelector(".file-browser-root");
+    const tooltipApi = globalThis.bootstrap?.Tooltip;
+    if (!root || !tooltipApi) return;
+
+    root.querySelectorAll("[data-bs-tooltip-initialized]").forEach((element) => {
+      const instance = tooltipApi.getInstance(element);
+      try {
+        instance?.dispose();
+      } catch {}
+    });
+    document.querySelectorAll(".tooltip").forEach((tooltip) => tooltip.remove());
+  },
+
   // --- Modal helpers -------------------------------------------------------
   normalizePath(path) {
     if (!path) return "";
     return path.startsWith("/") ? path : `/${path}`;
+  },
+
+  fileExtension(file = {}) {
+    const name = String(file?.name || file?.path || "").split(/[?#]/, 1)[0].toLowerCase();
+    const index = name.lastIndexOf(".");
+    return index >= 0 ? name.slice(index + 1) : "";
+  },
+
+  fileSurfaceTarget(file = {}) {
+    if (!file || file.is_dir) return "";
+    const ext = this.fileExtension(file);
+    if (MARKDOWN_EXTENSIONS.has(ext)) return "editor";
+    if (BROWSER_EXTENSIONS.has(ext)) return "browser";
+    if (DESKTOP_EXTENSIONS.has(ext)) return "desktop";
+    return "";
+  },
+
+  canOpenInSurface(file = {}) {
+    return Boolean(this.fileSurfaceTarget(file));
+  },
+
+  surfaceAction(file = {}) {
+    const target = this.fileSurfaceTarget(file);
+    return target ? SURFACE_ACTIONS[target] : null;
+  },
+
+  surfaceActionLabel(file = {}) {
+    return this.surfaceAction(file)?.label || "Open";
+  },
+
+  surfaceActionIcon(file = {}) {
+    return this.surfaceAction(file)?.icon || "open_in_new";
+  },
+
+  surfaceActionTitle(file = {}) {
+    return this.surfaceAction(file)?.title || "Open file";
+  },
+
+  fileUrl(file = {}) {
+    const path = this.normalizePath(String(file?.path || ""));
+    const encodedPath = path
+      .split("/")
+      .map((part) => encodeURIComponent(part))
+      .join("/");
+    return `file://${encodedPath}`;
+  },
+
+  storeHasPath(surfaceStore = {}, path = "") {
+    const normalizedPath = this.normalizePath(path);
+    const activePath = surfaceStore?.session?.path || surfaceStore?.session?.document?.path || "";
+    return this.normalizePath(activePath) === normalizedPath;
   },
 
   buildChildPath(name) {
@@ -294,7 +490,9 @@ const model = {
   },
 
   // --- Navigation ----------------------------------------------------------
-  async fetchFiles(path = "") {
+  async fetchFiles(path = "", options = {}) {
+    const preserveOnError = options?.preserveOnError === true;
+    const suppressErrorToast = options?.suppressErrorToast === true;
     this.isLoading = true;
     
     // Preserve scroll position if refreshing the same path
@@ -311,14 +509,31 @@ const model = {
       );
       const data = await response.json().catch(() => ({}));
 
-      if (response.ok && !data.error) {
+      const result = data.data || {};
+      const requestedPath = String(path || "");
+      const resultError =
+        data.error ||
+        result.error ||
+        (
+          requestedPath &&
+          requestedPath !== "$WORK_DIR" &&
+          !result.current_path &&
+          !(result.entries || []).length
+            ? "Directory not found or not accessible"
+            : ""
+        );
+
+      if (response.ok && !resultError) {
         if (!isSamePath) this.searchQuery = "";
         this.browser.entries = this.decorateEntries(
-          data.data.entries || [],
+          result.entries || [],
           selectedPaths
         );
-        this.browser.currentPath = data.data.current_path;
-        this.browser.parentPath = data.data.parent_path;
+        this.browser.currentPath = result.current_path;
+        this.browser.parentPath = result.parent_path;
+        this.syncPathInput();
+        this.pathError = "";
+        this.rememberCurrentDirectory(this.browser.currentPath);
         
         // Set isLoading to false BEFORE restoring scroll to avoid reactivity issues
         this.isLoading = false;
@@ -327,20 +542,23 @@ const model = {
         if (scrollPos) {
           this.restoreScrollPosition(scrollPos);
         }
+        return true;
       } else {
-        const msg = data.error || "Error fetching files";
+        const msg = resultError || "Error fetching files";
         console.error("Error fetching files:", msg);
-        this.browser.entries = [];
+        if (!preserveOnError) this.browser.entries = [];
         this.isLoading = false;
-        window.toastFrontendError(msg, "File Browser Error");
+        if (!suppressErrorToast) window.toastFrontendError(msg, "File Browser Error");
+        return false;
       }
     } catch (e) {
-      window.toastFrontendError(
-        "Error fetching files: " + e.message,
-        "File Browser Error"
-      );
-      this.browser.entries = [];
+      const message = "Error fetching files: " + e.message;
+      if (!suppressErrorToast) {
+        window.toastFrontendError(message, "File Browser Error");
+      }
+      if (!preserveOnError) this.browser.entries = [];
       this.isLoading = false;
+      return false;
     }
   },
 
@@ -349,6 +567,38 @@ const model = {
     if (this.browser.currentPath !== path)
       this.history.push(this.browser.currentPath);
     await this.fetchFiles(path);
+  },
+
+  async submitPath() {
+    if (this.isPathSubmitting || this.isLoading) return;
+
+    const path = this.normalizeSubmittedPath(this.pathInput);
+    if (!path) {
+      this.pathError = "Enter a directory path.";
+      return;
+    }
+
+    this.isPathSubmitting = true;
+    this.pathError = "";
+
+    try {
+      const previousPath = this.browser.currentPath;
+      const loaded = await this.fetchFiles(path, {
+        preserveOnError: true,
+        suppressErrorToast: true,
+      });
+
+      if (loaded) {
+        if (previousPath && previousPath !== this.browser.currentPath) {
+          this.history.push(previousPath);
+        }
+        return;
+      }
+
+      this.pathError = "Directory not found or not accessible.";
+    } finally {
+      this.isPathSubmitting = false;
+    }
   },
 
   async navigateUp() {
@@ -724,6 +974,59 @@ const model = {
 
   async handleFileUpload(event) {
     return store._handleFileUpload(event); // bind to model to ensure correct context
+  },
+
+  async openInSurface(file = {}) {
+    const target = this.fileSurfaceTarget(file);
+    const path = this.normalizePath(String(file?.path || ""));
+    if (!target || !path) return;
+
+    this.closeDropdown();
+
+    try {
+      if (target === "browser") {
+        const url = this.fileUrl(file);
+        const { store: browserStore } = await import("/plugins/_browser/webui/browser-store.js");
+        await openLatestSurface("browser", { url, source: "file-browser" });
+
+        let opened = false;
+        for (let attempt = 0; attempt < 40 && !opened; attempt += 1) {
+          opened = await browserStore.openUrlIntent(url, { source: "file-browser" });
+          if (!opened) await delay(75);
+        }
+        if (!opened) {
+          throw new Error("Browser surface is unavailable.");
+        }
+      } else {
+        await openLatestSurface(target, { path, source: "file-browser" });
+        if (target === "editor") {
+          const { store: editorStore } = await import("/plugins/_editor/webui/editor-store.js");
+          if (!this.storeHasPath(editorStore, path)) {
+            const session = await editorStore.openPath(path, { source: "file-browser" });
+            if (!session || session.ok === false) {
+              throw new Error(editorStore.error || "Markdown could not be opened.");
+            }
+          }
+        }
+        if (target === "desktop") {
+          const { store: desktopStore } = await import("/plugins/_desktop/webui/desktop-store.js");
+          if (!this.storeHasPath(desktopStore, path)) {
+            const session = await desktopStore.openPath(path);
+            if (!session || session.ok === false) {
+              throw new Error(desktopStore.error || "Document could not be opened.");
+            }
+          }
+        }
+      }
+
+      this.disposeScopedTooltips();
+      await window.closeModal?.("modals/file-browser/file-browser.html");
+    } catch (error) {
+      window.toastFrontendError?.(
+        error?.message || "Could not open file",
+        "File Browser"
+      );
+    }
   },
 
   async _handleFileUpload(event) {

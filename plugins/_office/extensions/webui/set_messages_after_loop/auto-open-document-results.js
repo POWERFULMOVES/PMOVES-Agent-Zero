@@ -1,8 +1,8 @@
 import { store as officeStore } from "/plugins/_office/webui/office-store.js";
 import { store as desktopStore } from "/plugins/_desktop/webui/desktop-store.js";
-import { store as editorStore } from "/plugins/_editor/webui/editor-store.js";
 import { open as openSurface } from "/js/surfaces.js";
 
+const OFFICE_FORMATS = new Set(["odt", "ods", "odp", "docx", "xlsx", "pptx"]);
 const SYNC_WINDOW_MS = 10 * 60 * 1000;
 const syncedDocumentResults = new Set();
 
@@ -12,11 +12,7 @@ export default async function syncDocumentResultsIntoOpenSurfaces(context) {
   for (const { args } of context.results) {
     const payload = getDocumentPayload(args);
     const toolName = getToolName(payload);
-    if (toolName === "text_editor") {
-      syncTextEditorMarkdownResult(args, payload);
-      continue;
-    }
-    if (toolName !== "document_artifact") continue;
+    if (toolName !== "office_artifact") continue;
     if (!shouldSyncOpenOfficeModal(args, payload)) continue;
 
     const document = payload.document && typeof payload.document === "object" ? payload.document : {};
@@ -46,16 +42,6 @@ export default async function syncDocumentResultsIntoOpenSurfaces(context) {
       void syncOpenDocumentSurfaces(target);
     }, 0);
   }
-}
-
-function syncTextEditorMarkdownResult(args = {}, payload = {}) {
-  const target = textEditorTarget(payload);
-  if (!target.path || target.extension !== "md") return;
-  if (!shouldSyncTextEditorResult(args, payload)) return;
-
-  globalThis.setTimeout(() => {
-    void syncOpenEditorSurface(target);
-  }, 0);
 }
 
 function documentTarget(payload = {}, document = {}) {
@@ -101,7 +87,6 @@ function pickPayloadFields(args = {}) {
     "path",
     "version",
     "last_modified",
-    "method",
   ]) {
     if (args[key] != null && args[key] !== "") payload[key] = args[key];
   }
@@ -118,15 +103,9 @@ function shouldSyncOpenOfficeModal(args = {}, payload = {}) {
   return ["create", "open", "edit", "restore_version"].includes(action);
 }
 
-function shouldSyncTextEditorResult(args = {}, payload = {}) {
-  if (!isFresh(args.timestamp, payload.last_modified)) return false;
-  const action = String(payload.action || payload.method || "").trim().toLowerCase().replace("-", "_");
-  return ["write", "patch"].includes(action);
-}
-
 function shouldOpenDocumentUiFromResult(payload = {}, document = {}) {
   if (!isExplicitDocumentUiRequest(payload)) return false;
-  return Boolean(documentExtension(payload, document));
+  return OFFICE_FORMATS.has(documentExtension(payload, document));
 }
 
 function isExplicitDocumentUiRequest(payload = {}) {
@@ -158,27 +137,8 @@ function documentExtension(payload = {}, document = {}) {
   ).toLowerCase();
 }
 
-function textEditorTarget(payload = {}) {
-  const path = String(payload.path || "").trim();
-  return {
-    path,
-    file_id: "",
-    extension: extensionFromPath(path),
-    format: extensionFromPath(path),
-    version: "",
-    last_modified: payload.last_modified || "",
-  };
-}
-
-function extensionFromPath(path = "") {
-  const clean = String(path || "").split("?")[0].split("#")[0];
-  const name = clean.split("/").filter(Boolean).pop() || "";
-  const index = name.lastIndexOf(".");
-  return index > 0 ? name.slice(index + 1).toLowerCase() : "";
-}
-
-function surfaceForDocument(payload = {}, document = {}) {
-  return documentExtension(payload, document) === "md" ? "editor" : "desktop";
+function surfaceForDocument(_payload = {}, _document = {}) {
+  return "desktop";
 }
 
 function isOfficeModalOpen() {
@@ -201,35 +161,10 @@ function isDesktopSurfaceOpen() {
   );
 }
 
-function isEditorSurfaceOpen() {
-  return Boolean(
-    globalThis.document?.querySelector?.(
-      '[data-surface-id="editor"] .editor-panel, .modal-inner[data-surface-id="editor"] .editor-panel, .modal-inner[data-canvas-surface="editor"] .editor-panel',
-    ),
-  );
-}
-
 async function syncOpenDocumentSurfaces(document = {}) {
-  if (documentExtension({}, document) === "md") {
-    await syncOpenEditorSurface(document);
-    return;
-  }
+  if (!OFFICE_FORMATS.has(documentExtension({}, document))) return;
   await syncOpenDesktopCanvas(document);
   await syncOpenOfficeModal(document);
-}
-
-async function syncOpenEditorSurface(document = {}) {
-  const editor = editorStore;
-  if (!editor || !isEditorSurfaceOpen()) return false;
-  if (!hasSameDocument(editor, document)) return false;
-  if (isDirtySameDocument(editor, document)) return false;
-  await editor.openSession?.({
-    path: document.path || "",
-    file_id: document.file_id || "",
-    refresh: true,
-    source: "tool-result-sync",
-  });
-  return true;
 }
 
 async function syncOpenDesktopCanvas(document = {}) {

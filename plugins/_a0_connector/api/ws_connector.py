@@ -10,6 +10,7 @@ from helpers.ws_manager import WsResult
 
 from plugins._a0_connector.helpers.exec_config import build_exec_config
 from plugins._a0_connector.helpers.event_bridge import get_context_log_entries
+from plugins._a0_connector.helpers.version import agent_zero_version
 from plugins._a0_connector.helpers.ws_runtime import (
     clear_remote_tree_snapshot,
     clear_sid_host_browser_metadata,
@@ -60,6 +61,9 @@ WS_FEATURES = [
     "browser_host_remote",
     "connector_browser_op",
 ]
+
+_SNAPSHOT_REPLAY_PAGE_SIZE = 50
+_LIVE_STREAM_PAGE_SIZE = 100
 
 
 class WsConnector(WsHandler):
@@ -119,6 +123,7 @@ class WsConnector(WsHandler):
             self._associate_declared_context(data, sid)
             return {
                 "protocol": PROTOCOL_VERSION,
+                "agent_zero_version": agent_zero_version(),
                 "features": WS_FEATURES,
                 "exec_config": build_exec_config(),
                 "remote_tools": self._remote_tool_state(sid),
@@ -251,19 +256,25 @@ class WsConnector(WsHandler):
             )
 
         subscribe_sid_to_context(sid, context_id)
-        events, last_sequence = get_context_log_entries(context_id, after=from_sequence)
-        await self.emit_to(
+        events, last_sequence = get_context_log_entries(
+            context_id,
+            after=from_sequence,
+            limit=_SNAPSHOT_REPLAY_PAGE_SIZE,
+        )
+        await self._emit_context_snapshot(
             sid,
-            "connector_context_snapshot",
-            {
-                "context_id": context_id,
-                "events": events,
-                "last_sequence": last_sequence,
-                "message_queue": self._queue_items_for_context(context),
-            },
+            context_id=context_id,
+            events=events,
+            last_sequence=last_sequence,
+            context=context,
             correlation_id=data.get("correlationId"),
         )
-        self._start_streaming(sid, context_id, from_sequence=last_sequence)
+        self._start_streaming(
+            sid,
+            context_id,
+            from_sequence=last_sequence,
+            replay_history=True,
+        )
 
         return {
             "context_id": context_id,
@@ -347,19 +358,25 @@ class WsConnector(WsHandler):
 
         if context_id not in subscribed_contexts_for_sid(sid):
             subscribe_sid_to_context(sid, context_id)
-            events, last_sequence = get_context_log_entries(context_id, after=0)
-            await self.emit_to(
+            events, last_sequence = get_context_log_entries(
+                context_id,
+                after=0,
+                limit=_SNAPSHOT_REPLAY_PAGE_SIZE,
+            )
+            await self._emit_context_snapshot(
                 sid,
-                "connector_context_snapshot",
-                {
-                    "context_id": context_id,
-                    "events": events,
-                    "last_sequence": last_sequence,
-                    "message_queue": self._queue_items_for_context(context),
-                },
+                context_id=context_id,
+                events=events,
+                last_sequence=last_sequence,
+                context=context,
                 correlation_id=data.get("correlationId"),
             )
-            self._start_streaming(sid, context_id, from_sequence=last_sequence)
+            self._start_streaming(
+                sid,
+                context_id,
+                from_sequence=last_sequence,
+                replay_history=True,
+            )
 
         message_id = client_message_id or data.get("correlationId") or ""
         context.log.log(
@@ -863,14 +880,48 @@ class WsConnector(WsHandler):
                     f"[a0-connector] failed to emit connector_context_complete to {target_sid}: {exc}"
                 )
 
-    def _start_streaming(self, sid: str, context_id: str, *, from_sequence: int) -> None:
+    async def _emit_context_snapshot(
+        self,
+        sid: str,
+        *,
+        context_id: str,
+        events: list[dict[str, Any]],
+        last_sequence: int,
+        context: AgentContext | None = None,
+        correlation_id: str | None = None,
+    ) -> None:
+        await self.emit_to(
+            sid,
+            "connector_context_snapshot",
+            {
+                "context_id": context_id,
+                "events": events,
+                "last_sequence": last_sequence,
+                "message_queue": self._queue_items_for_context(context),
+            },
+            correlation_id=correlation_id,
+        )
+
+    def _start_streaming(
+        self,
+        sid: str,
+        context_id: str,
+        *,
+        from_sequence: int,
+        replay_history: bool = False,
+    ) -> None:
         key = (sid, context_id)
         task = self._streaming_tasks.get(key)
         if task is not None and not task.done():
             return
 
         task = asyncio.create_task(
-            self._stream_events(sid, context_id, from_sequence=from_sequence)
+            self._stream_events(
+                sid,
+                context_id,
+                from_sequence=from_sequence,
+                replay_history=replay_history,
+            )
         )
         self._streaming_tasks[key] = task
 
@@ -885,14 +936,26 @@ class WsConnector(WsHandler):
         context_id: str,
         *,
         from_sequence: int,
+        replay_history: bool = False,
     ) -> None:
         # `from_sequence` is a log-output cursor (not an event sequence number).
         cursor = max(int(from_sequence or 0), 0)
         last_queue_signature, _ = self._queue_state_for_context_id(context_id)
         was_running = self._context_is_running(context_id)
         try:
+            if replay_history:
+                cursor = await self._replay_history_snapshots(
+                    sid,
+                    context_id,
+                    from_sequence=cursor,
+                )
+
             while context_id in subscribed_contexts_for_sid(sid):
-                events, next_cursor = get_context_log_entries(context_id, after=cursor)
+                events, next_cursor = get_context_log_entries(
+                    context_id,
+                    after=cursor,
+                    limit=_LIVE_STREAM_PAGE_SIZE,
+                )
                 for event in events:
                     await self.emit_to(sid, "connector_context_event", event)
                 cursor = max(cursor, int(next_cursor or cursor))
@@ -918,7 +981,7 @@ class WsConnector(WsHandler):
                         },
                     )
                 was_running = is_running
-                await asyncio.sleep(0.5)
+                await asyncio.sleep(0 if events else 0.5)
         except asyncio.CancelledError:
             raise
         except Exception as exc:
@@ -927,3 +990,41 @@ class WsConnector(WsHandler):
             )
         finally:
             self._streaming_tasks.pop((sid, context_id), None)
+
+    async def _replay_history_snapshots(
+        self,
+        sid: str,
+        context_id: str,
+        *,
+        from_sequence: int,
+    ) -> int:
+        cursor = max(int(from_sequence or 0), 0)
+
+        while context_id in subscribed_contexts_for_sid(sid):
+            events, next_cursor = get_context_log_entries(
+                context_id,
+                after=cursor,
+                limit=_SNAPSHOT_REPLAY_PAGE_SIZE,
+            )
+            next_cursor = max(cursor, int(next_cursor or cursor))
+            if not events:
+                return next_cursor
+
+            _, queue_items = self._queue_state_for_context_id(context_id)
+            await self.emit_to(
+                sid,
+                "connector_context_snapshot",
+                {
+                    "context_id": context_id,
+                    "events": events,
+                    "last_sequence": next_cursor,
+                    "message_queue": queue_items,
+                },
+            )
+
+            if next_cursor == cursor:
+                return cursor + len(events)
+            cursor = next_cursor
+            await asyncio.sleep(0)
+
+        return cursor

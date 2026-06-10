@@ -8,6 +8,7 @@ const LEGACY_SURFACE_IDS = new Map([
 
 const registeredSurfaces = new Map();
 const urlHandlers = new Set();
+const SURFACE_MODAL_ACTION_GROUPS = ["surfaces", "window", "new"];
 
 export const CORE_SURFACES = [
   {
@@ -277,6 +278,97 @@ function getModalSwitchSurfaces(metadata) {
     .sort((left, right) => (left.order ?? 100) - (right.order ?? 100));
 }
 
+function directChildByClass(parent, className) {
+  return Array.from(parent?.children || []).find((child) => child.classList?.contains(className)) || null;
+}
+
+function ensureSurfaceModalActionRail(header) {
+  if (!header) return null;
+  let rail = directChildByClass(header, "surface-modal-actions");
+  if (!rail) {
+    rail = document.createElement("div");
+    rail.className = "surface-modal-actions";
+    rail.setAttribute("aria-label", "Surface modal actions");
+
+    const closeButton = directChildByClass(header, "modal-close") || header.querySelector?.(".modal-close");
+    if (closeButton) {
+      closeButton.insertAdjacentElement("beforebegin", rail);
+    } else {
+      header.appendChild(rail);
+    }
+  }
+
+  for (const [index, groupName] of SURFACE_MODAL_ACTION_GROUPS.entries()) {
+    if (!rail.querySelector(`[data-surface-modal-action-group="${groupName}"]`)) {
+      if (index > 0 && !rail.querySelector(`[data-surface-modal-separator-before="${groupName}"]`)) {
+        const separator = document.createElement("span");
+        separator.className = "surface-modal-action-separator";
+        separator.dataset.surfaceModalSeparatorBefore = groupName;
+        separator.setAttribute("aria-hidden", "true");
+        rail.appendChild(separator);
+      }
+
+      const group = document.createElement("div");
+      group.className = `surface-modal-action-group surface-modal-action-group-${groupName}`;
+      group.dataset.surfaceModalActionGroup = groupName;
+      rail.appendChild(group);
+    }
+  }
+
+  refreshSurfaceModalActionRail(header);
+  return rail;
+}
+
+function surfaceModalActionGroup(header, groupName) {
+  const rail = ensureSurfaceModalActionRail(header);
+  return rail?.querySelector?.(`[data-surface-modal-action-group="${groupName}"]`) || null;
+}
+
+export function refreshSurfaceModalActionRail(header) {
+  const rail = directChildByClass(header, "surface-modal-actions");
+  if (!rail) return;
+
+  const groups = Object.fromEntries(
+    SURFACE_MODAL_ACTION_GROUPS.map((groupName) => [
+      groupName,
+      rail.querySelector(`[data-surface-modal-action-group="${groupName}"]`),
+    ]),
+  );
+  const hasActions = Object.fromEntries(
+    Object.entries(groups).map(([groupName, group]) => [
+      groupName,
+      Boolean(group?.children?.length),
+    ]),
+  );
+
+  for (const [groupName, group] of Object.entries(groups)) {
+    if (group) group.hidden = !hasActions[groupName];
+  }
+
+  const beforeWindow = rail.querySelector('[data-surface-modal-separator-before="window"]');
+  if (beforeWindow) beforeWindow.hidden = !(hasActions.surfaces && (hasActions.window || hasActions.new));
+
+  const beforeNew = rail.querySelector('[data-surface-modal-separator-before="new"]');
+  if (beforeNew) beforeNew.hidden = !(hasActions.window && hasActions.new);
+}
+
+export function placeSurfaceModalHeaderAction(header, element, groupName = "window", options = {}) {
+  if (!header || !element) return;
+  const normalizedGroup = SURFACE_MODAL_ACTION_GROUPS.includes(groupName) ? groupName : "window";
+  const group = surfaceModalActionGroup(header, normalizedGroup);
+  if (!group) return;
+
+  if (options.prepend) {
+    if (element.parentElement !== group || group.firstElementChild !== element) {
+      group.insertBefore(element, group.firstElementChild);
+    }
+  } else if (element.parentElement !== group) {
+    group.appendChild(element);
+  }
+
+  refreshSurfaceModalActionRail(header);
+}
+
 function markSurfaceModal(modal, metadata) {
   const element = modal?.element;
   const inner = modal?.inner || element?.querySelector?.(".modal-inner");
@@ -350,11 +442,11 @@ function configureModalSurfaceSwitcher(modal, metadata) {
     switcher.appendChild(createModalSurfaceButton(surface, metadata, modal));
   }
 
-  modal.close?.insertAdjacentElement("beforebegin", switcher);
+  placeSurfaceModalHeaderAction(modal.header, switcher, "surfaces");
 }
 
 function configureModalDockButton(modal, metadata) {
-  if (!metadata || !modal?.header || modal.header.querySelector(".surface-dock-button, .modal-dock-button")) {
+  if (!metadata || !modal?.header || modal.header.querySelector(".surface-dock-button")) {
     return;
   }
 
@@ -384,7 +476,7 @@ function configureModalDockButton(modal, metadata) {
     }
   });
 
-  modal.close?.insertAdjacentElement("beforebegin", button);
+  placeSurfaceModalHeaderAction(modal.header, button, "window", { prepend: true });
 }
 
 async function configureSurfaceModal(event) {

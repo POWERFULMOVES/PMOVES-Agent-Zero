@@ -33,6 +33,9 @@ Runtime-specific fields:
 - Use `output` to poll a running session and `runtime=reset` for a stuck session.
   Use `reset: true` on a new command when you need a clean session and want to
   run the replacement command immediately.
+- Execution and output polling timeouts follow the normal `_code_execution`
+  plugin settings. For builds, installs, servers, tests, training, and other
+  long work, redirect logs and poll with `runtime=output`.
 - Paths and shell syntax are evaluated on the CLI host, not inside Agent Zero.
 - When the user gives a relative path like `tmp/file.txt`, keep it relative to
   the CLI host terminal. Do not prepend or `cd` to `/a0/usr/workdir`; that is the

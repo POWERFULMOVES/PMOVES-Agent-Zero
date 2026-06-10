@@ -3,8 +3,8 @@ import * as api from "/js/api.js";
 import { callJsExtensions } from "/js/extensions.js";
 import * as css from "/js/css.js";
 import { sleep } from "/js/sleep.js";
+import { ttsService } from "/js/tts-service.js";
 import { store as attachmentsStore } from "/components/chat/attachments/attachmentsStore.js";
-import { store as speechStore } from "/components/chat/speech/speech-store.js";
 import { store as notificationStore } from "/components/notifications/notification-store.js";
 import { store as preferencesStore } from "/components/sidebar/bottom/preferences/preferences-store.js";
 import { store as inputStore } from "/components/chat/input/input-store.js";
@@ -14,6 +14,7 @@ import { store as chatTopStore } from "/components/chat/top-section/chat-top-sto
 import { store as _tooltipsStore } from "/components/tooltips/tooltip-store.js";
 import { store as messageQueueStore } from "/components/chat/message-queue/message-queue-store.js";
 import { store as syncStore } from "/components/sync/sync-store.js"
+import { getUserHour12, getUserTimezone } from "/js/time-utils.js";
 
 globalThis.fetchApi = api.fetchApi; // TODO - backward compatibility for non-modular scripts, remove once refactored to alpine
 
@@ -198,20 +199,21 @@ async function updateUserTime() {
   }
 
   const now = new Date();
-  const hours = now.getHours();
-  const minutes = now.getMinutes();
-  const seconds = now.getSeconds();
-  const ampm = hours >= 12 ? "pm" : "am";
-  const formattedHours = hours % 12 || 12;
-
-  // Format the time
-  const timeString = `${formattedHours}:${minutes
-    .toString()
-    .padStart(2, "0")}:${seconds.toString().padStart(2, "0")} ${ampm}`;
-
-  // Format the date
-  const options = { year: "numeric", month: "short", day: "numeric" };
-  const dateString = now.toLocaleDateString(undefined, options);
+  const timezone = getUserTimezone();
+  const hour12 = getUserHour12();
+  const timeString = new Intl.DateTimeFormat(undefined, {
+    hour: "numeric",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12,
+    timeZone: timezone,
+  }).format(now).toLowerCase();
+  const dateString = new Intl.DateTimeFormat(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    timeZone: timezone,
+  }).format(now);
 
   // Update the HTML
   userTimeElement.innerHTML = `${timeString}<br><span id="user-date">${dateString}</span>`;
@@ -288,7 +290,7 @@ let lastSpokenNo = 0;
 
 export function buildStateRequestPayload(options = {}) {
   const { forceFull = false } = options || {};
-  const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const timezone = getUserTimezone();
   return {
     context: context || null,
     log_from: forceFull ? 0 : lastLogVersion,
@@ -415,8 +417,7 @@ export async function applySnapshot(snapshot, options = {}) {
 
 export async function poll() {
   try {
-    // Get timezone from navigator
-    const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const timezone = getUserTimezone();
 
     const log_from = lastLogVersion;
     const response = await sendJsonData("/poll", {
@@ -458,7 +459,7 @@ function speakMessages(logs) {
     // finished response
     if (log.type == "response") {
       // lastSpokenNo = log.no;
-      speechStore.speakStream(
+      ttsService.speakStream(
         getChatBasedId(log.no),
         log.content,
         log.kvps?.finished
@@ -474,7 +475,7 @@ function speakMessages(logs) {
       log.kvps.tool_name != "response"
     ) {
       // lastSpokenNo = log.no;
-      speechStore.speakStream(getChatBasedId(log.no), log.kvps.headline, true);
+      ttsService.speakStream(getChatBasedId(log.no), log.kvps.headline, true);
       return;
     }
   }
@@ -550,7 +551,7 @@ export const setContext = function (id) {
   lastSpokenNo = 0;
 
   // Stop speech when switching chats
-  speechStore.stopAudio();
+  ttsService.stop();
 
   // Clear the chat history immediately to avoid showing stale content
   const chatHistoryEl = document.getElementById("chat-history");
