@@ -6,6 +6,7 @@ import sys
 
 from helpers.api import Request, Response
 import plugins._a0_connector.api.v1.base as connector_base
+from plugins._a0_connector.helpers.version import agent_zero_version
 
 
 _BASE_FEATURES = [
@@ -35,7 +36,9 @@ _OPTIONAL_FEATURES: dict[str, tuple[str, ...]] = {
     "agent_profile_set": ("api.agent_profile_set",),
     "agents_list": ("helpers.subagents",),
     "skills_list": ("helpers.skills", "helpers.files", "helpers.projects", "helpers.runtime"),
+    "skills_activate": ("helpers.skills", "helpers.persist_chat"),
     "skills_delete": ("helpers.skills", "helpers.files", "helpers.projects", "helpers.runtime"),
+    "installed_plugins": ("helpers.plugins",),
     "model_presets": ("plugins._model_config.helpers.model_config",),
     "model_switcher": ("plugins._model_config.helpers.model_config",),
     "browser_runtime_config": ("plugins._browser.helpers.config", "helpers.plugins"),
@@ -78,6 +81,7 @@ class Capabilities(connector_base.PublicConnectorApiHandler):
         return {
             "protocol": "a0-connector.v1",
             "version": "0.1.0",
+            "agent_zero_version": agent_zero_version(),
             "auth": ["session"],
             "auth_required": bool(login.is_login_required()),
             "transports": ["http", "websocket"],

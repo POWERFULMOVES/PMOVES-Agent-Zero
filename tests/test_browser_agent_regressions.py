@@ -1,5 +1,6 @@
 import asyncio
 import json
+import re
 import sys
 import threading
 from pathlib import Path
@@ -79,6 +80,7 @@ sys.modules.setdefault("plugins._model_config.helpers.model_config", _model_conf
 def anyio_backend():
     return "asyncio"
 
+from helpers import ephemeral_images
 from helpers.errors import RepairableException
 from plugins._browser.helpers.config import (
     build_browser_launch_config,
@@ -1122,6 +1124,11 @@ def test_browser_viewer_uses_cdp_screencast_transport():
     assert '"snapshot": snapshot' in ws_browser
     assert 'const BROWSER_SNAPSHOT_META_KEY = "browser_snapshot";' in browser_tool_handler
     assert "staticScreenshotUri(kvps)" in browser_tool_handler
+    assert "/components/modals/image-viewer/image-viewer-store.js" in browser_tool_handler
+    assert "function openStaticScreenshot(uri = \"\")" in browser_tool_handler
+    assert "imageViewerStore.open(src, { name: \"Browser screenshot\" });" in browser_tool_handler
+    assert "if (staticUri) {" in browser_tool_handler
+    assert "openStaticScreenshot(staticUri);" in browser_tool_handler
     assert "delete displayKvps[BROWSER_SNAPSHOT_META_KEY];" in browser_tool_handler
     assert "startBrowserScreenshotPreview(button, image, resolveBrowserPayload)" in browser_tool_handler
     assert "FRAME_FALLBACK_SCREENSHOT_SECONDS" not in ws_browser
@@ -1220,7 +1227,13 @@ def test_browser_runtime_and_content_helper_expose_annotation_target():
     helper = (
         PROJECT_ROOT / "plugins" / "_browser" / "assets" / "browser-page-content.js"
     ).read_text(encoding="utf-8")
+    dom_helper = (
+        PROJECT_ROOT / "plugins" / "_browser" / "assets" / "browser-dom-helper.js"
+    ).read_text(encoding="utf-8")
 
+    assert "DOM_HELPER_PATH" in runtime
+    assert "browser-dom-helper.js" in runtime
+    assert "globalThis.__spaceBrowserDomHelper__?.captureDocument" in runtime
     assert "async def annotation_target" in runtime
     assert "globalThis.__spaceBrowserPageContent__.annotate(payload || null)" in runtime
     assert "function annotate(payload = null)" in helper
@@ -1232,6 +1245,11 @@ def test_browser_runtime_and_content_helper_expose_annotation_target():
     assert "fileInputFor," in helper
     assert "sanitizeAnnotationDom" in helper
     assert "password" in helper
+    assert "__spaceBrowserDomHelper__" in dom_helper
+    assert "captureDocument(payload)" in dom_helper
+    assert "clickNode(frameChain, nodeId)" in dom_helper
+    assert "requestChildFrameOperation" in dom_helper
+    assert "data-space-browser-frame-chain" in dom_helper
 
 
 def test_browser_content_helper_keeps_label_wrapped_controls_referenceable():
@@ -1271,6 +1289,77 @@ def test_browser_runtime_requires_current_content_helper_for_modifier_clicks():
     ).read_text(encoding="utf-8")
 
     assert "__spaceBrowserPageContent__?.ready?.()" in runtime
+
+
+@pytest.mark.anyio
+async def test_browser_dom_helper_clicks_content_ref_inside_iframe():
+    pytest.importorskip("playwright.async_api")
+    from playwright.async_api import async_playwright
+
+    browser_binary = get_playwright_binary()
+    if not browser_binary:
+        pytest.skip("Playwright Chromium binary is not installed")
+
+    dom_helper = (
+        PROJECT_ROOT / "plugins" / "_browser" / "assets" / "browser-dom-helper.js"
+    ).read_text(encoding="utf-8")
+    content_helper = (
+        PROJECT_ROOT / "plugins" / "_browser" / "assets" / "browser-page-content.js"
+    ).read_text(encoding="utf-8")
+
+    async with async_playwright() as playwright:
+        try:
+            browser = await playwright.chromium.launch(
+                executable_path=str(browser_binary),
+                headless=True,
+                args=["--no-sandbox"],
+            )
+        except Exception as exc:
+            pytest.skip(f"Playwright Chromium could not launch: {exc}")
+
+        try:
+            context = await browser.new_context()
+            await context.add_init_script(dom_helper)
+            await context.add_init_script(content_helper)
+            page = await context.new_page()
+            await page.set_content(
+                """
+                <html>
+                  <body>
+                    <iframe srcdoc="
+                      <html>
+                        <body>
+                          <button id='inside' onclick=&quot;document.body.dataset.clicked = 'yes'; this.textContent = 'Clicked inside frame'&quot;>
+                            Frame Launch
+                          </button>
+                        </body>
+                      </html>
+                    "></iframe>
+                  </body>
+                </html>
+                """
+            )
+            await page.wait_for_function(
+                "() => Boolean(document.querySelector('iframe')?.contentWindow?.__spaceBrowserDomHelper__)"
+            )
+
+            captured = await page.evaluate(
+                "(payload) => globalThis.__spaceBrowserPageContent__.capture(payload || null)",
+                None,
+            )
+            document_content = str(captured.get("document") or "")
+            match = re.search(r"\[button (\d+)\]\s*Frame Launch", document_content)
+            assert match, document_content
+
+            action = await page.evaluate(
+                "(ref) => globalThis.__spaceBrowserPageContent__.click(ref)",
+                match.group(1),
+            )
+            frame = next(frame for frame in page.frames if frame != page.main_frame)
+            assert await frame.evaluate("() => document.body.dataset.clicked") == "yes"
+            assert action["status"]["reacted"] is True
+        finally:
+            await browser.close()
 
 
 @pytest.mark.anyio
@@ -1803,12 +1892,10 @@ async def test_browser_tool_records_static_history_screenshot(monkeypatch, tmp_p
                     },
                 }
             if method == "screenshot_file":
-                Path(kwargs["path"]).parent.mkdir(parents=True, exist_ok=True)
-                Path(kwargs["path"]).write_bytes(b"jpeg")
                 return {
                     "browser_id": args[0],
-                    "path": kwargs["path"],
-                    "a0_path": "/a0/usr/chats/chat/browser/screenshots/open.jpg",
+                    "ephemeral": True,
+                    "ephemeral_ref": "a0-ephemeral-image://fake",
                     "mime": "image/jpeg",
                     "state": {"id": args[0], "context_id": "browser-context"},
                 }
@@ -1856,11 +1943,13 @@ async def test_browser_tool_records_static_history_screenshot(monkeypatch, tmp_p
     assert calls[1][1] == (1,)
     assert calls[1][2]["quality"] == browser_tool_module.HISTORY_SCREENSHOT_QUALITY
     assert calls[1][2]["full_page"] is False
-    assert Path(calls[1][2]["path"]).parent == tmp_path / "usr" / "chats" / "chat" / "browser" / "screenshots"
-    assert Path(calls[1][2]["path"]).read_bytes() == b"jpeg"
-    assert log.updates[-1]["Screenshot"].startswith("img://")
+    assert calls[1][2]["path"] == ""
+    assert "Screenshot" not in log.updates[-1]
     assert log.updates[-1]["browser_snapshot"]["browser_id"] == 1
-    assert log.updates[-1]["browser_snapshot"]["context_id"] == "browser-context"
+    assert log.updates[-1]["browser_snapshot"]["context_id"] == "chat"
+    assert log.updates[-1]["browser_snapshot"]["browser_context_id"] == "browser-context"
+    assert log.updates[-1]["browser_snapshot"]["ephemeral"] is True
+    assert log.updates[-1]["browser_snapshot"]["ephemeral_ref"] == "a0-ephemeral-image://fake"
 
 
 @pytest.mark.anyio
@@ -2388,7 +2477,7 @@ async def test_browser_runtime_remounts_initial_changed_viewport():
 
 
 @pytest.mark.anyio
-async def test_browser_runtime_screenshot_file_writes_without_base64(monkeypatch, tmp_path):
+async def test_browser_runtime_screenshot_file_defaults_to_chat_scoped_artifact(monkeypatch, tmp_path):
     screenshot_calls = []
 
     def fake_get_abs_path(*parts):
@@ -2406,8 +2495,9 @@ async def test_browser_runtime_screenshot_file_writes_without_base64(monkeypatch
 
         async def screenshot(self, **kwargs):
             screenshot_calls.append(kwargs)
-            Path(kwargs["path"]).parent.mkdir(parents=True, exist_ok=True)
-            Path(kwargs["path"]).write_bytes(b"image-bytes")
+            if kwargs.get("path"):
+                Path(kwargs["path"]).parent.mkdir(parents=True, exist_ok=True)
+                Path(kwargs["path"]).write_bytes(b"image-bytes")
             return b"image-bytes"
 
         async def title(self):
@@ -2422,21 +2512,22 @@ async def test_browser_runtime_screenshot_file_writes_without_base64(monkeypatch
 
     result = await core.screenshot_file(5, quality=500)
 
-    path = Path(result["path"])
-    assert path.exists()
-    assert path.parent == tmp_path / "tmp" / "browser" / "screenshots" / "ctx_id"
-    assert path.name.startswith("browser-5-")
-    assert path.suffix == ".jpg"
-    assert result["a0_path"].startswith("/a0/tmp/browser/screenshots/ctx_id/browser-5-")
+    assert Path(result["path"]).read_bytes() == b"image-bytes"
+    assert result["a0_path"].startswith("/a0/usr/chats/ctx_id/screenshots/browser/browser-5-")
+    assert result["context_id"] == "ctx/id"
     assert result["mime"] == "image/jpeg"
+    assert result["ephemeral"] is False
+    assert result["chat_scoped"] is True
     assert result["vision_load"] == {
         "tool_name": "vision_load",
-        "tool_args": {"paths": [result["path"]]},
+        "tool_args": {"paths": [result["a0_path"]]},
     }
     assert "image" not in result
+    assert not list((tmp_path / "tmp" / "browser" / "screenshots").rglob("*.jpg"))
     assert screenshot_calls[-1]["type"] == "jpeg"
     assert screenshot_calls[-1]["quality"] == 95
     assert screenshot_calls[-1]["full_page"] is False
+    assert "path" not in screenshot_calls[-1]
 
     png_path = tmp_path / "custom.png"
     png_result = await core.screenshot_file(5, quality=1, full_page=True, path=str(png_path))
@@ -2448,6 +2539,72 @@ async def test_browser_runtime_screenshot_file_writes_without_base64(monkeypatch
         "type": "png",
         "full_page": True,
     }
+
+
+@pytest.mark.anyio
+async def test_vision_load_materializes_ephemeral_browser_refs(monkeypatch, tmp_path):
+    monkeypatch.setitem(sys.modules, "helpers.tool", SimpleNamespace(Response=_TestResponse, Tool=_TestTool))
+    history_stub = ModuleType("helpers.history")
+
+    class _RawMessage(dict):
+        def __init__(self, raw_content, preview):
+            super().__init__(raw_content=raw_content, preview=preview)
+
+    history_stub.RawMessage = _RawMessage
+    monkeypatch.setitem(sys.modules, "helpers.history", history_stub)
+    monkeypatch.delitem(sys.modules, "tools.vision_load", raising=False)
+    import tools.vision_load as vision_load_module
+
+    def fake_get_abs_path(*parts):
+        return str(tmp_path.joinpath(*parts))
+
+    def fake_normalize_a0_path(path):
+        return "/a0/" + str(Path(path).relative_to(tmp_path)).replace("\\", "/")
+
+    monkeypatch.setattr(vision_load_module.chat_media.files, "get_abs_path", fake_get_abs_path)
+    monkeypatch.setattr(vision_load_module.chat_media.files, "normalize_a0_path", fake_normalize_a0_path)
+    monkeypatch.setattr(
+        vision_load_module.plugins,
+        "get_plugin_config",
+        lambda *args, **kwargs: {"chat_model": {"max_embeds": 10}},
+    )
+
+    tool_results = []
+    messages = []
+    updates = []
+    agent = SimpleNamespace(
+        context=SimpleNamespace(id="ctx-vision"),
+        agent_name="Agent 0",
+        hist_add_tool_result=lambda *args, **kwargs: tool_results.append((args, kwargs)),
+        hist_add_message=lambda *args, **kwargs: messages.append((args, kwargs)),
+    )
+    ref = vision_load_module.ephemeral_images.put_image(
+        context_id="ctx-vision",
+        mime="image/jpeg",
+        data=SMALL_JPEG_10X10,
+        name="browser-shot.jpg",
+    )
+    tool = vision_load_module.VisionLoad(
+        agent=agent,
+        name="vision_load",
+        method=None,
+        args={"paths": [ref]},
+        message="",
+        loop_data=None,
+    )
+    tool.log = SimpleNamespace(id="vision-log", update=lambda **kwargs: updates.append(kwargs))
+
+    response = await tool.execute(paths=[ref])
+    await tool.after_execution(response)
+
+    assert vision_load_module.ephemeral_images.get_image(ref, context_id="ctx-vision") is None
+    assert tool.loaded_paths == ["browser-shot.jpg"]
+    raw_message = messages[0][1]["content"]
+    stored_ref = raw_message["raw_content"][0]["image_url"]["url"]
+    assert stored_ref.startswith("/a0/usr/chats/ctx-vision/screenshots/browser/browser-shot-")
+    stored_path = tmp_path / stored_ref.removeprefix("/a0/")
+    assert stored_path.read_bytes() == __import__("base64").b64decode(SMALL_JPEG_10X10)
+    assert updates[-1]["result"] == "1 images loaded, 0 skipped"
 
 
 @pytest.mark.anyio

@@ -22,8 +22,7 @@ class WsOffice(WsHandler):
             if event in {"office_input", "office_save", "office_close"}:
                 return {
                     "ok": False,
-                    "requires_editor": True,
-                    "error": "Markdown editing moved to /plugins/_editor.",
+                    "error": "Office WebSocket editing is not available for Markdown; use the Editor surface.",
                 }
         except FileNotFoundError as exc:
             return WsResult.error(code="OFFICE_SESSION_NOT_FOUND", message=str(exc), correlation_id=data.get("correlationId"))
@@ -45,25 +44,27 @@ class WsOffice(WsHandler):
         elif path:
             doc = document_store.register_document(path, context_id=context_id)
         else:
+            fmt = str(data.get("format") or "odt").lower().strip().lstrip(".")
+            if fmt not in desktop_session.OFFICIAL_EXTENSIONS:
+                return WsResult.error(
+                    code="UNSUPPORTED_OFFICE_DOCUMENT",
+                    message=f"Office can only create LibreOffice formats, not .{fmt}.",
+                    correlation_id=data.get("correlationId"),
+                )
             doc = document_store.create_document(
                 kind=str(data.get("kind") or "document"),
                 title=str(data.get("title") or "Untitled"),
-                fmt=str(data.get("format") or "odt"),
+                fmt=fmt,
                 content=str(data.get("content") or ""),
                 context_id=context_id,
             )
         ext = str(doc.get("extension") or "").lower()
         if ext == "md":
-            return {
-                "ok": True,
-                "requires_editor": True,
-                "file_id": doc["file_id"],
-                "title": doc["basename"],
-                "extension": doc["extension"],
-                "path": doc["path"],
-                "document": _public_doc(doc),
-                "version": document_store.item_version(doc),
-            }
+            return WsResult.error(
+                code="UNSUPPORTED_OFFICE_DOCUMENT",
+                message="Markdown documents use the Editor surface.",
+                correlation_id=data.get("correlationId"),
+            )
         if ext in desktop_session.OFFICIAL_EXTENSIONS:
             return {
                 "ok": True,

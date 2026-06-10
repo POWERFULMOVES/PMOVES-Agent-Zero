@@ -551,6 +551,32 @@ def test_text_editor_execute_accepts_action_alias_for_read(
     assert "line-1" in response.message
 
 
+def test_text_editor_write_result_carries_markdown_canvas_intent(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    module, _calls = _load_text_editor_tool(monkeypatch)
+    target = tmp_path / "note.md"
+    tool = module.TextEditor(_FakeAgent(), "text_editor", "write", {}, "", None)
+
+    response = asyncio.run(
+        tool._write(
+            path=str(target),
+            content="# Note\n",
+            open_in_canvas=True,
+        )
+    )
+
+    assert target.read_text(encoding="utf-8") == "# Note\n"
+    assert response.additional == {
+        "_tool_name": "text_editor",
+        "action": "write",
+        "path": str(target),
+        "format": "md",
+        "extension": "md",
+        "open_in_canvas": True,
+    }
+
+
 def test_text_editor_patch_text_rejects_simultaneous_edits(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

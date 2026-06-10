@@ -7,7 +7,8 @@ from plugins._desktop.helpers import prompt_context
 
 class IncludeDesktopState(Extension):
     async def execute(self, loop_data: LoopData = LoopData(), **kwargs):
-        context = prompt_context.build_context()
+        context_id = str(getattr(getattr(self.agent, "context", None), "id", "") or "")
+        context = prompt_context.build_context(context_id=context_id)
         if not context:
             loop_data.extras_temporary.pop("desktop_state", None)
             return

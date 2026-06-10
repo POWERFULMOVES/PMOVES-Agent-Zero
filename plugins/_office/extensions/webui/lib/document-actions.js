@@ -1,7 +1,6 @@
 import { showButtonFeedback } from "/components/messages/action-buttons/simple-action-buttons.js";
 import { open as openSurface } from "/js/surfaces.js";
 
-const EDITOR_FORMATS = ["md"];
 const DESKTOP_FORMATS = ["odt", "ods", "odp", "docx", "xlsx", "pptx"];
 
 function basename(path = "") {
@@ -105,26 +104,8 @@ export async function openDocumentInDesktop(document = {}) {
   });
 }
 
-export async function openDocumentInEditor(document = {}) {
-  await openSurface("editor", {
-    path: document.path || "",
-    file_id: document.file_id || "",
-    refresh: true,
-    source: "message-action",
-  });
-}
-
-export async function openDocumentArtifact(document = {}) {
-  if (usesEditor(document)) {
-    await openDocumentInEditor(document);
-    return;
-  }
+export async function openOfficeArtifact(document = {}) {
   await openDocumentInDesktop(document);
-}
-
-function usesEditor(doc = {}) {
-  const format = String(doc.format || doc.extension || "").toLowerCase();
-  return EDITOR_FORMATS.includes(format);
 }
 
 function usesDesktop(doc = {}) {
@@ -137,7 +118,6 @@ function canvasActionTitle(doc = {}) {
   if (["odt", "docx"].includes(format)) return "Open in canvas with Writer";
   if (["ods", "xlsx"].includes(format)) return "Open in canvas with Calc";
   if (["odp", "pptx"].includes(format)) return "Open in canvas with Impress";
-  if (format === "md") return "Open Markdown in Editor";
   return "Open in canvas";
 }
 
@@ -145,7 +125,6 @@ function documentIcon(doc = {}) {
   const format = String(doc.format || doc.extension || "").toLowerCase();
   if (["ods", "xlsx"].includes(format)) return "table_chart";
   if (["odp", "pptx"].includes(format)) return "slideshow";
-  if (format === "md") return "article";
   return usesDesktop(doc) ? "description" : "draft";
 }
 
@@ -179,7 +158,7 @@ export function buildDocumentFileCard(document = {}) {
 
   const detail = globalThis.document.createElement("span");
   detail.className = "document-file-card-path";
-  detail.textContent = statusLine(document) || "Document artifact";
+  detail.textContent = statusLine(document) || "Office artifact";
   meta.appendChild(detail);
   card.appendChild(meta);
 
@@ -191,11 +170,11 @@ export function buildDocumentFileCard(document = {}) {
   }
 
   if (document.path || document.file_id) {
-    card.addEventListener("click", () => openDocumentArtifact(document));
+    card.addEventListener("click", () => openOfficeArtifact(document));
     card.addEventListener("keydown", (event) => {
       if (event.key !== "Enter" && event.key !== " ") return;
       event.preventDefault();
-      void openDocumentArtifact(document);
+      void openOfficeArtifact(document);
     });
   } else {
     card.setAttribute("aria-disabled", "true");
@@ -258,7 +237,7 @@ export function buildDocumentFileActionButtons(document = {}) {
       createDocumentActionButton(
         "open_in_new",
         "Open in canvas",
-        () => openDocumentArtifact(document),
+        () => openOfficeArtifact(document),
         {
           className: "document-file-action-primary",
           title: canvasActionTitle(document),

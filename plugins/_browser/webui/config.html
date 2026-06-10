@@ -16,24 +16,38 @@
         x-destroy="$store.browserConfig.cleanup()"
       >
         <div class="browser-config-card">
-          <div class="section-title">Host Browser</div>
+          <div class="section-title">Browser Runtime</div>
           <div class="section-description">
-            Use Chrome, Edge, or Chromium on this computer. Keep A0 CLI connected; the browser opens when the agent first needs it.
+            Choose the internal Docker browser or a browser on the computer running A0 CLI.
           </div>
 
           <label class="browser-config-field">
             <span class="browser-config-field-label">Browser location</span>
             <select x-model="$store.browserConfig.config.runtime_backend">
-              <option value="container">Docker browser</option>
-              <option value="host_required">Bring Your Own Browser</option>
+              <option value="container">Internal Docker browser</option>
+              <option value="host_required">Host browser through A0 CLI</option>
             </select>
+            <span
+              class="browser-config-field-help"
+              x-show="$store.browserConfig.config.runtime_backend !== 'host_required'"
+            >
+              Runs inside Agent Zero's Docker environment. No A0 CLI connection or host browser setup is needed.
+            </span>
             <span
               class="browser-config-field-help"
               x-show="$store.browserConfig.config.runtime_backend === 'host_required'"
             >
-              Use Google Chrome or a Chromium family browser. Visit chrome://inspect/#remote-debugging and enable "Allow remote debugging".
+              Uses Chrome, Edge, or Chromium on the A0 CLI host. Keep A0 CLI connected; the browser opens when the agent first needs it.
             </span>
           </label>
+
+          <div
+            class="browser-config-note browser-config-success"
+            x-show="$store.browserConfig.config.runtime_backend !== 'host_required'"
+          >
+            <span class="material-symbols-outlined">deployed_code</span>
+            <span>Internal Docker browser selected. Host-browser CLI settings are ignored for Browser tool runs.</span>
+          </div>
 
           <label
             class="browser-config-field"
@@ -63,7 +77,10 @@
             </span>
           </div>
 
-          <label class="browser-config-field">
+          <label
+            class="browser-config-field"
+            x-show="$store.browserConfig.config.runtime_backend === 'host_required'"
+          >
             <span class="browser-config-field-label">Page content access</span>
             <select x-model="$store.browserConfig.config.host_browser_privacy_policy">
               <option value="enforce_local">Local models only</option>
@@ -75,7 +92,7 @@
 
           <div class="browser-config-note">
             <span class="material-symbols-outlined" :class="{ spinning: $store.browserConfig.hostBrowserStatusLoading }" x-text="$store.browserConfig.hostBrowserStatusLoading ? 'progress_activity' : 'captive_portal'"></span>
-            <span x-text="$store.browserConfig.hostBrowserConnectorLabel()"></span>
+            <span x-text="$store.browserConfig.browserRuntimeStatusLabel()"></span>
           </div>
         </div>
 

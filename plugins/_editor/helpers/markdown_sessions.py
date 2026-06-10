@@ -21,6 +21,10 @@ class MarkdownSession:
     text: str = ""
     dirty: bool = False
     active: bool = False
+    base_sha256: str = ""
+    base_version: str = ""
+    external_modified: bool = False
+    external_version: str = ""
     opened_at: float = field(default_factory=time.time)
     updated_at: float = field(default_factory=time.time)
     last_active_at: float = field(default_factory=time.time)
@@ -50,9 +54,14 @@ class MarkdownSessionManager:
                 continue
             if sid:
                 session.sid = sid
-            if refresh and not session.dirty:
+            doc_sha = str(doc.get("sha256") or "")
+            should_reload = not session.dirty and (refresh or (doc_sha and doc_sha != session.base_sha256))
+            if should_reload:
                 session.text = document_store.read_text_for_editor(doc)
                 session.dirty = False
+                _set_session_base(session, doc)
+            elif session.dirty and doc_sha and doc_sha != session.base_sha256:
+                _mark_session_external(session, doc)
             session.path = doc["path"]
             session.title = doc["basename"]
             session.updated_at = time.time()
@@ -69,6 +78,7 @@ class MarkdownSessionManager:
             title=doc["basename"],
             text=document_store.read_text_for_editor(doc),
         )
+        _set_session_base(session, doc)
         self._sessions[session.session_id] = session
         self.activate(session.session_id)
         return self._payload(session, doc)
@@ -89,12 +99,22 @@ class MarkdownSessionManager:
         if text is not None:
             session.text = str(text)
 
+        conflict = self._save_conflict(session)
+        if conflict is not None:
+            return conflict
+
         updated = document_store.write_markdown(session.file_id, session.text)
         session.updated_at = time.time()
         session.dirty = False
         session.path = updated["path"]
         session.title = updated["basename"]
-        self._refresh_file_sessions(updated, text=session.text, dirty=False)
+        _set_session_base(session, updated)
+        self._refresh_file_sessions(
+            updated,
+            text=session.text,
+            dirty=False,
+            source_session_id=session.session_id,
+        )
         return {
             "ok": True,
             "document": _public_doc(updated),
@@ -114,7 +134,7 @@ class MarkdownSessionManager:
         return {"ok": True, "session_id": session.session_id}
 
     def renamed(self, file_id: str, doc: dict[str, Any], text: str | None = None) -> dict[str, Any]:
-        updated = self._refresh_file_sessions(doc, text=text, dirty=False)
+        updated = self._refresh_file_sessions(doc, text=text, dirty=False, refresh_dirty=True)
         return {"ok": True, "updated": updated, "file_id": file_id}
 
     def refresh_document(self, file_id: str) -> dict[str, Any]:
@@ -134,6 +154,43 @@ class MarkdownSessionManager:
             dirty=False,
         )
         return {"ok": True, "refreshed": len(refreshed), "sessions": refreshed}
+
+    def sync_external_file_mutations(self, paths: list[str] | tuple[str, ...] | str, context_id: str = "") -> dict[str, Any]:
+        raw_paths = [paths] if isinstance(paths, str) else list(paths or [])
+        normalized_paths = [str(path or "").strip() for path in raw_paths if str(path or "").strip()]
+        if not normalized_paths:
+            return {"ok": True, "matched": 0, "sessions": []}
+
+        matched_file_ids: set[str] = set()
+        matched_sessions: list[str] = []
+        for session in list(self._sessions.values()):
+            if not any(_paths_match(path, session.path, session.context_id) for path in normalized_paths):
+                continue
+            matched_file_ids.add(session.file_id)
+            matched_sessions.append(session.session_id)
+
+        for file_id in matched_file_ids:
+            sessions = [session for session in self._sessions.values() if session.file_id == file_id]
+            if not sessions:
+                continue
+            session = sessions[0]
+            try:
+                doc = document_store.register_document(session.path, context_id=session.context_id)
+            except Exception:
+                try:
+                    doc = document_store.get_document(file_id)
+                except Exception:
+                    continue
+                for target in sessions:
+                    _mark_session_external(target, doc)
+                continue
+            self.refresh_document(file_id)
+
+        return {
+            "ok": True,
+            "matched": len(matched_file_ids),
+            "sessions": matched_sessions,
+        }
 
     def list_open(self, context_id: str = "", limit: int = 20) -> list[dict[str, Any]]:
         context_id = str(context_id or "")
@@ -175,6 +232,8 @@ class MarkdownSessionManager:
                 "last_modified": last_modified,
                 "dirty": session.dirty,
                 "active": session.active,
+                "external_modified": session.external_modified,
+                "external_version": session.external_version,
                 "open_sessions": counts.get(session.file_id or session.path, 1),
                 "last_active_at": session.last_active_at,
             })
@@ -205,18 +264,90 @@ class MarkdownSessionManager:
             self.close(session_id)
         return len(doomed)
 
-    def _refresh_file_sessions(self, doc: dict[str, Any], text: str | None = None, dirty: bool | None = None) -> list[str]:
+    def _save_conflict(self, session: MarkdownSession) -> dict[str, Any] | None:
+        try:
+            doc = document_store.get_document(session.file_id)
+        except Exception as exc:
+            return {
+                "ok": False,
+                "code": "editor_document_missing",
+                "error": f"Editor save failed because the document metadata is missing: {exc}",
+            }
+
+        path = Path(doc["path"])
+        desired = str(session.text or "").encode("utf-8")
+        desired_sha = document_store.sha256_bytes(desired)
+        current_exists = path.exists()
+        current = path.read_bytes() if current_exists else b""
+        current_sha = document_store.sha256_bytes(current) if current_exists else ""
+        expected_sha = session.base_sha256 or str(doc.get("sha256") or "")
+
+        if expected_sha and current_sha != expected_sha:
+            if current_exists and desired_sha == current_sha:
+                updated = document_store.register_document(path, context_id=session.context_id)
+                session.dirty = False
+                session.path = updated["path"]
+                session.title = updated["basename"]
+                _set_session_base(session, updated)
+                self._refresh_file_sessions(
+                    updated,
+                    text=session.text,
+                    dirty=False,
+                    source_session_id=session.session_id,
+                )
+                return {
+                    "ok": True,
+                    "document": _public_doc(updated),
+                    "version": document_store.item_version(updated),
+                }
+
+            latest_doc = _refresh_registered_doc(doc, context_id=session.context_id)
+            _mark_session_external(session, latest_doc)
+            return {
+                "ok": False,
+                "code": "external_change_conflict",
+                "error": (
+                    "This file changed on disk since the Editor loaded it. "
+                    "Reload it before saving to avoid overwriting the newer file."
+                ),
+                "document": _public_doc(latest_doc),
+                "version": document_store.item_version(latest_doc),
+            }
+
+        return None
+
+    def _refresh_file_sessions(
+        self,
+        doc: dict[str, Any],
+        text: str | None = None,
+        dirty: bool | None = None,
+        *,
+        source_session_id: str = "",
+        refresh_dirty: bool = False,
+    ) -> list[str]:
         file_id = str(doc.get("file_id") or "").strip()
         refreshed: list[str] = []
         for session in self._sessions.values():
             if session.file_id != file_id:
                 continue
-            if text is not None:
+            can_replace_text = (
+                text is not None
+                and (
+                    refresh_dirty
+                    or not session.dirty
+                    or (source_session_id and session.session_id == source_session_id)
+                )
+            )
+            if can_replace_text:
                 session.text = str(text)
             session.path = doc["path"]
             session.title = doc["basename"]
-            if dirty is not None:
+            if dirty is not None and (can_replace_text or refresh_dirty or not session.dirty):
                 session.dirty = dirty
+            if can_replace_text or not session.dirty:
+                _set_session_base(session, doc)
+            elif text is not None:
+                _mark_session_external(session, doc)
             session.updated_at = time.time()
             refreshed.append(session.session_id)
         return refreshed
@@ -232,6 +363,8 @@ class MarkdownSessionManager:
             "text": session.text,
             "dirty": session.dirty,
             "active": session.active,
+            "external_modified": session.external_modified,
+            "external_version": session.external_version,
             "context_id": session.context_id,
             "document": _public_doc(doc),
             "version": document_store.item_version(doc),
@@ -266,6 +399,51 @@ def _public_doc(doc: dict[str, Any]) -> dict[str, Any]:
         "last_modified": doc["last_modified"],
         "exists": Path(doc["path"]).exists(),
     }
+
+
+def _set_session_base(session: MarkdownSession, doc: dict[str, Any]) -> None:
+    session.base_sha256 = str(doc.get("sha256") or "")
+    session.base_version = document_store.item_version(doc)
+    session.external_modified = False
+    session.external_version = ""
+
+
+def _mark_session_external(session: MarkdownSession, doc: dict[str, Any]) -> None:
+    session.external_modified = True
+    try:
+        session.external_version = document_store.item_version(doc)
+    except Exception:
+        session.external_version = ""
+
+
+def _refresh_registered_doc(doc: dict[str, Any], context_id: str = "") -> dict[str, Any]:
+    try:
+        path = Path(doc["path"])
+        if path.exists():
+            return document_store.register_document(path, context_id=context_id)
+    except Exception:
+        pass
+    return doc
+
+
+def _paths_match(left: str, right: str, context_id: str = "") -> bool:
+    left_path = _normalize_path_for_compare(left, context_id=context_id)
+    right_path = _normalize_path_for_compare(right, context_id=context_id)
+    return bool(left_path and right_path and left_path == right_path)
+
+
+def _normalize_path_for_compare(path: str, context_id: str = "") -> str:
+    value = str(path or "").strip()
+    if not value:
+        return ""
+    try:
+        return str(document_store.normalize_path(value, context_id=context_id))
+    except Exception:
+        pass
+    try:
+        return str(document_store._path_from_a0(value).resolve(strict=False))
+    except Exception:
+        return str(Path(value).expanduser().resolve(strict=False))
 
 
 def _apply_text_patch(text: str, patch: dict[str, Any]) -> str:

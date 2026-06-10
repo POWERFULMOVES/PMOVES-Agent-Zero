@@ -156,6 +156,18 @@ def test_project_presets_are_separate_and_resolve_by_scope(monkeypatch, tmp_path
     )
 
 
+def test_bundled_utility_presets_inherit_advanced_settings():
+    import yaml
+
+    presets_path = PROJECT_ROOT / "plugins" / "_model_config" / "default_presets.yaml"
+    presets = yaml.safe_load(presets_path.read_text(encoding="utf-8"))
+
+    for preset in presets:
+        utility = preset.get("utility") or {}
+        assert "ctx_length" not in utility
+        assert "ctx_input" not in utility
+
+
 @pytest.mark.asyncio
 async def test_model_presets_api_returns_global_or_combined_by_project(monkeypatch, tmp_path):
     _prepare_a0_tree(monkeypatch, tmp_path)
@@ -233,6 +245,194 @@ def test_project_save_copies_selected_preset_to_scoped_model_config(monkeypatch,
     ).read_text(encoding="utf-8")
     assert "llm" not in project_json
     assert "_model_config" not in project_json
+
+
+def test_preset_application_deep_merges_model_slots(monkeypatch, tmp_path):
+    _prepare_a0_tree(monkeypatch, tmp_path)
+
+    from plugins._model_config.helpers import model_config
+
+    base_config = {
+        "allow_chat_override": True,
+        "chat_model": {
+            "provider": "openrouter",
+            "name": "configured-chat",
+            "ctx_length": 200000,
+            "ctx_history": 0.5,
+            "kwargs": {"temperature": 0.2, "routing": {"order": ["a", "b"]}},
+        },
+        "utility_model": {
+            "provider": "openrouter",
+            "name": "configured-utility",
+            "ctx_length": 200000,
+            "ctx_input": 0.4,
+            "kwargs": {"temperature": 0.1, "routing": {"order": ["fast"]}},
+        },
+        "embedding_model": {
+            "provider": "huggingface",
+            "name": "configured-embedding",
+            "kwargs": {"device": "cpu", "batch_size": 16},
+        },
+    }
+    preset = {
+        "name": "Research",
+        "chat": {
+            "provider": "anthropic",
+            "name": "claude-research",
+            "kwargs": {"routing": {"priority": "quality"}},
+        },
+        "utility": {
+            "provider": "openrouter",
+            "name": "utility-research",
+            "kwargs": {"routing": {"timeout": 30}},
+        },
+        "embedding": {
+            "provider": "openai",
+            "name": "text-embedding-3-large",
+        },
+    }
+
+    config = model_config.build_config_from_preset(preset, base_config)
+
+    assert config["chat_model"]["name"] == "claude-research"
+    assert config["chat_model"]["ctx_length"] == 200000
+    assert config["chat_model"]["kwargs"] == {
+        "temperature": 0.2,
+        "routing": {"order": ["a", "b"], "priority": "quality"},
+    }
+    assert config["utility_model"]["name"] == "utility-research"
+    assert config["utility_model"]["ctx_length"] == 200000
+    assert config["utility_model"]["ctx_input"] == 0.4
+    assert config["utility_model"]["kwargs"] == {
+        "temperature": 0.1,
+        "routing": {"order": ["fast"], "timeout": 30},
+    }
+    assert config["embedding_model"]["name"] == "text-embedding-3-large"
+    assert config["embedding_model"]["kwargs"] == {"device": "cpu", "batch_size": 16}
+
+
+def test_preset_application_inherits_optional_slots(monkeypatch, tmp_path):
+    _prepare_a0_tree(monkeypatch, tmp_path)
+
+    from plugins._model_config.helpers import model_config
+
+    base_config = {
+        "chat_model": {"provider": "openrouter", "name": "configured-chat"},
+        "utility_model": {
+            "provider": "openrouter",
+            "name": "configured-utility",
+            "ctx_length": 200000,
+        },
+        "embedding_model": {
+            "provider": "huggingface",
+            "name": "configured-embedding",
+        },
+    }
+    preset = {
+        "name": "Chat Only",
+        "chat": {"provider": "anthropic", "name": "claude-research"},
+        "utility": {"ctx_length": 128000},
+    }
+
+    config = model_config.build_config_from_preset(preset, base_config)
+
+    assert config["chat_model"]["name"] == "claude-research"
+    assert config["utility_model"] == base_config["utility_model"]
+    assert config["embedding_model"] == base_config["embedding_model"]
+
+
+def test_legacy_utility_preset_defaults_do_not_override_tuned_config(monkeypatch, tmp_path):
+    _prepare_a0_tree(monkeypatch, tmp_path)
+
+    from plugins._model_config.helpers import model_config
+
+    base_config = {
+        "utility_model": {
+            "provider": "openrouter",
+            "name": "configured-utility",
+            "api_base": "https://custom.example/v1",
+            "ctx_length": 200000,
+            "ctx_input": 0.4,
+            "rl_requests": 12,
+            "rl_input": 34000,
+            "rl_output": 56000,
+            "kwargs": {"temperature": 0.1},
+        },
+    }
+    preset = {
+        "name": "Legacy Saved Preset",
+        "utility": {
+            "provider": "openrouter",
+            "name": "preset-utility",
+            "api_key": "",
+            "api_base": "",
+            "ctx_length": 128000,
+            "ctx_input": 0.7,
+            "rl_requests": 0,
+            "rl_input": 0,
+            "rl_output": 0,
+            "kwargs": {},
+        },
+    }
+
+    config = model_config.build_config_from_preset(
+        preset,
+        base_config,
+        strip_api_key=False,
+    )
+
+    utility = config["utility_model"]
+    assert utility["name"] == "preset-utility"
+    assert utility["api_base"] == ""
+    assert "api_key" not in utility
+    assert utility["ctx_length"] == 200000
+    assert utility["ctx_input"] == 0.4
+    assert utility["rl_requests"] == 12
+    assert utility["rl_input"] == 34000
+    assert utility["rl_output"] == 56000
+    assert utility["kwargs"] == {"temperature": 0.1}
+
+
+def test_preset_override_preserves_configured_utility_context(monkeypatch, tmp_path):
+    _prepare_a0_tree(monkeypatch, tmp_path)
+
+    from plugins._model_config.helpers import model_config
+
+    base_config = {
+        "allow_chat_override": True,
+        "chat_model": {"provider": "openrouter", "name": "configured-chat"},
+        "utility_model": {
+            "provider": "openrouter",
+            "name": "configured-utility",
+            "ctx_length": 200000,
+            "ctx_input": 0.4,
+        },
+    }
+    preset = {
+        "name": "Fast",
+        "chat": {"provider": "openrouter", "name": "fast-chat"},
+        "utility": {"provider": "openrouter", "name": "fast-utility"},
+    }
+
+    class FakeContext:
+        def get_data(self, key):
+            return {"preset_name": "Fast"} if key == "chat_model_override" else None
+
+    class FakeAgent:
+        context = FakeContext()
+
+    monkeypatch.setattr(model_config, "get_config", lambda *args, **kwargs: base_config)
+    monkeypatch.setattr(
+        model_config,
+        "get_preset_by_name",
+        lambda name, **kwargs: preset if name == "Fast" else None,
+    )
+
+    utility = model_config.get_utility_model_config(FakeAgent())
+
+    assert utility["name"] == "fast-utility"
+    assert utility["ctx_length"] == 200000
+    assert utility["ctx_input"] == 0.4
 
 
 def test_project_save_disambiguates_same_name_project_preset(monkeypatch, tmp_path):

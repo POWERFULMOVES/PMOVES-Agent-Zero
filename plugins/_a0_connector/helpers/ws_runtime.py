@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import copy
 import threading
 import time
 from dataclasses import dataclass
@@ -58,6 +59,8 @@ class ComputerUseMetadata:
     backend_id: str
     backend_family: str
     features: tuple[str, ...]
+    contract_version: int
+    capabilities: dict[str, Any]
     support_reason: str
     updated_at: float
 
@@ -337,6 +340,12 @@ def store_sid_computer_use_metadata(sid: str, payload: dict[str, Any]) -> Comput
         features = tuple(str(item).strip() for item in features_value if str(item).strip())
     else:
         features = ()
+    capabilities_value = payload.get("capabilities")
+    capabilities = copy.deepcopy(capabilities_value) if isinstance(capabilities_value, dict) else {}
+    try:
+        contract_version = int(payload.get("contract_version") or 0)
+    except (TypeError, ValueError):
+        contract_version = 0
     metadata = ComputerUseMetadata(
         supported=bool(payload.get("supported")),
         enabled=bool(payload.get("supported")) and bool(payload.get("enabled")),
@@ -348,6 +357,8 @@ def store_sid_computer_use_metadata(sid: str, payload: dict[str, Any]) -> Comput
         backend_id=str(payload.get("backend_id", "") or "").strip(),
         backend_family=str(payload.get("backend_family", "") or "").strip(),
         features=features,
+        contract_version=contract_version,
+        capabilities=capabilities,
         support_reason=str(payload.get("support_reason", "") or "").strip(),
         updated_at=time.time(),
     )
@@ -377,6 +388,8 @@ def computer_use_metadata_for_sid(sid: str) -> dict[str, Any] | None:
         "backend_id": metadata.backend_id,
         "backend_family": metadata.backend_family,
         "features": list(metadata.features),
+        "contract_version": metadata.contract_version,
+        "capabilities": copy.deepcopy(metadata.capabilities),
         "support_reason": metadata.support_reason,
         "updated_at": metadata.updated_at,
     }

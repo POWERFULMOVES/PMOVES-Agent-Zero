@@ -17,15 +17,26 @@ def test_onboarding_contains_guided_cloud_local_flow():
     assert "Choose your local LLM provider" in html + store
     assert "cloud-card.webp" in html
     assert "local-card.webp" in html
-    assert "Connect ChatGPT/Codex Account" in html
+    assert "oauthProviderCards()" in html + store
+    assert "selectOAuthProvider(provider.provider_id)" in html
+    assert "path-oauth-account-section" in html
+    assert "or connect your AI account" in html
+    assert "Connect one or more account-backed providers." not in html
+    assert ".path-oauth-account-section .oauth-account-section-head" in html
+    assert "font-weight: 760;" in html
+    assert "Connect ChatGPT/Codex Account" not in html
     assert "Main model" in html
     assert "Refresh model list" in html
     assert "Search or enter Utility Model" in html
     assert "Advanced Settings" in html
     assert "selectedProviderName() + ' Docs'" in html
     assert "openSelectedProviderDocs" in html + store
-    assert "Connect via device code" in html + store
-    assert "accountActionLabel" in html + store
+    assert "Connect account" in html + store
+    assert "oauthAccountActionLabel" in html + store
+    assert "connectOAuth" in html + store
+    assert "submitOAuthManualCallback" in html + store
+    assert 'const OAUTH_START_API = "/plugins/_oauth/start_login";' in store
+    assert "/plugins/_oauth/start_device_login" not in store
     assert "Click here if you don't see your provider" in html
     assert "provider-description" not in html
     assert "!$store.onboarding.isStep('cloud')" in html
@@ -99,6 +110,7 @@ def test_onboarding_provider_grid_names_are_present_in_metadata():
         assert forbidden not in provider_yaml
 
     for logo in [
+        "deepseek.svg",
         "google-gemini.svg",
         "groq.svg",
         "sambanova.png",
@@ -131,11 +143,12 @@ def test_discovery_auto_modal_extension_contains_required_guards():
     assert "auto_modal_surfaces" in content
 
 
-def test_onboarding_success_filters_codex_discovery_card():
+def test_onboarding_success_filters_oauth_discovery_cards():
     content = (
         PROJECT_ROOT
         / "plugins/_discovery/extensions/webui/onboarding-success-end/discovery-cards.html"
     ).read_text(encoding="utf-8")
 
     assert "discovery-codex-oauth" in content
-    assert "filter(card => card.id !== 'discovery-codex-oauth')" in content
+    assert "discovery-oauth-accounts" in content
+    assert "includes(card.id)" in content

@@ -86,6 +86,50 @@ def _load_skills_tool(monkeypatch, skill_root: Path):
     return importlib.import_module("tools.skills_tool")
 
 
+def _load_computer_use_remote_tool(monkeypatch):
+    _install_tool_stub(monkeypatch)
+
+    history_stub = types.ModuleType("helpers.history")
+
+    class _RawMessage(dict):
+        def __init__(self, raw_content, preview):
+            super().__init__(raw_content=raw_content, preview=preview)
+
+    history_stub.RawMessage = _RawMessage
+    monkeypatch.setitem(sys.modules, "helpers.history", history_stub)
+
+    print_style_stub = types.ModuleType("helpers.print_style")
+    print_style_stub.PrintStyle = lambda *args, **kwargs: types.SimpleNamespace(
+        print=lambda *a, **k: None
+    )
+    monkeypatch.setitem(sys.modules, "helpers.print_style", print_style_stub)
+
+    ws_stub = types.ModuleType("helpers.ws")
+    ws_stub.NAMESPACE = "/test"
+    monkeypatch.setitem(sys.modules, "helpers.ws", ws_stub)
+
+    ws_manager_stub = types.ModuleType("helpers.ws_manager")
+    ws_manager_stub.ConnectionNotFoundError = RuntimeError
+    ws_manager_stub.get_shared_ws_manager = lambda: types.SimpleNamespace(
+        emit_to=lambda *a, **k: None
+    )
+    monkeypatch.setitem(sys.modules, "helpers.ws_manager", ws_manager_stub)
+
+    ws_runtime_stub = types.ModuleType("plugins._a0_connector.helpers.ws_runtime")
+    ws_runtime_stub.clear_pending_computer_use_op = lambda *args, **kwargs: None
+    ws_runtime_stub.computer_use_metadata_for_sid = lambda *args, **kwargs: {}
+    ws_runtime_stub.select_computer_use_target_sid = lambda *args, **kwargs: "sid"
+    ws_runtime_stub.store_pending_computer_use_op = lambda *args, **kwargs: None
+    monkeypatch.setitem(
+        sys.modules,
+        "plugins._a0_connector.helpers.ws_runtime",
+        ws_runtime_stub,
+    )
+
+    sys.modules.pop("plugins._a0_connector.tools.computer_use_remote", None)
+    return importlib.import_module("plugins._a0_connector.tools.computer_use_remote")
+
+
 def test_skills_tool_accepts_action_alias_for_search(monkeypatch, tmp_path: Path):
     module = _load_skills_tool(monkeypatch, tmp_path)
     tool = module.SkillsTool(
@@ -517,8 +561,8 @@ def test_corrected_tool_prompts_only_teach_action_contract():
         project_root / "prompts/agent.system.tool.skills.md",
         project_root / "prompts/agent.system.tool.scheduler.md",
         project_root / "plugins/_a0_connector/prompts/agent.system.tool.text_editor_remote.md",
-        project_root / "plugins/_office/prompts/agent.system.tool.document_artifact.md",
-        project_root / "plugins/_office/skills/document-artifacts/SKILL.md",
+        project_root / "plugins/_office/prompts/agent.system.tool.office_artifact.md",
+        project_root / "plugins/_office/skills/office-artifacts/SKILL.md",
         project_root / "plugins/_office/skills/markdown-documents/SKILL.md",
         project_root / "plugins/_office/skills/writer-documents/SKILL.md",
         project_root / "plugins/_office/skills/calc-spreadsheets/SKILL.md",
@@ -528,7 +572,7 @@ def test_corrected_tool_prompts_only_teach_action_contract():
         "text_editor:",
         "skills_tool:",
         "scheduler:",
-        "document_artifact:",
+        "office_artifact:",
         "`method`",
         "`op`",
         "`operation`",
@@ -548,17 +592,142 @@ def test_corrected_tool_prompts_only_teach_action_contract():
             assert "Open Document, or Desktop edit actions" not in text
 
 
-def test_computer_use_remote_is_skill_gated():
+def test_computer_use_remote_is_runtime_checked_standard_tool():
     project_root = Path(__file__).resolve().parents[1]
-    prompt_path = (
+    standard_prompt_path = (
         project_root
         / "plugins/_a0_connector/prompts/agent.system.tool.computer_use_remote.md"
     )
+    standard_prompt_text = standard_prompt_path.read_text(encoding="utf-8")
     skill_text = (
         project_root
         / "plugins/_a0_connector/skills/host-computer-use/SKILL.md"
     ).read_text(encoding="utf-8")
+    macos_skill_text = (
+        project_root
+        / "plugins/_a0_connector/skills/host-computer-use-macos/SKILL.md"
+    ).read_text(encoding="utf-8")
+    windows_skill_text = (
+        project_root
+        / "plugins/_a0_connector/skills/host-computer-use-windows/SKILL.md"
+    ).read_text(encoding="utf-8")
 
-    assert not prompt_path.exists()
+    assert standard_prompt_path.exists()
+    assert not (
+        project_root
+        / "plugins/_a0_connector/prompts/agent.system.runtime_tool.computer_use_remote.md"
+    ).exists()
+    assert '"tool_name": "computer_use_remote"' in standard_prompt_text
+    assert "not scoped to a single chat context" in standard_prompt_text
+    assert "checked when the tool runs" in standard_prompt_text
+    assert "visual verification is unavailable" in standard_prompt_text
+    assert "host-computer-use-macos" in standard_prompt_text
+    assert "host-computer-use-windows" in standard_prompt_text
+    assert "ax_snapshot" not in standard_prompt_text
+    assert "ax_action" not in standard_prompt_text
+    assert "uia_snapshot" not in standard_prompt_text
+    assert "uia_action" not in standard_prompt_text
     assert '"tool_name": "computer_use_remote"' in skill_text
+    assert "ax_snapshot" not in skill_text
+    assert "ax_action" not in skill_text
+    assert "uia_snapshot" not in skill_text
+    assert "uia_action" not in skill_text
+    assert '"tool_name": "computer_use_remote"' in macos_skill_text
+    assert "ax_snapshot" in macos_skill_text
+    assert "ax_action" in macos_skill_text
+    assert '"tool_name": "computer_use_remote"' in windows_skill_text
+    assert "uia_snapshot" in windows_skill_text
+    assert "uia_action" in windows_skill_text
+    assert "focus_window" in windows_skill_text
+    assert "If a node offers `invoke`, use `invoke`, not `click`" in windows_skill_text
+    assert "Backend-specific macOS guidance" in macos_skill_text
+    assert "Backend-specific Windows guidance" in windows_skill_text
     assert "Beta desktop control" in skill_text
+
+
+def test_computer_use_remote_start_session_reports_backend_features_and_macos_skill(monkeypatch):
+    module = _load_computer_use_remote_tool(monkeypatch)
+    tool = object.__new__(module.ComputerUseRemote)
+
+    message = tool._extract_result(
+        "start_session",
+        {
+            "ok": True,
+            "result": {
+                "session_id": "s1",
+                "width": 1920,
+                "height": 1080,
+                "backend_id": "macos",
+                "backend_family": "macos",
+                "features": [
+                    "accessibility-tree-snapshot",
+                    "accessibility-structural-targeting",
+                ],
+            },
+        },
+    )
+
+    assert "session_id=s1" in message
+    assert "backend=macos/macos" in message
+    assert "features=accessibility-tree-snapshot, accessibility-structural-targeting" in message
+    assert "host-computer-use-macos" in message
+
+
+def test_computer_use_remote_start_session_reports_backend_features_and_windows_skill(monkeypatch):
+    module = _load_computer_use_remote_tool(monkeypatch)
+    tool = object.__new__(module.ComputerUseRemote)
+
+    message = tool._extract_result(
+        "start_session",
+        {
+            "ok": True,
+            "result": {
+                "session_id": "s1",
+                "width": 3840,
+                "height": 2160,
+                "backend_id": "windows",
+                "backend_family": "windows",
+                "features": [
+                    "uia-tree-snapshot",
+                    "uia-structural-targeting",
+                ],
+            },
+        },
+    )
+
+    assert "session_id=s1" in message
+    assert "backend=windows/windows" in message
+    assert "features=uia-tree-snapshot, uia-structural-targeting" in message
+    assert "host-computer-use-windows" in message
+
+
+def test_computer_use_remote_capture_artifact_is_chat_scoped(monkeypatch, tmp_path: Path):
+    module = _load_computer_use_remote_tool(monkeypatch)
+
+    def fake_get_abs_path(*parts):
+        return str(tmp_path.joinpath(*parts))
+
+    def fake_normalize_a0_path(path):
+        return "/a0/" + str(Path(path).relative_to(tmp_path)).replace("\\", "/")
+
+    monkeypatch.setattr(module.chat_media.files, "get_abs_path", fake_get_abs_path)
+    monkeypatch.setattr(module.chat_media.files, "normalize_a0_path", fake_normalize_a0_path)
+
+    tool = object.__new__(module.ComputerUseRemote)
+    tool.agent = types.SimpleNamespace(context=types.SimpleNamespace(id="ctx-computer"))
+
+    display_ref, capture_id = tool._resolve_capture_ref(
+        {
+            "artifact": {
+                "filename": "capture.png",
+                "mime": "image/png",
+                "encoding": "base64",
+                "data": "ZmFrZQ==",
+            },
+        }
+    )
+
+    assert display_ref.startswith("/a0/usr/chats/ctx-computer/screenshots/computer-use/capture-")
+    stored_path = tmp_path / display_ref.removeprefix("/a0/")
+    assert stored_path.read_bytes() == b"fake"
+    assert capture_id == stored_path.stem

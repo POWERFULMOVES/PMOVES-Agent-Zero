@@ -46,6 +46,99 @@ export function textToHeaders(text) {
   return d;
 }
 
+function clonePlain(value) {
+  if (value === undefined) return undefined;
+  return JSON.parse(JSON.stringify(value));
+}
+
+function isBlankPresetValue(value) {
+  if (value === undefined || value === null || value === '') return true;
+  if (Array.isArray(value)) return value.length === 0;
+  if (typeof value === 'object') return Object.keys(value).length === 0;
+  return false;
+}
+
+const IMPLICIT_PRESET_SLOT_DEFAULTS = {
+  utility: {
+    ctx_length: 128000,
+    ctx_input: 0.7,
+    rl_requests: 0,
+    rl_input: 0,
+    rl_output: 0,
+    kwargs: {},
+  },
+  embedding: {
+    rl_requests: 0,
+    rl_input: 0,
+    kwargs: {},
+  },
+};
+
+function presetDefaultValuesEqual(value, defaultValue) {
+  if (typeof defaultValue === 'number') return Number(value) === defaultValue;
+  return JSON.stringify(value) === JSON.stringify(defaultValue);
+}
+
+function cleanPresetSlot(slot, stripApiKey = true, slotKey = '') {
+  const clean = {};
+  const implicitDefaults = IMPLICIT_PRESET_SLOT_DEFAULTS[slotKey] || {};
+  for (const [key, value] of Object.entries(slot || {})) {
+    if (key.startsWith('_')) continue;
+    if (stripApiKey && key === 'api_key') continue;
+    if (key === 'api_base' && value === '') {
+      clean[key] = value;
+      continue;
+    }
+    if (key === 'kwargs' && isBlankPresetValue(value)) continue;
+    if (isBlankPresetValue(value)) continue;
+    if (key in implicitDefaults && presetDefaultValuesEqual(value, implicitDefaults[key])) continue;
+    clean[key] = value;
+  }
+  return clean;
+}
+
+function hasModelIdentity(slot) {
+  return !!(slot?.provider || slot?.name);
+}
+
+export function mergeModelSlot(baseSlot, presetSlot, stripApiKey = true, slotKey = '') {
+  const result = clonePlain(baseSlot || {});
+  const clean = cleanPresetSlot(presetSlot, stripApiKey, slotKey);
+  for (const [key, value] of Object.entries(clean)) {
+    if (
+      value &&
+      typeof value === 'object' &&
+      !Array.isArray(value) &&
+      result[key] &&
+      typeof result[key] === 'object' &&
+      !Array.isArray(result[key])
+    ) {
+      result[key] = mergeModelSlot(result[key], value, false);
+    } else {
+      result[key] = clonePlain(value);
+    }
+  }
+  return result;
+}
+
+export function configFromPreset(preset, baseConfig, stripApiKey = true) {
+  const config = clonePlain(baseConfig || {});
+  const slots = [
+    ['chat', 'chat_model'],
+    ['utility', 'utility_model'],
+    ['embedding', 'embedding_model'],
+  ];
+
+  for (const [slotKey, sectionKey] of slots) {
+    const slot = preset?.[slotKey];
+    if (!slot || typeof slot !== 'object') continue;
+    if (!hasModelIdentity(slot)) continue;
+    config[sectionKey] = mergeModelSlot(config[sectionKey] || {}, slot, stripApiKey, slotKey);
+  }
+
+  return config;
+}
+
 // ── Alpine Store ──
 
 const API_BASE = "/plugins/_model_config";
@@ -87,8 +180,9 @@ export const store = createStore("modelConfig", {
   _normalizePresets(rawPresets) {
     return (rawPresets || []).map(p => ({
       name: p.name || '',
-      chat: { provider: '', name: '', api_key: '', api_base: '', ctx_length: 128000, ctx_history: 0.7, vision: true, rl_requests: 0, rl_input: 0, rl_output: 0, kwargs: {}, _kwargs_text: kwargsToText(p.chat?.kwargs), ...(p.chat || {}) },
-      utility: { provider: '', name: '', api_key: '', api_base: '', ctx_length: 128000, ctx_input: 0.7, rl_requests: 0, rl_input: 0, rl_output: 0, kwargs: {}, _kwargs_text: kwargsToText(p.utility?.kwargs), ...(p.utility || {}) },
+      chat: { provider: '', name: '', api_key: '', api_base: '', kwargs: {}, _kwargs_text: kwargsToText(p.chat?.kwargs), ...(p.chat || {}) },
+      utility: { provider: '', name: '', api_key: '', api_base: '', kwargs: {}, _kwargs_text: kwargsToText(p.utility?.kwargs), ...(p.utility || {}) },
+      embedding: p.embedding ? { provider: '', name: '', api_key: '', api_base: '', kwargs: {}, _kwargs_text: kwargsToText(p.embedding?.kwargs), ...(p.embedding || {}) } : undefined,
     }));
   },
 
@@ -141,6 +235,25 @@ export const store = createStore("modelConfig", {
     if (config?.embedding_model) config.embedding_model._kwargs_text = kwargsToText(config.embedding_model.kwargs);
   },
 
+  syncContextConfigFields(context, refreshCleanSnapshot = false) {
+    const config = context?.settings;
+    if (!config || typeof config !== 'object') return;
+
+    const snapshotBeforeInit = refreshCleanSnapshot && typeof context._toComparableJson === 'function'
+      ? context._toComparableJson(config)
+      : null;
+
+    this.initConfigFields(config);
+
+    if (
+      refreshCleanSnapshot &&
+      typeof context._toComparableJson === 'function' &&
+      context.settingsSnapshotJson === snapshotBeforeInit
+    ) {
+      context.settingsSnapshotJson = context._toComparableJson(config);
+    }
+  },
+
   // Global presets
   async loadGlobalPresets() {
     try {
@@ -164,9 +277,13 @@ export const store = createStore("modelConfig", {
       const c = { name: p.name };
       for (const slot of ['chat', 'utility']) {
         if (p[slot]) {
-          const { _kwargs_text, api_key, ...rest } = p[slot];
-          c[slot] = rest;
+          const rest = cleanPresetSlot(p[slot], true, slot);
+          if (hasModelIdentity(rest)) c[slot] = rest;
         }
+      }
+      if (p.embedding) {
+        const embedding = cleanPresetSlot(p.embedding, true, 'embedding');
+        if (hasModelIdentity(embedding)) c.embedding = embedding;
       }
       return c;
     });
@@ -202,18 +319,30 @@ export const store = createStore("modelConfig", {
   },
 
   /**
-   * Install save and reset hooks on the plugin settings context.
-   * - Save: persists dirty API keys before the normal config save.
-   * - Reset: reloads global presets when settings are reset to defaults.
+   * Install hooks on the plugin settings context.
+   * - Load/reset: initialize UI-only model fields when the settings object changes.
+   * - Save: persist dirty API keys before the normal config save.
+   * - Reset: reload global presets when settings are reset to defaults.
    */
-  installSettingsHooks(context, config) {
+  installSettingsHooks(context) {
     if (!context || context.__modelConfigHooksInstalled) return;
+
+    this.syncContextConfigFields(context, true);
+
+    const originalLoadSettings = context.loadSettings?.bind(context);
+    if (originalLoadSettings) {
+      context.loadSettings = async (...args) => {
+        const result = await originalLoadSettings(...args);
+        this.syncContextConfigFields(context, true);
+        return result;
+      };
+    }
 
     const originalSave = context.save.bind(context);
     context.save = async () => {
       context.error = null;
       try {
-        await this.persistApiKeysForConfig(config);
+        await this.persistApiKeysForConfig(context.settings);
       } catch (e) {
         context.error = e?.message || 'Failed to save API keys.';
         return;
@@ -226,6 +355,7 @@ export const store = createStore("modelConfig", {
       const before = context.settings;
       await originalReset();
       if (context.settings !== before) {
+        this.syncContextConfigFields(context);
         await this.resetGlobalPresets();
       }
     };

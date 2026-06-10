@@ -98,6 +98,36 @@ const model = {
     }
   },
 
+  usageWidth(window) {
+    const value = Math.max(0, Math.min(100, this.remainingPercent(window)));
+    return `${value}%`;
+  },
+
+  remainingPercent(window) {
+    const remaining = Number(window?.remaining_percent);
+    if (Number.isFinite(remaining)) return remaining;
+    const used = Number(window?.used_percent);
+    if (Number.isFinite(used)) return 100 - used;
+    return Number.NaN;
+  },
+
+  formatRemainingPercent(window) {
+    const number = this.remainingPercent(window);
+    if (!Number.isFinite(number)) return "0%";
+    return `${Math.round(number * 10) / 10}% left`;
+  },
+
+  formatReset(window) {
+    const seconds = Number(window?.reset_at || 0);
+    if (!Number.isFinite(seconds) || seconds <= 0) return "";
+    const remainingMs = Math.max(0, seconds * 1000 - Date.now());
+    const minutes = Math.round(remainingMs / 60000);
+    if (minutes < 60) return `${minutes}m`;
+    const hours = Math.round(minutes / 60);
+    if (hours < 48) return `${hours}h`;
+    return `${Math.round(hours / 24)}d`;
+  },
+
   // --- Helpers (Private-ish) ---
 
   _getDismissedIds() {

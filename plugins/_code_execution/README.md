@@ -23,6 +23,8 @@ This plugin provides the code execution tool used by agents for development task
   - Can open SSH interactive sessions instead of local shells when configured.
 - **Streaming output**
   - Continuously reads shell output, updates the current log item, and detects progress while commands are running.
+- **Long-running work**
+  - Keeps normal command execution responsive while giving the `output` runtime longer polling windows for builds, installs, servers, tests, and training jobs.
 - **Safety around running sessions**
   - Tracks whether a shell is currently busy and can prevent overlapping commands unless explicitly allowed.
 

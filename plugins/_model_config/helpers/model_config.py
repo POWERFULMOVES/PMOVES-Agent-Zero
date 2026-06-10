@@ -11,6 +11,26 @@ DEFAULT_PRESETS_FILE = "default_presets.yaml"
 PROVIDER_METADATA_FILE = "provider_metadata.yaml"
 PRESET_SCOPE_GLOBAL = "global"
 PRESET_SCOPE_PROJECT = "project"
+PRESET_SLOT_CONFIG_SECTIONS = {
+    "chat": "chat_model",
+    "utility": "utility_model",
+    "embedding": "embedding_model",
+}
+IMPLICIT_PRESET_SLOT_DEFAULTS = {
+    "utility": {
+        "ctx_length": 128000,
+        "ctx_input": 0.7,
+        "rl_requests": 0,
+        "rl_input": 0,
+        "rl_output": 0,
+        "kwargs": {},
+    },
+    "embedding": {
+        "rl_requests": 0,
+        "rl_input": 0,
+        "kwargs": {},
+    },
+}
 LOCAL_PROVIDERS = {"ollama", "lm_studio"}
 LOCAL_EMBEDDING = {"huggingface"}
 _PROVIDER_METADATA_CACHE: dict | None = None
@@ -96,14 +116,33 @@ def _strip_ui_fields(value: dict, *, strip_api_key: bool) -> dict:
     return cleaned
 
 
+def _preset_default_values_equal(value, default) -> bool:
+    if isinstance(default, float):
+        try:
+            return float(value) == default
+        except (TypeError, ValueError):
+            return False
+    return value == default
+
+
+def _strip_implicit_preset_defaults(slot: str, slot_config: dict) -> dict:
+    cleaned = deepcopy(slot_config)
+    defaults = IMPLICIT_PRESET_SLOT_DEFAULTS.get(slot, {})
+    for key, default in defaults.items():
+        if key in cleaned and _preset_default_values_equal(cleaned[key], default):
+            cleaned.pop(key, None)
+    return cleaned
+
+
 def _clean_preset_for_file(preset: dict) -> dict:
     cleaned = {
         "name": str(preset.get("name", "") or ""),
     }
-    for slot in ("chat", "utility"):
+    for slot in PRESET_SLOT_CONFIG_SECTIONS:
         slot_config = preset.get(slot)
         if isinstance(slot_config, dict):
-            cleaned[slot] = _strip_ui_fields(slot_config, strip_api_key=False)
+            slot_clean = _strip_ui_fields(slot_config, strip_api_key=False)
+            cleaned[slot] = _strip_implicit_preset_defaults(slot, slot_clean)
     return cleaned
 
 
@@ -230,17 +269,115 @@ def get_preset_by_name(
     return resolve_preset(name, scope=scope, project_name=project_name)
 
 
-def build_config_from_preset(preset: dict, base_config: dict) -> dict:
-    """Copy chat/utility settings from a preset into a standalone model config."""
-    config = normalize_config_for_save(base_config)
+def _deep_merge_dict(base: dict, override: dict) -> dict:
+    """Recursively overlay override onto base without mutating either input."""
+    result = deepcopy(base) if isinstance(base, dict) else {}
+    for key, value in override.items():
+        if (
+            isinstance(value, dict)
+            and isinstance(result.get(key), dict)
+        ):
+            result[key] = _deep_merge_dict(result[key], value)
+        else:
+            result[key] = deepcopy(value)
+    return result
 
-    chat = preset.get("chat") if isinstance(preset, dict) else None
-    if isinstance(chat, dict):
-        config["chat_model"] = _strip_ui_fields(chat, strip_api_key=True)
 
-    utility = preset.get("utility") if isinstance(preset, dict) else None
-    if isinstance(utility, dict) and (utility.get("provider") or utility.get("name")):
-        config["utility_model"] = _strip_ui_fields(utility, strip_api_key=True)
+def _slot_has_identity(slot_config: dict) -> bool:
+    return bool(slot_config.get("provider") or slot_config.get("name"))
+
+
+def _get_preset_slot_config(preset: dict, slot: str) -> dict | None:
+    """Return the preset payload for a slot.
+
+    Legacy raw overrides store the main/chat model directly at the top level,
+    while named presets store it under the "chat" key.
+    """
+    if not isinstance(preset, dict):
+        return None
+
+    slot_config = preset.get(slot)
+    if isinstance(slot_config, dict):
+        return slot_config
+
+    if slot == "chat" and not any(key in preset for key in PRESET_SLOT_CONFIG_SECTIONS):
+        if _slot_has_identity(preset):
+            return preset
+
+    return None
+
+
+def _should_apply_preset_slot(slot: str, slot_config: dict | None) -> bool:
+    if not isinstance(slot_config, dict):
+        return False
+
+    cleaned = _strip_implicit_preset_defaults(
+        slot,
+        _strip_ui_fields(slot_config, strip_api_key=False),
+    )
+    meaningful = {
+        key: value
+        for key, value in cleaned.items()
+        if key != "api_key"
+    }
+    if not meaningful:
+        return False
+
+    # Slots inherit the configured model unless the preset declares a model
+    # identity for that slot. This keeps empty UI placeholders from accidentally
+    # overriding context/rate-limit settings.
+    return _slot_has_identity(cleaned)
+
+
+def _merge_model_slot(
+    slot: str,
+    base_slot: dict,
+    preset_slot: dict,
+    *,
+    strip_api_key: bool,
+) -> dict:
+    cleaned = _strip_implicit_preset_defaults(
+        slot,
+        _strip_ui_fields(preset_slot, strip_api_key=strip_api_key),
+    )
+    if not strip_api_key and not str(cleaned.get("api_key") or "").strip():
+        cleaned.pop("api_key", None)
+    return _deep_merge_dict(base_slot if isinstance(base_slot, dict) else {}, cleaned)
+
+
+def build_config_from_preset(
+    preset: dict,
+    base_config: dict,
+    *,
+    strip_api_key: bool = True,
+    slots: tuple[str, ...] | None = None,
+) -> dict:
+    """Overlay preset settings onto a standalone model config.
+
+    Presets are intentionally partial: omitted fields inherit from the current
+    config, so selecting a preset does not reset tuned values such as context
+    windows, rate limits, or nested kwargs unless the preset explicitly defines
+    them.
+    """
+    config = (
+        normalize_config_for_save(base_config)
+        if strip_api_key
+        else deepcopy(base_config or {})
+    )
+
+    for slot in slots or tuple(PRESET_SLOT_CONFIG_SECTIONS):
+        section = PRESET_SLOT_CONFIG_SECTIONS.get(slot)
+        if not section:
+            continue
+        slot_config = _get_preset_slot_config(preset, slot)
+        if not _should_apply_preset_slot(slot, slot_config):
+            continue
+        config[section] = _merge_model_slot(
+            slot,
+            config.get(section, {}),
+            slot_config,
+            strip_api_key=strip_api_key,
+        )
 
     return config
 
@@ -269,24 +406,31 @@ def _resolve_override(agent) -> dict | None:
 
 def get_chat_model_config(agent=None) -> dict:
     """Get chat model config, with per-chat override if active."""
+    cfg = get_config(agent)
     override = _resolve_override(agent)
     if override:
-        # Preset has a nested 'chat' key; raw override is flat
-        chat_cfg = override.get("chat", override)
-        if chat_cfg.get("provider") or chat_cfg.get("name"):
-            return chat_cfg
-    cfg = get_config(agent)
+        config = build_config_from_preset(
+            override,
+            cfg,
+            strip_api_key=False,
+            slots=("chat",),
+        )
+        return config.get("chat_model", {})
     return cfg.get("chat_model", {})
 
 
 def get_utility_model_config(agent=None) -> dict:
     """Get utility model config, with per-chat override if active."""
+    cfg = get_config(agent)
     override = _resolve_override(agent)
     if override:
-        util_cfg = override.get("utility", {})
-        if util_cfg.get("provider") or util_cfg.get("name"):
-            return util_cfg
-    cfg = get_config(agent)
+        config = build_config_from_preset(
+            override,
+            cfg,
+            strip_api_key=False,
+            slots=("utility",),
+        )
+        return config.get("utility_model", {})
     return cfg.get("utility_model", {})
 
 

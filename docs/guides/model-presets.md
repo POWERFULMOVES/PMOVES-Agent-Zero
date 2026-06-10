@@ -39,6 +39,11 @@ Think of a preset as a label on a model setup.
 | **Main model** | The model that does the main conversation and reasoning. |
 | **Utility model** | A smaller helper model for lighter internal tasks. |
 
+Presets can be partial. If a preset does not set a utility model, Agent Zero
+uses your configured Utility Model. If a preset changes the utility model but
+does not set advanced fields, your configured context window, rate limits, and
+other advanced values stay in place.
+
 ## Add A Preset
 
 Click **Add Preset**, give it a name, choose models, then click **Save Presets**.

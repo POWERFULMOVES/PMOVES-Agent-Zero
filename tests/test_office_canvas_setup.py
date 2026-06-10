@@ -140,10 +140,13 @@ def test_right_canvas_uses_desktop_surface_id_and_migrates_legacy_office_state()
     assert "editor-preview-title" in editor_web_panel
     assert "editor-preview-page-editor" in editor_web_panel
     assert "editor-table-wrap" in editor_web_panel
+    assert "editor-empty" in editor_web_panel
+    assert "runNewMenuAction('open')" in editor_web_panel
+    assert "runNewMenuAction('markdown')" in editor_web_panel
     assert "closeAllFiles" in editor_store
     assert "confirmPendingClose" in editor_store
-    assert "ensureInitialMarkdownFile" in editor_store
-    assert "await this.ensureInitialMarkdownFile();" in editor_store
+    assert "ensureInitialMarkdownFile" not in editor_store
+    assert "_initialCreatePromise" not in editor_store
     assert "startPreviewEdit" in editor_store
     assert "applyPreviewEdit" in editor_store
     assert "previewEditDirty" in editor_store
@@ -264,7 +267,17 @@ def test_desktop_plugin_owns_routes_runtime_surface_and_state_paths():
     assert "DESKTOP_RUNTIME_INSTALL_MESSAGE" in desktop_store
     assert "openDesktopWhenRuntimeReady" in desktop_store
     assert "isDesktopRuntimeInstalling" in desktop_store
+    assert "_desktopDisplaySizes: {}" in desktop_store
+    assert "desktopDisplaySizeForToken(token" in desktop_store
+    assert "rememberDesktopDisplaySize(token" in desktop_store
+    assert "options.displaySize || this.desktopDisplaySizeForToken(token)" in desktop_store
+    assert "result?.width || width" in desktop_store
+    assert "canvas.width = normalizedWidth" in desktop_store
+    assert "canvas.height = normalizedHeight" in desktop_store
+    assert "canvas?.clientWidth || canvas?.width" in desktop_store
+    assert "overflow: auto !important;" in desktop_store
     assert "Installing Agent Zero Desktop runtime dependencies" in desktop_session
+    assert "normalize_desktop_display_size" in desktop_session
     assert "__a0XpraOffsetWarnPatched" in desktop_store
     assert "window does not fit in canvas, offsets" in desktop_store
     assert "decode error packet" in desktop_store
@@ -277,6 +290,7 @@ def test_desktop_plugin_owns_routes_runtime_surface_and_state_paths():
     assert ".office-state-line > span:not(.material-symbols-outlined)" in desktop_web_panel
 
     assert not (PROJECT_ROOT / "plugins" / "_office" / "helpers" / "desktop_state.py").exists()
+    assert not (PROJECT_ROOT / "plugins" / "_office" / "helpers" / "libreoffice_desktop.py").exists()
     assert not (PROJECT_ROOT / "plugins" / "_office" / "helpers" / "libreoffice_desktop_routes.py").exists()
     assert not (PROJECT_ROOT / "plugins" / "_office" / "assets" / "desktop").exists()
 
@@ -297,7 +311,7 @@ def test_plugin_owned_runtime_state_paths_are_declared():
     assert "PLAYWRIGHT_BROWSERS_PATH=/a0/tmp/playwright" in docker_playwright
 
 
-def test_document_artifacts_only_open_desktop_from_explicit_document_ui_requests():
+def test_office_artifacts_only_open_desktop_from_explicit_document_ui_requests():
     auto_open = read(
         "plugins",
         "_office",
@@ -313,7 +327,7 @@ def test_document_artifacts_only_open_desktop_from_explicit_document_ui_requests
         "extensions",
         "webui",
         "get_tool_message_handler",
-        "document-artifact-handler.js",
+        "office-artifact-handler.js",
     )
     response_cards = read(
         "plugins",
@@ -324,11 +338,19 @@ def test_document_artifacts_only_open_desktop_from_explicit_document_ui_requests
         "document-response-file-cards.js",
     )
     messages_css = read("webui", "css", "messages.css")
-    document_tool = read("plugins", "_office", "tools", "document_artifact.py")
+    document_tool = read("plugins", "_office", "tools", "office_artifact.py")
     office_api = read("plugins", "_office", "api", "office_session.py")
+    editor_sync = read(
+        "plugins",
+        "_editor",
+        "extensions",
+        "webui",
+        "set_messages_after_loop",
+        "sync-text-editor-results.js",
+    )
 
     assert 'openSurface(surfaceForDocument' in auto_open
-    assert 'return documentExtension(payload, document) === "md" ? "editor" : "desktop";' in auto_open
+    assert 'return "desktop";' in auto_open
     assert "isExplicitDocumentUiRequest(payload)" in auto_open
     assert 'action === "open"' in auto_open
     assert "open_in_canvas" in auto_open
@@ -340,21 +362,21 @@ def test_document_artifacts_only_open_desktop_from_explicit_document_ui_requests
     assert "isOfficeCanvas" not in auto_open
     assert "officeStore" in auto_open
     assert "desktopStore" in auto_open
-    assert "editorStore" in auto_open
     assert "store?.previewEditDirty" in auto_open
-    assert "syncOpenEditorSurface" in auto_open
-    assert "isEditorSurfaceOpen" in auto_open
     assert "syncOpenDesktopCanvas" in auto_open
     assert "syncOpenOfficeModal" in auto_open
     assert "isDesktopSurfaceOpen" in auto_open
     assert "function documentTarget(payload = {}, document = {})" in auto_open
-    assert "syncTextEditorMarkdownResult" in auto_open
-    assert "textEditorTarget" in auto_open
-    assert 'toolName === "text_editor"' in auto_open
-    assert 'return ["write", "patch"].includes(action);' in auto_open
+    assert 'toolName !== "office_artifact"' in auto_open
+    assert "syncTextEditorResultsIntoOpenEditor" in editor_sync
+    assert 'toolName(payload) !== "text_editor"' in editor_sync
+    assert 'return ["write", "patch"].includes(action);' in editor_sync
+    assert "syncOpenEditorSurface" in editor_sync
+    assert "isEditorSurfaceOpen" in editor_sync
     assert "void syncOpenDocumentSurfaces(target);" in auto_open
     assert "void syncOpenDocumentSurfaces({ path, file_id: fileId });" not in auto_open
-    assert "return documentExtension(payload, document) === \"md\" ? \"editor\" : \"desktop\";" in auto_open
+    assert "editorStore" not in auto_open
+    assert "text_editor" not in auto_open
     assert "hasSameDocument" in auto_open
     assert 'source: "tool-result-sync"' in auto_open
     assert '".modal .office-panel"' not in auto_open
@@ -383,10 +405,10 @@ def test_document_artifacts_only_open_desktop_from_explicit_document_ui_requests
     assert "refreshResponseFileActions" in response_cards
     assert "parseStoredDocuments" in response_cards
     assert "openDocumentInDesktop" in document_actions
-    assert "openDocumentInEditor" in document_actions
-    assert "openDocumentArtifact" in document_actions
-    assert 'await openSurface("editor"' in document_actions
-    assert "await openDocumentInEditor(document);" in document_actions
+    assert "openDocumentInEditor" not in document_actions
+    assert "openOfficeArtifact" in document_actions
+    assert "openDocumentArtifact" not in document_actions
+    assert 'await openSurface("editor"' not in document_actions
     assert "await openDocumentInDesktop(document);" in document_actions
     assert 'ensureModalOpen("/plugins/_office/webui/main.html")' not in document_actions
     assert 'ensureModalOpen("/plugins/_office/webui/main.html")' not in auto_open
@@ -397,11 +419,10 @@ def test_document_artifacts_only_open_desktop_from_explicit_document_ui_requests
     assert "Details" not in response_cards
     assert "/api/download_work_dir_file" in document_actions
     assert 'openSurface("desktop"' in document_actions
-    assert 'openSurface("editor"' in document_actions
+    assert 'openSurface("editor"' not in document_actions
     assert "Open in canvas with Writer" in document_actions
     assert "Open in canvas with Calc" in document_actions
     assert "Open in canvas with Impress" in document_actions
-    assert 'const EDITOR_FORMATS = ["md"]' in document_actions
     assert 'const DESKTOP_FORMATS = ["odt", "ods", "odp", "docx", "xlsx", "pptx"]' in document_actions
     assert ".document-file-card" in messages_css
     assert ".document-response-file-cards" in messages_css
@@ -412,7 +433,11 @@ def test_document_artifacts_only_open_desktop_from_explicit_document_ui_requests
     assert '"open_in_desktop": bool(open_in_desktop)' in document_tool
     assert '"requires_desktop": True' in office_api
     assert 'input.get("open_in_desktop") is not True' in office_api
-    assert '"requires_editor": True' in office_api
+    assert 'action == "desktop"' not in office_api
+    assert 'action == "desktop_state"' not in office_api
+    assert 'action == "desktop_shutdown"' not in office_api
+    assert "Markdown documents use the Editor surface." in office_api
+    assert '"requires_editor": True' not in office_api
 
 
 def test_editor_plugin_owns_markdown_sessions_and_active_context_extras():
@@ -426,7 +451,14 @@ def test_editor_plugin_owns_markdown_sessions_and_active_context_extras():
     editor_ws = read("plugins", "_editor", "api", "ws_editor.py")
     editor_context = read("plugins", "_editor", "helpers", "open_files_context.py")
     office_ws = read("plugins", "_office", "api", "ws_office.py")
-    office_markdown_sessions = read("plugins", "_office", "helpers", "markdown_sessions.py")
+    editor_result_sync = read(
+        "plugins",
+        "_editor",
+        "extensions",
+        "webui",
+        "set_messages_after_loop",
+        "sync-text-editor-results.js",
+    )
     editor_extras = read(
         "plugins",
         "_editor",
@@ -467,9 +499,49 @@ def test_editor_plugin_owns_markdown_sessions_and_active_context_extras():
     assert "editor_open_files" in editor_extras
     assert "desktop_state" in desktop_context
     assert 'pop("office_canvas"' in office_context
-    assert "Markdown editing moved to /plugins/_editor." in office_ws
+    assert "Office WebSocket editing is not available for Markdown; use the Editor surface." in office_ws
     assert "from plugins._office.helpers import document_store, markdown_sessions" not in office_ws
-    assert "from plugins._editor.helpers.markdown_sessions import" in office_markdown_sessions
+    assert not (PROJECT_ROOT / "plugins" / "_office" / "helpers" / "markdown_sessions.py").exists()
+    assert "syncTextEditorResultsIntoOpenEditor" in editor_result_sync
+
+
+def test_editor_open_file_browser_prefers_context_home_before_workdir_fallback():
+    editor_store = read("plugins", "_editor", "webui", "editor-store.js")
+    start = editor_store.index("async openFileBrowser()")
+    end = editor_store.index("\n  async openPath", start)
+    open_file_browser = editor_store[start:end]
+
+    home_lookup = open_file_browser.index('const home = await callEditor("home");')
+    settings_fallback = open_file_browser.index('const response = await callJsonApi("settings_get", null);')
+
+    assert home_lookup < settings_fallback
+    assert "workdirPath = home.path;" in open_file_browser
+    assert "workdirPath = response?.settings?.workdir_path || workdirPath;" in open_file_browser
+
+
+def test_editor_toolbar_places_preview_toggle_left_and_save_on_right():
+    editor_panel = read("plugins", "_editor", "webui", "editor-panel.html")
+    toolbar_start = editor_panel.index('<div class="editor-toolbar"')
+    toolbar_end = editor_panel.index('<div class="editor-search-bar"', toolbar_start)
+    toolbar = editor_panel[toolbar_start:toolbar_end]
+
+    mode_toggle = toolbar.index("editor-mode-toggle")
+    source_tools = toolbar.index("editor-source-tools")
+    preview_tools = toolbar.index("editor-preview-tools")
+    spacer = toolbar.index("editor-toolbar-spacer")
+    save_button = toolbar.index("editor-save-button")
+    file_actions = toolbar.index("editor-file-actions")
+    file_menu = toolbar.index("editor-file-menu")
+
+    assert mode_toggle < source_tools
+    assert mode_toggle < preview_tools
+    assert spacer < save_button < file_actions < file_menu
+    assert "@click=\"$store.editor.save()\"" in toolbar
+
+    file_menu_markup = toolbar[file_menu:]
+    assert "<span>Save</span>" not in file_menu_markup
+    assert "<span>Rename</span>" in file_menu_markup
+    assert "<span>Close File</span>" in file_menu_markup
 
 
 def test_office_and_desktop_skills_are_rehomed_and_renamed():
@@ -478,13 +550,14 @@ def test_office_and_desktop_skills_are_rehomed_and_renamed():
 
     assert not (office_skills / "linux-desktop").exists()
     assert (desktop_skills / "linux-desktop" / "SKILL.md").exists()
-    assert not (office_skills / "office-artifacts").exists()
+    assert (office_skills / "office-artifacts" / "SKILL.md").exists()
+    assert not (office_skills / "document-artifacts").exists()
     assert not (office_skills / "word-documents").exists()
     assert not (office_skills / "excel-workbooks").exists()
     assert not (office_skills / "presentation-decks").exists()
 
     expected = {
-        "document-artifacts": office_skills / "document-artifacts" / "SKILL.md",
+        "office-artifacts": office_skills / "office-artifacts" / "SKILL.md",
         "writer-documents": office_skills / "writer-documents" / "SKILL.md",
         "calc-spreadsheets": office_skills / "calc-spreadsheets" / "SKILL.md",
         "impress-presentations": office_skills / "impress-presentations" / "SKILL.md",
@@ -500,6 +573,9 @@ def test_office_and_desktop_skills_are_rehomed_and_renamed():
     assert "Open in Desktop action" in desktop_skill
     assert "$BASE_DIR/usr/plugins/_desktop/profiles/$SESSION" in desktopctl
     assert "$BASE_DIR/usr/plugins/_desktop/sessions/$SESSION.json" in desktopctl
+    assert "sequence|batch)" in desktopctl
+    assert "dispatch_command $line" in desktopctl
+    assert '"$0" $line' not in desktopctl
 
 
 def test_skill_catalog_and_connector_boundaries_are_static_guarded():

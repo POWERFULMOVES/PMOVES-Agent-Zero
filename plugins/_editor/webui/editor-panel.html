@@ -79,6 +79,16 @@
 
           <div class="editor-toolbar" x-show="$store.editor.session" style="display: none;">
             <div class="editor-toolbar-row">
+              <button
+                type="button"
+                class="editor-icon-button editor-mode-toggle"
+                :title="$store.editor.viewModeTitle()"
+                :aria-label="$store.editor.viewModeTitle()"
+                @click="$store.editor.toggleViewMode()"
+              >
+                <span class="material-symbols-outlined" aria-hidden="true" x-text="$store.editor.viewModeIcon()"></span>
+              </button>
+
               <div class="editor-tool-group editor-source-tools" x-show="$store.editor.isMarkdown() && $store.editor.isSourceMode()" style="display: none;">
                 <button type="button" class="editor-icon-button" title="Undo" aria-label="Undo" :disabled="!$store.editor.canUndo()" @click="$store.editor.undo()">
                   <span class="material-symbols-outlined">undo</span>
@@ -127,12 +137,14 @@
 
               <button
                 type="button"
-                class="editor-icon-button editor-mode-toggle"
-                :title="$store.editor.viewModeTitle()"
-                :aria-label="$store.editor.viewModeTitle()"
-                @click="$store.editor.toggleViewMode()"
+                class="editor-icon-button editor-save-button"
+                :class="{ 'is-primary': $store.editor.dirty || $store.editor.saving }"
+                :title="$store.editor.saving ? 'Saving' : 'Save'"
+                :aria-label="$store.editor.saving ? 'Saving' : 'Save'"
+                :disabled="$store.editor.saving"
+                @click="$store.editor.save()"
               >
-                <span class="material-symbols-outlined" aria-hidden="true" x-text="$store.editor.viewModeIcon()"></span>
+                <span class="material-symbols-outlined" :class="{ spinning: $store.editor.saving }" x-text="$store.editor.saving ? 'progress_activity' : 'save'"></span>
               </button>
 
               <div class="editor-file-actions" x-data="{ open: false }" @click.outside="open = false" @keydown.escape.window="open = false">
@@ -149,10 +161,6 @@
                   <span class="material-symbols-outlined">more_vert</span>
                 </button>
                 <div class="editor-new-menu editor-file-menu" role="menu" x-show="open" @click.stop>
-                  <button type="button" class="editor-new-menu-item" :class="{ 'is-emphasized': $store.editor.dirty }" role="menuitem" :disabled="$store.editor.saving" @click="open = false; $store.editor.save()">
-                    <span class="material-symbols-outlined" :class="{ spinning: $store.editor.saving }" x-text="$store.editor.saving ? 'progress_activity' : 'save'"></span>
-                    <span>Save</span>
-                  </button>
                   <button type="button" class="editor-new-menu-item" role="menuitem" :disabled="$store.editor.saving" @click="open = false; $store.editor.renameActiveFile()">
                     <span class="material-symbols-outlined" aria-hidden="true">edit</span>
                     <span>Rename</span>
@@ -322,7 +330,7 @@
     }
 
     .modal-inner.editor-modal .modal-header {
-      grid-template-columns: minmax(0, 1fr) repeat(4, auto);
+      grid-template-columns: minmax(0, 1fr) auto auto;
     }
 
     .editor-tabs {

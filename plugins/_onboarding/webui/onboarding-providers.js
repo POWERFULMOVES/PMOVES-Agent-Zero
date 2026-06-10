@@ -71,7 +71,7 @@ export const ONBOARDING_PROVIDER_OVERRIDES = {
     short_description: "Multi-model API gateway.",
   },
   deepseek: {
-    logo: "https://www.deepseek.com/favicon.ico",
+    logo: "/plugins/_onboarding/webui/assets/provider-logos/deepseek.svg",
     setup_url: "https://platform.deepseek.com/",
     api_key_url: "https://platform.deepseek.com/api_keys",
     docs_url: "https://platform.deepseek.com/api_keys",

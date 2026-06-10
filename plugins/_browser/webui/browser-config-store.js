@@ -179,6 +179,17 @@ export const store = createStore("browserConfig", {
     return "Connect A0 CLI to use a host browser";
   },
 
+  browserRuntimeStatusLabel() {
+    if (this.config?.runtime_backend !== "host_required") {
+      return "Docker browser runs inside Agent Zero; A0 CLI host-browser status does not affect it.";
+    }
+    const label = this.hostBrowserConnectorLabel();
+    if (label.startsWith("Connect A0 CLI") || label.includes("unavailable")) {
+      return `${label}. Switch Browser location to Internal Docker browser to browse without A0 CLI.`;
+    }
+    return label;
+  },
+
   hasPaths() {
     return this.pathCount() > 0;
   },

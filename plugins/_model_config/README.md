@@ -75,12 +75,9 @@ The project preset file uses the same plain YAML list schema as global presets. 
   utility:
     provider: openrouter
     name: openai/gpt-5.4-mini
-    api_base: ""
-    ctx_length: 128000
-    ctx_input: 0.7
 ```
 
-Selecting a preset for a project copies the preset's `chat` and optional `utility` settings into the project's `config.json`. The embedding model is copied from the current effective config, because presets currently define chat and utility only.
+Preset slots are partial overlays. Missing fields inherit from the current effective config, so a preset can switch only the model identity while preserving tuned context windows, rate limits, and nested `kwargs`. The `utility` and `embedding` slots are optional and only apply when they declare a provider or model name; otherwise those configured models are inherited. Selecting a preset for a project writes the merged result into the project's `config.json`.
 
 ## Plugin Metadata
 

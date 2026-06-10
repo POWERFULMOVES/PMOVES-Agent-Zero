@@ -7,7 +7,11 @@ import { store as chatInputStore } from "/components/chat/input/input-store.js";
 import { store as pluginSettingsStore } from "/components/plugins/plugin-settings-store.js";
 import { store as chatsStore } from "/components/sidebar/chats/chats-store.js";
 import { store as rightCanvasStore } from "/components/canvas/right-canvas-store.js";
-import { openLatest as openLatestSurface, registerUrlHandler } from "/js/surfaces.js";
+import {
+  openLatest as openLatestSurface,
+  placeSurfaceModalHeaderAction,
+  registerUrlHandler,
+} from "/js/surfaces.js";
 
 const websocket = getNamespacedClient("/ws");
 websocket.addHandlers(["ws_webui"]);
@@ -2634,6 +2638,27 @@ const model = {
     };
     clampGeometry();
 
+    const newAction = globalThis.document.createElement("div");
+    newAction.className = "browser-header-actions surface-modal-new-action";
+    newAction.innerHTML = `
+      <button type="button" class="browser-header-new-button surface-modal-new-button" title="New Browser" aria-label="New Browser">
+        <span class="material-symbols-outlined" aria-hidden="true">add</span>
+        <span>New</span>
+      </button>
+    `;
+    const newButton = newAction.querySelector(".browser-header-new-button");
+    const onNewClick = async () => {
+      if (!newButton || newButton.disabled || this.isBusy()) return;
+      newButton.disabled = true;
+      try {
+        await this.openNewBrowser();
+      } finally {
+        if (globalThis.document?.contains?.(newButton)) newButton.disabled = false;
+      }
+    };
+    newButton?.addEventListener("click", onNewClick);
+    placeSurfaceModalHeaderAction(header, newAction, "new");
+
     const focusButton = globalThis.document.createElement("button");
     focusButton.type = "button";
     focusButton.className = "surface-button browser-modal-focus-button";
@@ -2658,12 +2683,7 @@ const model = {
       updateFocusButton(false);
     };
     updateFocusButton(false);
-    const closeButton = inner.querySelector(".modal-close");
-    if (closeButton) {
-      closeButton.insertAdjacentElement("beforebegin", focusButton);
-    } else {
-      header.appendChild(focusButton);
-    }
+    placeSurfaceModalHeaderAction(header, focusButton, "window");
     const onFocusClick = () => setFocusMode(!inner.classList.contains("is-focus-mode"));
     focusButton.addEventListener("click", onFocusClick);
 
@@ -2723,6 +2743,8 @@ const model = {
     header.addEventListener("pointerdown", onPointerDown);
 
     this._floatingCleanup = () => {
+      newButton?.removeEventListener("click", onNewClick);
+      newAction.remove();
       focusButton.removeEventListener("click", onFocusClick);
       focusButton.remove();
       header.removeEventListener("pointerdown", onPointerDown);
