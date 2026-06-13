@@ -30,12 +30,16 @@ try:
     _retire_legacy_collabora_runtime()
     runtime.initialize()
 
-    # generate random root password if not set (for SSH)
-    root_pass = dotenv.get_dotenv_value(dotenv.KEY_ROOT_PASSWORD)
-    if not root_pass:
-        root_pass = "".join(random.choices(string.ascii_letters + string.digits, k=32))
-        PrintStyle.standard("Changing root password...")
-    settings.set_root_password(root_pass)
+    # Skip root password management in container (non-root user, no chpasswd)
+    if not any(arg.lower() == "--dockerized=true" for arg in sys.argv):
+        # generate random root password if not set (for SSH)
+        root_pass = dotenv.get_dotenv_value(dotenv.KEY_ROOT_PASSWORD)
+        if not root_pass:
+            root_pass = "".join(random.choices(string.ascii_letters + string.digits, k=32))
+            PrintStyle.standard("Changing root password...")
+        settings.set_root_password(root_pass)
+    else:
+        PrintStyle.standard("Skipping root password management in container mode")
 
 except Exception as e:
     PrintStyle.error(f"Error in preload: {e}")
