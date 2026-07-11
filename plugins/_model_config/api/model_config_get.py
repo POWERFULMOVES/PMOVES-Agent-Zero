@@ -36,6 +36,10 @@ class ModelConfigGet(ApiHandler):
                 key = models.get_api_key(pid)
                 api_key_status[pid] = bool(key and key.strip() and key != "None")
 
+        chat_model = config.get("chat_model", {}) if isinstance(config, dict) else {}
+        chat_provider = str(chat_model.get("provider") or "").strip()
+        chat_name = str(chat_model.get("name") or "").strip()
+
         return {
             "config": config,
             "chat_providers": chat_providers,
@@ -43,4 +47,8 @@ class ModelConfigGet(ApiHandler):
             "chat_provider_details": chat_provider_details,
             "embedding_provider_details": embedding_provider_details,
             "api_key_status": api_key_status,
+            "model_configured": model_config.is_chat_model_configured(config),
+            "model_configured_label": " / ".join(
+                part for part in (chat_provider, chat_name) if part
+            ),
         }

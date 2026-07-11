@@ -63,10 +63,10 @@ class OfficeSession(ApiHandler):
 
     async def _open_document(self, doc: dict, input: dict, request: Request) -> dict:
         mode = "edit" if str(input.get("mode") or "edit").lower() == "edit" else "view"
-        if str(doc.get("extension") or "").lower() == "md":
+        if str(doc.get("extension") or "").lower() in document_store.EDITOR_TEXT_EXTENSIONS:
             return {
                 "ok": False,
-                "error": "Markdown documents use the Editor surface.",
+                "error": "Text documents use the Editor surface.",
                 "document": _public_doc(doc),
             }
         if str(doc.get("extension") or "").lower() in desktop_session.OFFICIAL_EXTENSIONS:
@@ -116,7 +116,7 @@ class OfficeSession(ApiHandler):
         return {"ok": False, "error": f".{doc.get('extension', '')} documents are not supported by LibreOffice."}
 
     def _save(self, input: dict) -> dict:
-        return {"ok": False, "error": "Markdown saves use /plugins/_editor/editor_session."}
+        return {"ok": False, "error": "Text document saves use /plugins/_editor/editor_session."}
 
     def _renamed(self, input: dict, context_id: str = "") -> dict:
         file_id = str(input.get("file_id") or "").strip()

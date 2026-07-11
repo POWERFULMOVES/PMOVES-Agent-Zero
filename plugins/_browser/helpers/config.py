@@ -11,13 +11,17 @@ PLUGIN_NAME = "_browser"
 MODEL_PRESET_KEY = "model_preset"
 DEFAULT_HOMEPAGE_KEY = "default_homepage"
 AUTOFOCUS_ACTIVE_PAGE_KEY = "autofocus_active_page"
+TAB_SCOPE_KEY = "browser_tab_scope"
 MAX_OPEN_TABS_KEY = "max_open_tabs"
 RUNTIME_BACKEND_KEY = "runtime_backend"
 HOST_BROWSER_PRIVACY_POLICY_KEY = "host_browser_privacy_policy"
 HOST_BROWSER_PROFILE_MODE_KEY = "host_browser_profile_mode"
+HOST_BROWSER_SELECTION_KEY = "host_browser_selection"
 RUNTIME_BACKENDS = {"container", "host_required"}
+BROWSER_TAB_SCOPES = {"per_context", "shared"}
 HOST_BROWSER_PRIVACY_POLICIES = {"enforce_local", "warn", "allow"}
 HOST_BROWSER_PROFILE_MODES = {"existing", "agent"}
+DEFAULT_BROWSER_TAB_SCOPE = "per_context"
 DEFAULT_MAX_OPEN_TABS = 32
 MIN_MAX_OPEN_TABS = 1
 HARD_MAX_OPEN_TABS = 50
@@ -53,6 +57,15 @@ def _normalize_extension_paths(value: Any) -> list[str]:
 
 def _normalize_model_preset(value: Any) -> str:
     return str(value or "").strip()
+
+
+def _normalize_host_browser_selection(value: Any) -> str:
+    raw = str(value or "").strip()
+    if not raw:
+        return ""
+    normalized = raw.lower().replace(" ", "_")
+    # Keep explicit CLI ids/ports/endpoints usable while avoiding control characters.
+    return "".join(ch for ch in normalized if ch.isalnum() or ch in {"_", "-", ":", ".", "/"})[:200]
 
 
 def _normalize_default_homepage(value: Any) -> str:
@@ -117,6 +130,11 @@ def normalize_browser_config(settings: dict[str, Any] | None) -> dict[str, Any]:
             raw.get(AUTOFOCUS_ACTIVE_PAGE_KEY, True),
             default=True,
         ),
+        TAB_SCOPE_KEY: _normalize_choice(
+            raw.get(TAB_SCOPE_KEY, DEFAULT_BROWSER_TAB_SCOPE),
+            allowed=BROWSER_TAB_SCOPES,
+            default=DEFAULT_BROWSER_TAB_SCOPE,
+        ),
         MAX_OPEN_TABS_KEY: _normalize_int(
             raw.get(MAX_OPEN_TABS_KEY, DEFAULT_MAX_OPEN_TABS),
             default=DEFAULT_MAX_OPEN_TABS,
@@ -135,6 +153,9 @@ def normalize_browser_config(settings: dict[str, Any] | None) -> dict[str, Any]:
             raw.get(HOST_BROWSER_PROFILE_MODE_KEY, "existing"),
             allowed=HOST_BROWSER_PROFILE_MODES,
             default="existing",
+        ),
+        HOST_BROWSER_SELECTION_KEY: _normalize_host_browser_selection(
+            raw.get(HOST_BROWSER_SELECTION_KEY, raw.get("host_browser_choice", ""))
         ),
         MODEL_PRESET_KEY: _normalize_model_preset(raw.get(MODEL_PRESET_KEY, "")),
     }

@@ -210,7 +210,132 @@ def canonical_workspace_display_path(display_path: str) -> str:
     return (canonical if canonical.startswith("/a0") else normalized).rstrip("/") or canonical
 
 
-def resolve_workspace(context_id: str = "", *, context_loader=None) -> WorkspaceInfo:
+def configured_workdir_display_path() -> str:
+    from helpers import settings
+
+    configured = str(settings.get_settings().get("workdir_path") or "")
+    fallback = files.normalize_a0_path(files.get_abs_path("usr/workdir"))
+    return canonical_workspace_display_path(configured or fallback)
+
+
+def _workspace_option(
+    *,
+    kind: str,
+    display_path: str,
+    label: str,
+    name: str = "",
+    title: str = "",
+    project_name: str = "",
+    color: str = "",
+) -> dict[str, Any]:
+    normalized = canonical_workspace_display_path(display_path)
+    available = is_inside_usr_display(normalized)
+    error = (
+        "" if available else "Time Travel is only available for workspaces inside /a0/usr."
+    )
+    return {
+        "id": workspace_id_for(normalized),
+        "kind": kind,
+        "name": name,
+        "title": title or label,
+        "label": label,
+        "display_path": normalized.rstrip("/") or normalized,
+        "path": normalized.rstrip("/") or normalized,
+        "project_name": project_name,
+        "color": color,
+        "available": available,
+        "locked": not available,
+        "error": error,
+    }
+
+
+def list_selectable_workspaces(
+    context_id: str = "",
+    *,
+    context_loader=None,
+) -> dict[str, Any]:
+    from helpers import projects
+
+    context_id = str(context_id or "").strip()
+    workspaces: list[dict[str, Any]] = []
+    seen_ids: set[str] = set()
+
+    def add_workspace(option: dict[str, Any]) -> None:
+        option_id = str(option.get("id") or "")
+        if not option_id or option_id in seen_ids:
+            return
+        seen_ids.add(option_id)
+        workspaces.append(option)
+
+    add_workspace(
+        _workspace_option(
+            kind="workdir",
+            display_path=configured_workdir_display_path(),
+            label="User working directory",
+            name="workdir",
+            title="User working directory",
+        )
+    )
+
+    for project in projects.get_active_projects_list() or []:
+        project_name = str(project.get("name") or "").strip()
+        if not project_name:
+            continue
+        title = str(project.get("title") or project_name)
+        add_workspace(
+            _workspace_option(
+                kind="project",
+                display_path=files.normalize_a0_path(
+                    projects.get_project_folder(project_name)
+                ),
+                label=title,
+                name=project_name,
+                title=title,
+                project_name=project_name,
+                color=str(project.get("color") or ""),
+            )
+        )
+
+    default_workspace_id = ""
+    try:
+        default_workspace_id = _resolve_context_workspace(
+            context_id,
+            context_loader=context_loader,
+        ).id
+    except TimeTravelError:
+        default_workspace_id = ""
+
+    if default_workspace_id not in seen_ids:
+        default_workspace_id = ""
+    if not default_workspace_id and workspaces:
+        default_workspace_id = str(workspaces[0].get("id") or "")
+
+    return {
+        "context_id": context_id,
+        "workspaces": workspaces,
+        "default_workspace_id": default_workspace_id,
+    }
+
+
+def _selectable_workspace_by_id(
+    workspace_id: str,
+    context_id: str = "",
+    *,
+    context_loader=None,
+) -> dict[str, Any] | None:
+    wanted = str(workspace_id or "").strip()
+    if not wanted:
+        return None
+    for workspace in list_selectable_workspaces(
+        context_id,
+        context_loader=context_loader,
+    )["workspaces"]:
+        if str(workspace.get("id") or "") == wanted:
+            return workspace
+    return None
+
+
+def _resolve_context_workspace(context_id: str = "", *, context_loader=None) -> WorkspaceInfo:
     from helpers import projects, settings
 
     context_id = str(context_id or "").strip()
@@ -246,9 +371,36 @@ def resolve_workspace(context_id: str = "", *, context_loader=None) -> Workspace
     )
 
 
-def resolve_workspace_for_path_hint(path_hint: str) -> WorkspaceInfo | None:
-    from helpers import settings
+def resolve_workspace(
+    context_id: str = "",
+    *,
+    workspace_id: str = "",
+    context_loader=None,
+) -> WorkspaceInfo:
+    workspace_id = str(workspace_id or "").strip()
+    if not workspace_id:
+        return _resolve_context_workspace(context_id, context_loader=context_loader)
 
+    selected = _selectable_workspace_by_id(
+        workspace_id,
+        context_id,
+        context_loader=context_loader,
+    )
+    if not selected:
+        raise WorkspaceRejectedError("Selected Time Travel workspace is not available.")
+    if selected.get("locked") or selected.get("available") is False:
+        raise WorkspaceRejectedError(
+            str(selected.get("error") or "Selected Time Travel workspace is not available.")
+        )
+
+    return _workspace_from_display(
+        str(selected.get("display_path") or selected.get("path") or ""),
+        project_name=str(selected.get("project_name") or ""),
+        context_id=str(context_id or "").strip(),
+    )
+
+
+def resolve_workspace_for_path_hint(path_hint: str) -> WorkspaceInfo | None:
     normalized = canonical_workspace_display_path(path_hint)
     if not is_inside_usr_display(normalized):
         return None
@@ -258,8 +410,7 @@ def resolve_workspace_for_path_hint(path_hint: str) -> WorkspaceInfo | None:
         project_display = f"/a0/usr/projects/{parts[3]}"
         return _workspace_from_display(project_display, project_name=parts[3])
 
-    configured = str(settings.get_settings().get("workdir_path") or "")
-    workdir_display = canonical_workspace_display_path(configured or files.normalize_a0_path(files.get_abs_path("usr/workdir")))
+    workdir_display = configured_workdir_display_path()
     if normalized == workdir_display or normalized.startswith(workdir_display.rstrip("/") + "/"):
         return _workspace_from_display(workdir_display)
 
@@ -467,6 +618,8 @@ def _flush_debounced_snapshot(workspace_id: str) -> None:
 
     try:
         workspace = payload["workspace"]
+        if not workspace.real_path.is_dir():
+            return
         TimeTravelService(workspace).snapshot(
             trigger=str(payload.get("trigger") or "watchdog"),
             metadata=payload.get("metadata") or {},

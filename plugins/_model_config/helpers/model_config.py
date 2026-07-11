@@ -16,6 +16,7 @@ PRESET_SLOT_CONFIG_SECTIONS = {
     "utility": "utility_model",
     "embedding": "embedding_model",
 }
+MODEL_SLOT_PRESET_REPLACE_FIELDS = {"kwargs"}
 IMPLICIT_PRESET_SLOT_DEFAULTS = {
     "utility": {
         "ctx_length": 128000,
@@ -31,7 +32,7 @@ IMPLICIT_PRESET_SLOT_DEFAULTS = {
         "kwargs": {},
     },
 }
-LOCAL_PROVIDERS = {"ollama", "lm_studio"}
+LOCAL_PROVIDERS = {"ollama", "lm_studio", "llama_cpp", "omlx", "vllm"}
 LOCAL_EMBEDDING = {"huggingface"}
 _PROVIDER_METADATA_CACHE: dict | None = None
 
@@ -96,6 +97,76 @@ def get_config(agent=None, project_name=None, agent_profile=None):
         project_name=project_name,
         agent_profile=agent_profile,
     ) or {}
+
+
+def has_project_config(project_name: str) -> bool:
+    path = plugins.determine_plugin_asset_path(
+        "_model_config", project_name, "", plugins.CONFIG_FILE_NAME
+    )
+    return files.exists(path)
+
+
+def load_project_llm_data(project_name: str) -> dict:
+    """Build the model-settings payload shown in Project Settings."""
+    project_config_exists = has_project_config(project_name)
+    config = normalize_config_for_save(get_config(project_name=project_name) or {})
+    return {
+        "config": config,
+        "config_scope": "project" if project_config_exists else "inherited",
+        "has_project_config": project_config_exists,
+        "selected_preset": {
+            "scope": "current",
+            "project_name": project_name,
+            "name": "Current config",
+        },
+        "presets": get_combined_presets(project_name),
+        "global_presets": get_presets(),
+        "project_presets": get_project_presets(project_name),
+    }
+
+
+def save_project_llm_settings(project_name: str, llm_data: object) -> None:
+    """Persist Project Settings model data without freezing inherited globals."""
+    if not isinstance(llm_data, dict):
+        return
+
+    project_config_exists = has_project_config(project_name)
+    project_presets = llm_data.get("project_presets")
+    presets_path = _get_presets_path(project_name)
+    if isinstance(project_presets, list) and (
+        project_presets or files.exists(presets_path)
+    ):
+        save_presets(project_presets, project_name=project_name)
+
+    config_to_save = None
+    selected_preset = llm_data.get("selected_preset")
+    if isinstance(selected_preset, dict) and selected_preset.get("scope") in {
+        PRESET_SCOPE_GLOBAL,
+        PRESET_SCOPE_PROJECT,
+    }:
+        preset = resolve_preset_selection(selected_preset, project_name=project_name)
+        if preset:
+            base_config = get_config(project_name=project_name) or {}
+            config_to_save = build_config_from_preset(preset, base_config)
+
+    config = llm_data.get("config")
+    config_scope = str(llm_data.get("config_scope") or "")
+    config_is_inherited = config_scope == "inherited" and not project_config_exists
+    should_save_config = (
+        project_config_exists
+        or config_scope == "project"
+        or not config_scope
+    )
+    if (
+        config_to_save is None
+        and isinstance(config, dict)
+        and should_save_config
+        and not config_is_inherited
+    ):
+        config_to_save = normalize_config_for_save(config)
+
+    if config_to_save is not None:
+        plugins.save_plugin_config("_model_config", project_name, "", config_to_save)
 
 
 def _load_presets_from_path(path: str) -> list | None:
@@ -283,6 +354,17 @@ def _deep_merge_dict(base: dict, override: dict) -> dict:
     return result
 
 
+def _replace_preset_model_slot_fields(base: dict, override: dict, result: dict) -> dict:
+    """Clear or replace provider-specific fields that must not leak across presets."""
+    for key in MODEL_SLOT_PRESET_REPLACE_FIELDS:
+        if key in override:
+            value = override.get(key)
+            result[key] = deepcopy(value) if isinstance(value, dict) else {}
+        elif key in base:
+            result[key] = {}
+    return result
+
+
 def _slot_has_identity(slot_config: dict) -> bool:
     return bool(slot_config.get("provider") or slot_config.get("name"))
 
@@ -342,7 +424,8 @@ def _merge_model_slot(
     )
     if not strip_api_key and not str(cleaned.get("api_key") or "").strip():
         cleaned.pop("api_key", None)
-    return _deep_merge_dict(base_slot if isinstance(base_slot, dict) else {}, cleaned)
+    base = base_slot if isinstance(base_slot, dict) else {}
+    return _replace_preset_model_slot_fields(base, cleaned, _deep_merge_dict(base, cleaned))
 
 
 def build_config_from_preset(
@@ -356,8 +439,8 @@ def build_config_from_preset(
 
     Presets are intentionally partial: omitted fields inherit from the current
     config, so selecting a preset does not reset tuned values such as context
-    windows, rate limits, or nested kwargs unless the preset explicitly defines
-    them.
+    windows or rate limits. Provider-specific kwargs are replaced when present
+    and cleared when omitted so stale params do not leak between providers.
     """
     config = (
         normalize_config_for_save(base_config)
@@ -437,7 +520,25 @@ def get_utility_model_config(agent=None) -> dict:
 def get_embedding_model_config(agent=None) -> dict:
     """Get embedding model config."""
     cfg = get_config(agent)
-    return cfg.get("embedding_model", {})
+    model_cfg = deepcopy(cfg.get("embedding_model", {}))
+    provider = str(model_cfg.get("provider") or "").strip().lower()
+    name = str(model_cfg.get("name") or "").strip().strip('"').strip("'")
+
+    if provider:
+        model_cfg["provider"] = provider
+    if name:
+        model_cfg["name"] = name
+
+    if name.startswith("huggingface/sentence-transformers/"):
+        model_cfg["provider"] = "huggingface"
+        model_cfg["name"] = name.removeprefix("huggingface/")
+    elif name.startswith("sentence-transformers/") and provider in {"", "openai", "other"}:
+        model_cfg["provider"] = "huggingface"
+    elif provider == "huggingface" and name == "all-MiniLM-L6-v2":
+        model_cfg["name"] = "sentence-transformers/all-MiniLM-L6-v2"
+
+    return model_cfg
+
 
 def is_chat_override_allowed(agent=None) -> bool:
     """Check if per-chat model override is enabled."""
@@ -553,7 +654,7 @@ def get_missing_api_key_providers(agent=None) -> list[dict]:
     checks = [
         ("Chat Model", cfg.get("chat_model", {})),
         ("Utility Model", cfg.get("utility_model", {})),
-        ("Embedding Model", cfg.get("embedding_model", {})),
+        ("Embedding Model", get_embedding_model_config(agent)),
     ]
 
     for label, model_cfg in checks:
@@ -570,3 +671,13 @@ def get_missing_api_key_providers(agent=None) -> list[dict]:
             missing.append({"model_type": label, "provider": provider})
 
     return missing
+
+
+def is_chat_model_configured(config: dict | None = None) -> bool:
+    cfg = config if isinstance(config, dict) else get_config()
+    chat_cfg = cfg.get("chat_model", {}) if isinstance(cfg, dict) else {}
+    provider = str(chat_cfg.get("provider") or "").strip()
+    name = str(chat_cfg.get("name") or "").strip()
+    if not provider or not name:
+        return False
+    return has_provider_api_key(provider.lower(), chat_cfg.get("api_key", ""), "chat")

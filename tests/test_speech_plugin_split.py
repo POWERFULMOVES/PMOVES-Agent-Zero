@@ -215,9 +215,19 @@ def test_chat_bar_keeps_existing_send_and_mic_icon_contract() -> None:
         assert f"#microphone-button.mic-{state}" in whisper_css
         assert f"#microphone-button.mic-{state}" in mic_extension
 
-    assert "background-color: red;" in whisper_css
-    assert "background-color: green;" in whisper_css
-    assert "background-color: teal;" in whisper_css
-    assert "background-color: grey;" in mic_extension
+    assert "border-radius: 12px;" in whisper_css
+    assert "background-color: transparent;" in whisper_css
+    assert "#microphone-button.mic-inactive {\n  color: grey;" in whisper_css
+    assert "background-color: grey;" not in whisper_css
+    assert "#microphone-button.mic-listening {\n  color: red;" in whisper_css
+    assert "#microphone-button.mic-recording {\n  color: green;" in whisper_css
+    assert "#microphone-button.mic-waiting {\n  color: teal;" in whisper_css
+    assert "#microphone-button.mic-processing {\n  color: darkcyan;" in whisper_css
+    assert "#microphone-button.mic-activating svg" in whisper_css
+    assert "#microphone-button.mic-processing svg" in whisper_css
+    assert "#microphone-button:not(.mic-disabled):hover svg" in whisper_css
+    assert "#microphone-button:not(.mic-disabled):active svg" in whisper_css
+    assert "box-shadow: none;" in whisper_css
+    assert "order: 1;" in mic_extension
     assert "whisper-stt-mic-pulse 0.8s infinite" in mic_extension
     assert "whisper-stt-mic-pulse 0.8s infinite" in whisper_css

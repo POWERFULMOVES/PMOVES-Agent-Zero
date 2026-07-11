@@ -9,7 +9,7 @@
     <template x-if="$store.editor">
       <div class="editor-panel" x-create="$store.editor.onMount($el, xAttrs($el) || {})" x-destroy="$store.editor.cleanup()">
         <div class="editor-shell" @keydown="$store.editor.handleEditorKeydown($event)">
-          <div class="editor-tabs" x-show="$store.editor.visibleTabs().length > 0" style="display: none;" role="tablist" aria-label="Open Markdown files">
+          <div class="editor-tabs" x-show="$store.editor.visibleTabs().length > 0" style="display: none;" role="tablist" aria-label="Open text files">
             <template x-for="tab in $store.editor.visibleTabs()" :key="tab.tab_id">
               <div
                 class="editor-tab-shell"
@@ -82,6 +82,8 @@
               <button
                 type="button"
                 class="editor-icon-button editor-mode-toggle"
+                x-show="$store.editor.isMarkdown()"
+                style="display: none;"
                 :title="$store.editor.viewModeTitle()"
                 :aria-label="$store.editor.viewModeTitle()"
                 @click="$store.editor.toggleViewMode()"
@@ -89,30 +91,30 @@
                 <span class="material-symbols-outlined" aria-hidden="true" x-text="$store.editor.viewModeIcon()"></span>
               </button>
 
-              <div class="editor-tool-group editor-source-tools" x-show="$store.editor.isMarkdown() && $store.editor.isSourceMode()" style="display: none;">
+              <div class="editor-tool-group editor-source-tools" x-show="$store.editor.isTextDocument() && $store.editor.isSourceMode()" style="display: none;">
                 <button type="button" class="editor-icon-button" title="Undo" aria-label="Undo" :disabled="!$store.editor.canUndo()" @click="$store.editor.undo()">
                   <span class="material-symbols-outlined">undo</span>
                 </button>
                 <button type="button" class="editor-icon-button" title="Redo" aria-label="Redo" :disabled="!$store.editor.canRedo()" @click="$store.editor.redo()">
                   <span class="material-symbols-outlined">redo</span>
                 </button>
-                <button type="button" class="editor-icon-button" title="Bold" aria-label="Bold" @click="$store.editor.format('bold')">
+                <button type="button" class="editor-icon-button" title="Bold" aria-label="Bold" x-show="$store.editor.isMarkdown()" @click="$store.editor.format('bold')">
                   <span class="material-symbols-outlined">format_bold</span>
                 </button>
-                <button type="button" class="editor-icon-button" title="Italic" aria-label="Italic" @click="$store.editor.format('italic')">
+                <button type="button" class="editor-icon-button" title="Italic" aria-label="Italic" x-show="$store.editor.isMarkdown()" @click="$store.editor.format('italic')">
                   <span class="material-symbols-outlined">format_italic</span>
                 </button>
-                <button type="button" class="editor-icon-button" title="List" aria-label="List" @click="$store.editor.format('list')">
+                <button type="button" class="editor-icon-button" title="List" aria-label="List" x-show="$store.editor.isMarkdown()" @click="$store.editor.format('list')">
                   <span class="material-symbols-outlined">format_list_bulleted</span>
                 </button>
-                <button type="button" class="editor-icon-button" title="Numbered list" aria-label="Numbered list" @click="$store.editor.format('numbered')">
+                <button type="button" class="editor-icon-button" title="Numbered list" aria-label="Numbered list" x-show="$store.editor.isMarkdown()" @click="$store.editor.format('numbered')">
                   <span class="material-symbols-outlined">format_list_numbered</span>
                 </button>
-                <button type="button" class="editor-icon-button" title="Table" aria-label="Table" @click="$store.editor.format('table')">
+                <button type="button" class="editor-icon-button" title="Table" aria-label="Table" x-show="$store.editor.isMarkdown()" @click="$store.editor.format('table')">
                   <span class="material-symbols-outlined">table</span>
                 </button>
               </div>
-              <div class="editor-tool-group editor-preview-tools" x-show="$store.editor.isPreviewMode()" style="display: none;">
+              <div class="editor-tool-group editor-preview-tools" x-show="$store.editor.isMarkdown() && $store.editor.isPreviewMode()" style="display: none;">
                 <button type="button" class="editor-icon-button" title="Previous page" aria-label="Previous page" :disabled="$store.editor.previewEditing || $store.editor.activePageIndex <= 0" @click="$store.editor.previousPage()">
                   <span class="material-symbols-outlined">chevron_left</span>
                 </button>
@@ -145,6 +147,17 @@
                 @click="$store.editor.save()"
               >
                 <span class="material-symbols-outlined" :class="{ spinning: $store.editor.saving }" x-text="$store.editor.saving ? 'progress_activity' : 'save'"></span>
+              </button>
+
+              <button
+                type="button"
+                class="editor-icon-button editor-save-as-button"
+                title="Save As"
+                aria-label="Save As"
+                :disabled="$store.editor.saving"
+                @click="$store.editor.saveAs()"
+              >
+                <span class="material-symbols-outlined">save_as</span>
               </button>
 
               <div class="editor-file-actions" x-data="{ open: false }" @click.outside="open = false" @keydown.escape.window="open = false">
@@ -213,7 +226,7 @@
                 <textarea
                   class="editor-source-editor"
                   data-editor-source
-                  aria-label="Markdown source"
+                  aria-label="Text source"
                   x-show="$store.editor.aceUnavailable"
                   x-model="$store.editor.editorText"
                   @input="$store.editor.onSourceInput()"
@@ -224,7 +237,7 @@
               </div>
             </div>
 
-            <div class="editor-preview-shell" x-show="$store.editor.session && $store.editor.isPreviewMode()" style="display: none;">
+            <div class="editor-preview-shell" x-show="$store.editor.session && $store.editor.isMarkdown() && $store.editor.isPreviewMode()" style="display: none;">
               <div class="editor-preview-title">
                 <h1 x-text="$store.editor.pageTitle()"></h1>
               </div>
@@ -260,6 +273,10 @@
                 <button type="button" class="editor-icon-button editor-command-button" @click="$store.editor.runNewMenuAction('markdown')">
                   <span class="material-symbols-outlined" aria-hidden="true">article</span>
                   <span class="editor-button-label">Markdown</span>
+                </button>
+                <button type="button" class="editor-icon-button editor-command-button" @click="$store.editor.runNewMenuAction('text')">
+                  <span class="material-symbols-outlined" aria-hidden="true">description</span>
+                  <span class="editor-button-label">Text</span>
                 </button>
               </div>
             </div>

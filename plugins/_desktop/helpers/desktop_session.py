@@ -23,7 +23,7 @@ from plugins._desktop.helpers import desktop_state
 from plugins._office.helpers import document_store, libreoffice
 
 
-OFFICIAL_EXTENSIONS = {"odt", "ods", "odp", "docx", "xlsx", "pptx", "txt"}
+OFFICIAL_EXTENSIONS = {"odt", "ods", "odp", "docx", "xlsx", "pptx"}
 PLUGIN_NAME = "_desktop"
 SYSTEM_SESSION_ID = "agent-zero-desktop"
 SYSTEM_FILE_ID = "system-desktop"
@@ -78,6 +78,8 @@ DESKTOP_FOLDER_LINKS = (
 URL_INTENT_MAX_ITEMS = 50
 URL_INTENT_MAX_LENGTH = 8192
 URL_HANDLER_DESKTOP_ID = "agent-zero-browser.desktop"
+EDITOR_HANDLER_DESKTOP_ID = "agent-zero-editor.desktop"
+WRITER_HANDLER_DESKTOP_ID = "libreoffice-writer.desktop"
 SHUTDOWN_HANDLER_DESKTOP_ID = "agent-zero-shutdown.desktop"
 SHUTDOWN_PANEL_LAUNCHER_ID = SHUTDOWN_HANDLER_DESKTOP_ID
 SHUTDOWN_CONFIRM_SECONDS = 8
@@ -1135,6 +1137,7 @@ class DesktopSessionManager:
         applications_dir.mkdir(parents=True, exist_ok=True)
 
         browser_bridge = _write_url_bridge_script(session)
+        editor_bridge = _write_editor_bridge_script(session)
         shutdown_bridge = _write_shutdown_bridge_script(session)
         helpers_rc = config_dir / "xfce4" / "helpers.rc"
         helpers_rc.parent.mkdir(parents=True, exist_ok=True)
@@ -1153,8 +1156,12 @@ class DesktopSessionManager:
             config_dir / "xfce4" / "helpers" / "agent-zero-browser.desktop",
             browser_bridge,
         )
-        _write_mimeapps_defaults(config_dir / "mimeapps.list", URL_HANDLER_DESKTOP_ID)
-        _write_mimeapps_defaults(data_dir / "applications" / "mimeapps.list", URL_HANDLER_DESKTOP_ID)
+        _write_mimeapps_defaults(config_dir / "mimeapps.list", URL_HANDLER_DESKTOP_ID, EDITOR_HANDLER_DESKTOP_ID)
+        _write_mimeapps_defaults(
+            data_dir / "applications" / "mimeapps.list",
+            URL_HANDLER_DESKTOP_ID,
+            EDITOR_HANDLER_DESKTOP_ID,
+        )
         _write_desktop_launcher(
             applications_dir / URL_HANDLER_DESKTOP_ID,
             name="Agent Zero Browser",
@@ -1164,6 +1171,15 @@ class DesktopSessionManager:
             try_exec=str(browser_bridge),
             mime_types=_url_handler_mime_types(),
             no_display=True,
+        )
+        _write_desktop_launcher(
+            applications_dir / EDITOR_HANDLER_DESKTOP_ID,
+            name="Agent Zero Editor",
+            exec_line=_desktop_exec(editor_bridge, "%F"),
+            icon="accessories-text-editor",
+            categories="Utility;TextEditor;",
+            try_exec=str(editor_bridge),
+            mime_types=_editor_text_handler_mime_types(),
         )
         _write_desktop_launcher(
             applications_dir / SHUTDOWN_HANDLER_DESKTOP_ID,
@@ -1189,6 +1205,14 @@ class DesktopSessionManager:
             icon="web-browser",
             categories="Network;WebBrowser;",
             try_exec=str(browser_bridge),
+        )
+        _write_desktop_launcher(
+            desktop_dir / "Editor.desktop",
+            name="Editor",
+            exec_line=_desktop_exec(editor_bridge),
+            icon="accessories-text-editor",
+            categories="Utility;TextEditor;",
+            try_exec=str(editor_bridge),
         )
         self._trust_desktop_launchers(session, desktop_dir)
 
@@ -1830,6 +1854,10 @@ def _url_bridge_script_path(session: DesktopSession) -> Path:
     return _url_bridge_dir(session) / "open-url"
 
 
+def _editor_bridge_script_path(session: DesktopSession) -> Path:
+    return _url_bridge_dir(session) / "open-editor"
+
+
 def _url_bridge_queue_path(session: DesktopSession) -> Path:
     return _url_bridge_dir(session) / "browser-url-intents.jsonl"
 
@@ -1882,6 +1910,64 @@ def main():
                     "url": url,
                     "created_at": time.time(),
                     "source": "desktop",
+                }}, ensure_ascii=True) + "\\n")
+            queue_file.flush()
+            os.fsync(queue_file.fileno())
+        fcntl.flock(lock_file, fcntl.LOCK_UN)
+
+
+if __name__ == "__main__":
+    main()
+""",
+        encoding="utf-8",
+    )
+    try:
+        script.chmod(0o755)
+    except OSError:
+        pass
+    return script
+
+
+def _write_editor_bridge_script(session: DesktopSession) -> Path:
+    bridge_dir = _url_bridge_dir(session)
+    bridge_dir.mkdir(parents=True, exist_ok=True)
+    script = _editor_bridge_script_path(session)
+    queue = _url_bridge_queue_path(session)
+    lock = _url_bridge_lock_path(session)
+    script.write_text(
+        f"""#!/usr/bin/env python3
+import fcntl
+import json
+import os
+import sys
+import time
+from urllib.parse import quote
+
+QUEUE_PATH = {str(queue)!r}
+LOCK_PATH = {str(lock)!r}
+MAX_URL_LENGTH = {URL_INTENT_MAX_LENGTH}
+
+
+def editor_url(path):
+    path = str(path or "").strip()
+    if not path:
+        return "a0-editor://open"
+    return "a0-editor://open?path=" + quote(path[:MAX_URL_LENGTH], safe="/:")
+
+
+def main():
+    urls = [editor_url(arg) for arg in sys.argv[1:] if str(arg or "").strip()]
+    if not urls:
+        urls = [editor_url("")]
+    os.makedirs(os.path.dirname(QUEUE_PATH), exist_ok=True)
+    with open(LOCK_PATH, "a+", encoding="utf-8") as lock_file:
+        fcntl.flock(lock_file, fcntl.LOCK_EX)
+        with open(QUEUE_PATH, "a", encoding="utf-8") as queue_file:
+            for url in urls:
+                queue_file.write(json.dumps({{
+                    "url": url,
+                    "created_at": time.time(),
+                    "source": "desktop-editor",
                 }}, ensure_ascii=True) + "\\n")
             queue_file.flush()
             os.fsync(queue_file.fileno())
@@ -2102,14 +2188,29 @@ def _url_handler_mime_types() -> tuple[str, ...]:
     )
 
 
-def _write_mimeapps_defaults(path: Path, desktop_id: str) -> None:
-    associations = ";".join([desktop_id, ""])
+def _editor_text_handler_mime_types() -> tuple[str, ...]:
+    return (
+        "text/markdown",
+        "text/x-markdown",
+        "text/plain",
+    )
+
+
+def _write_mimeapps_defaults(path: Path, url_desktop_id: str, editor_desktop_id: str) -> None:
+    url_associations = ";".join([url_desktop_id, ""])
+    # LibreOffice Writer stays the default so double-clicks keep the user (and
+    # agents) inside the Desktop; the Agent Zero Editor remains an "Open With"
+    # option. When Writer's desktop entry is missing, xdg falls back through
+    # the added associations to the editor.
+    text_associations = ";".join([WRITER_HANDLER_DESKTOP_ID, editor_desktop_id, ""])
     lines = [
         "[Default Applications]",
-        *(f"{mime_type}={desktop_id}" for mime_type in _url_handler_mime_types()),
+        *(f"{mime_type}={url_desktop_id}" for mime_type in _url_handler_mime_types()),
+        *(f"{mime_type}={WRITER_HANDLER_DESKTOP_ID}" for mime_type in _editor_text_handler_mime_types()),
         "",
         "[Added Associations]",
-        *(f"{mime_type}={associations}" for mime_type in _url_handler_mime_types()),
+        *(f"{mime_type}={url_associations}" for mime_type in _url_handler_mime_types()),
+        *(f"{mime_type}={text_associations}" for mime_type in _editor_text_handler_mime_types()),
         "",
     ]
     path.parent.mkdir(parents=True, exist_ok=True)

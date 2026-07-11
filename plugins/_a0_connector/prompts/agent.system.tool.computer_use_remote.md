@@ -1,6 +1,6 @@
 ### computer_use_remote
 
-Runtime-gated beta desktop control through a connected A0 CLI on the user's host machine. The callable contract is available in the tool prompt. Availability, backend support, and trust mode are checked when the tool runs, together with CLI presence, local enablement, and re-arm state. Computer Use enablement is scoped to the current CLI session, not scoped to a single chat context.
+Shown when a connected A0 CLI advertises enabled Computer Use (`/computer-use on`) and does not need re-arming. Runtime-gated beta desktop control through that CLI on the user's host machine. Availability, backend support, and trust mode are checked when the tool runs, together with CLI presence, local enablement, and re-arm state. Computer Use enablement is scoped to the current CLI session, not scoped to a single chat context.
 
 Use this for native host desktop UI inspection, screenshots, background-safe window/element actions when supported, clicking, scrolling, typing, key presses, and status checks. Do not use it for ordinary web-page navigation or host-browser control; use the browser tool for web pages unless browser automation cannot express the task. For complex desktop workflows, load and follow skill `host-computer-use` before proceeding.
 

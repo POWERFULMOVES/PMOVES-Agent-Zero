@@ -63,6 +63,7 @@ class BackupService:
         return f"""# User data
 # All persistent user data is now centralized in /usr for easier backup and restore
 {agent_root}/usr/**
+!{agent_root}/usr/.time_travel/**
 """
 
     def _get_agent_zero_version(self) -> str:
@@ -240,8 +241,12 @@ class BackupService:
 
         return translated_patterns
 
-    async def test_patterns(self, metadata: Dict[str, Any], max_files: int = 1000) -> List[Dict[str, Any]]:
-        """Test backup patterns and return list of matched files"""
+    async def test_patterns(self, metadata: Dict[str, Any], max_files: Optional[int] = 1000) -> List[Dict[str, Any]]:
+        """Test backup patterns and return list of matched files.
+
+        Pass max_files=None for internal flows that must process the complete
+        match set, such as backup creation and restore cleanup.
+        """
         include_patterns = metadata.get("include_patterns", [])
         exclude_patterns = metadata.get("exclude_patterns", [])
         include_hidden = metadata.get("include_hidden", True)
@@ -258,6 +263,7 @@ class BackupService:
         # Get explicit patterns for hidden file handling
         explicit_patterns = self._get_explicit_patterns(include_patterns)
 
+        has_limit = max_files is not None
         matched_files = []
         processed_count = 0
 
@@ -285,7 +291,7 @@ class BackupService:
                         dirs[:] = dirs_to_keep
 
                     for file in files_list:
-                        if processed_count >= max_files:
+                        if has_limit and processed_count >= max_files:
                             break
 
                         file_path = os.path.join(root, file)
@@ -317,10 +323,10 @@ class BackupService:
                                 # Skip files we can't access
                                 continue
 
-                    if processed_count >= max_files:
+                    if has_limit and processed_count >= max_files:
                         break
 
-                if processed_count >= max_files:
+                if has_limit and processed_count >= max_files:
                     break
 
         except Exception as e:
@@ -344,8 +350,10 @@ class BackupService:
             "include_hidden": include_hidden
         }
 
-        # Get matched files
-        matched_files = await self.test_patterns(metadata, max_files=50000)
+        # Get the complete matched file set. Preview and dry-run callers may
+        # cap their scans for UI responsiveness, but the archive itself must be
+        # complete.
+        matched_files = await self.test_patterns(metadata, max_files=None)
 
         if not matched_files:
             raise Exception("No files matched the backup patterns")
@@ -824,7 +832,7 @@ class BackupService:
 
         # Find existing files that match the translated user-edited patterns
         try:
-            existing_files = await self.test_patterns(metadata, max_files=10000)
+            existing_files = await self.test_patterns(metadata, max_files=None)
 
             # Convert to delete operations format
             files_to_delete = []

@@ -36,7 +36,7 @@ DEFAULT_HEALTH_URL = os.environ.get(
     "http://127.0.0.1:80/api/health",
 )
 DEFAULT_HEALTH_TIMEOUT_SECONDS = int(
-    os.environ.get("A0_SELF_UPDATE_HEALTH_TIMEOUT_SECONDS", "120")
+    os.environ.get("A0_SELF_UPDATE_HEALTH_TIMEOUT_SECONDS", "180")
 )
 DEFAULT_HEALTH_POLL_INTERVAL_SECONDS = float(
     os.environ.get("A0_SELF_UPDATE_HEALTH_POLL_INTERVAL_SECONDS", "2")
@@ -405,6 +405,11 @@ def should_exclude_from_usr_backup(
     logger: AttemptLogger,
 ) -> bool:
     parts = relative_dir.parts
+    if parts and parts[0] == ".time_travel":
+        logger.log(
+            f"Skipping Time Travel history during usr backup: {Path('usr') / relative_dir}"
+        )
+        return True
     if (
         len(parts) >= 6
         and parts[0] == "plugins"
@@ -628,6 +633,29 @@ def clean_uv_cache(logger: AttemptLogger) -> None:
         )
     except Exception as exc:
         logger.log(f"uv cache clean skipped after error: {exc}")
+
+
+def refresh_codex_cli(logger: AttemptLogger) -> None:
+    codex_path = shutil.which("codex")
+    if not codex_path:
+        logger.log("Codex CLI not installed, skipping Codex refresh.")
+        return
+
+    npm_path = shutil.which("npm")
+    if not npm_path:
+        logger.log("npm executable not found, skipping Codex refresh.")
+        return
+
+    logger.log("Refreshing the installed Codex CLI after self-update.")
+    try:
+        run_command(
+            [npm_path, "install", "--global", "@openai/codex@latest"],
+            cwd=None,
+            logger=logger,
+            error_message="Failed to refresh the installed Codex CLI.",
+        )
+    except Exception as exc:
+        logger.log(f"Codex CLI refresh skipped after error: {exc}")
 
 
 def has_local_rollback_changes(repo_dir: Path) -> bool:
@@ -1143,6 +1171,7 @@ def execute_pending_update(
             logger=logger,
         )
         if healthy:
+            refresh_codex_cli(logger)
             record_result(
                 status="success",
                 message=f"Updated Agent Zero to branch {branch}, {resolved_target['target_description']}.",
@@ -1420,6 +1449,7 @@ def docker_run_ui() -> int:
                 logger.log(
                     "Requested tag already matches the installed version, skipping file replacement."
                 )
+                refresh_codex_cli(logger)
                 record_result(
                     status="skipped",
                     message="Requested tag already matches the installed version.",
@@ -1463,8 +1493,11 @@ def main(argv: list[str] | None = None) -> int:
         return docker_run_ui()
     if args[0] == "trigger-update":
         return trigger_update_command(args[1:])
+    if args[0] == "refresh-codex":
+        refresh_codex_cli(AttemptLogger(LOG_FILE))
+        return 0
     if args[0] in {"-h", "--help"}:
-        print("Usage: self_update_manager.py [docker-run-ui | trigger-update ...]")
+        print("Usage: self_update_manager.py [docker-run-ui | trigger-update ... | refresh-codex]")
         return 0
     print(f"Unknown command: {args[0]}", file=sys.stderr)
     return 1

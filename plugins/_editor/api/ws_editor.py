@@ -53,10 +53,17 @@ class WsEditor(WsHandler):
         elif path:
             doc = document_store.register_document(path, context_id=context_id)
         else:
+            fmt = str(data.get("format") or "md").lower().strip().lstrip(".")
+            if fmt not in document_store.EDITOR_TEXT_EXTENSIONS:
+                return WsResult.error(
+                    code="UNSUPPORTED_EDITOR_DOCUMENT",
+                    message=f"Editor can only create Markdown (.md) and text (.txt) documents, not .{fmt}.",
+                    correlation_id=data.get("correlationId"),
+                )
             doc = document_store.create_document(
                 kind="document",
                 title=str(data.get("title") or "Untitled"),
-                fmt="md",
+                fmt=fmt,
                 content=str(data.get("content") or ""),
                 context_id=context_id,
             )

@@ -50,10 +50,12 @@ export async function importComponent(path, targetElement) {
     const parser = new DOMParser();
     const doc = parser.parseFromString(html, "text/html");
 
+    const componentAssetSelector = "style, script, link[rel='stylesheet']";
     const allNodes = [
-      ...doc.querySelectorAll("style"),
-      ...doc.querySelectorAll("script"),
-      ...doc.body.childNodes,
+      ...doc.querySelectorAll(componentAssetSelector),
+      ...Array.from(doc.body.childNodes).filter(
+        (node) => !node.matches?.(componentAssetSelector)
+      ),
     ];
 
     const loadPromises = [];
@@ -77,8 +79,8 @@ export async function importComponent(path, targetElement) {
             if (!componentCache[resolvedUrl]) {
               const modulePromise = import(resolvedUrl);
               componentCache[resolvedUrl] = modulePromise;
-              loadPromises.push(modulePromise);
             }
+            loadPromises.push(componentCache[resolvedUrl]);
           } else {
             const virtualUrl = `${componentUrl.replaceAll(
               "/",
@@ -120,8 +122,8 @@ export async function importComponent(path, targetElement) {
                 .finally(() => URL.revokeObjectURL(blobUrl));
 
               componentCache[virtualUrl] = modulePromise;
-              loadPromises.push(modulePromise);
             }
+            loadPromises.push(componentCache[virtualUrl]);
           }
         } else {
           // Non-module script

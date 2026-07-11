@@ -2,12 +2,19 @@ import { createStore } from "/js/AlpineStore.js";
 import { callJsonApi, fetchApi } from "/js/api.js";
 import { formatDateTime } from "/js/time-utils.js";
 import { store as fileEditorStore } from "/components/modals/file-editor/file-editor-store.js";
-import { openLatest as openLatestSurface } from "/js/surfaces.js";
+import {
+  openLatest as openLatestSurface,
+  setupFloatingSurfaceModalChrome,
+} from "/js/surfaces.js";
 
+const FILE_BROWSER_MODAL_PATH = "modals/file-browser/file-browser.html";
 const FILE_BROWSER_LAST_DIRECTORY_STORAGE_KEY = "fileBrowser.lastDirectory";
 const DEFAULT_REMEMBER_LAST_DIRECTORY = true;
-const MARKDOWN_EXTENSIONS = new Set(["md", "markdown", "mdown"]);
-const DESKTOP_EXTENSIONS = new Set(["odt", "ods", "odp", "docx", "xlsx", "pptx", "txt"]);
+const PICKER_MODE_NONE = "";
+const PICKER_MODE_TEXT_OPEN = "text-open";
+const PICKER_MODE_SAVE_AS = "save-as";
+const EDITOR_TEXT_EXTENSIONS = new Set(["md", "txt"]);
+const DESKTOP_EXTENSIONS = new Set(["odt", "ods", "odp", "docx", "xlsx", "pptx"]);
 const BROWSER_EXTENSIONS = new Set([
   "html",
   "htm",
@@ -28,7 +35,7 @@ const SURFACE_ACTIONS = {
   editor: {
     label: "Open in Editor",
     icon: "article",
-    title: "Open Markdown in Editor",
+    title: "Open text in Editor",
   },
   desktop: {
     label: "Open in Desktop",
@@ -61,6 +68,8 @@ const model = {
   history: [], // navigation stack
   initialPath: "", // Store path for open() call
   closePromise: null,
+  isSurfaceHandoff: false,
+  surfaceHandoffPath: "",
   error: null,
   pathInput: "",
   pathError: "",
@@ -68,6 +77,8 @@ const model = {
   rememberLastDirectory: DEFAULT_REMEMBER_LAST_DIRECTORY,
   settingsLoadPromise: null,
   settingsUpdatedHandler: null,
+  _floatingCleanup: null,
+  _mountedDefaultLoadTimer: null,
   renameTarget: null,
   renameName: "",
   renameMode: "rename",
@@ -77,8 +88,15 @@ const model = {
   renamePerformAction: null,
   renameValidateName: null,
   openDropdownPath: null, // Track which dropdown is currently open
+  dropdownStyle: {},
   searchQuery: "",
   isBulkBusy: false,
+  pickerMode: PICKER_MODE_NONE,
+  pickerConfirmLabel: "",
+  pickerFilename: "",
+  pickerDefaultExtension: "md",
+  pickerFilenameError: "",
+  pickerOnConfirm: null,
 
   // --- Lifecycle -----------------------------------------------------------
   init() {
@@ -92,43 +110,36 @@ const model = {
     document.addEventListener("settings-updated", this.settingsUpdatedHandler);
   },
 
+  onMount(element = null, options = {}) {
+    this._floatingCleanup?.();
+    this._floatingCleanup = null;
+    const mode = options?.mode === "canvas" ? "canvas" : "modal";
+    if (mode === "modal") {
+      this.setupFloatingModal(element);
+    } else {
+      this.scheduleMountedDefaultLoad();
+    }
+  },
+
+  onUnmount() {
+    this._floatingCleanup?.();
+    this._floatingCleanup = null;
+    this.cancelMountedDefaultLoad();
+  },
+
   // --- Public API (called from button/link) --------------------------------
-  async open(path = "") {
+  async open(path = "", options = {}) {
     if (this.isLoading) return; // Prevent double-open
-    this.isLoading = true;
-    this.error = null;
-    this.history = [];
-    this.searchQuery = "";
-    this.isBulkBusy = false;
-    this.pathError = "";
-    this.isPathSubmitting = false;
+    this.resetOpenState(options);
 
     try {
       // Open modal FIRST (immediate UI feedback)
-      this.closePromise = window.openModal(
-        "modals/file-browser/file-browser.html"
-      );
-
-      await this.loadDirectoryPreference();
-      const explicitPath = this.normalizeOpeningPath(path || this.initialPath);
-      const rememberedPath = !explicitPath ? this.getRememberedDirectory() : "";
-      path = explicitPath || rememberedPath || "$WORK_DIR";
-      this.browser.currentPath = path;
-      this.syncPathInput();
-
-      // Fetch files
-      const loaded = await this.fetchFiles(this.browser.currentPath, {
-        preserveOnError: Boolean(rememberedPath && path === rememberedPath),
-        suppressErrorToast: Boolean(rememberedPath && path === rememberedPath),
-      });
-      if (!loaded && rememberedPath && path === rememberedPath) {
-        this.clearRememberedDirectory();
-        await this.fetchFiles("$WORK_DIR");
-      }
+      this.closePromise = window.openModal(FILE_BROWSER_MODAL_PATH);
+      await this.loadOpeningPath(path);
 
       // await modal close
       await this.closePromise;
-      this.destroy();
+      if (!this.isSurfaceHandoff) this.destroy();
 
     } catch (error) {
       console.error("File browser error:", error);
@@ -137,17 +148,63 @@ const model = {
     }
   },
 
+  async openSurface(path = "") {
+    if (this.isLoading) return false;
+    this.resetOpenState();
+
+    try {
+      const retainedPath = this.normalizeOpeningPath(
+        path
+          || this.surfaceHandoffPath
+          || this.browser.currentPath
+          || this.initialPath
+      );
+      return await this.loadOpeningPath(retainedPath);
+    } catch (error) {
+      console.error("File browser surface error:", error);
+      this.error = error?.message || "Failed to load files";
+      this.isLoading = false;
+      return false;
+    }
+  },
+
   handleClose() {
     // Close the modal manually
     this.disposeScopedTooltips();
-    window.closeModal();
+    window.closeModal(FILE_BROWSER_MODAL_PATH);
+  },
+
+  async openTextPicker(path = "", onConfirm = null) {
+    return await this.open(path, {
+      pickerMode: PICKER_MODE_TEXT_OPEN,
+      confirmLabel: "Open Selected",
+      onConfirm,
+    });
+  },
+
+  async openSaveAsPicker(path = "", options = {}) {
+    return await this.open(path, {
+      pickerMode: PICKER_MODE_SAVE_AS,
+      confirmLabel: "Save Here",
+      filename: options.filename || "Untitled.md",
+      defaultExtension: options.defaultExtension || "",
+      onConfirm: options.onConfirm,
+    });
   },
 
   destroy() {
+    this._floatingCleanup?.();
+    this._floatingCleanup = null;
+    this.cancelMountedDefaultLoad();
     // Reset state when modal closes
     this.isLoading = false;
     this.history = [];
     this.initialPath = "";
+    this.closePromise = null;
+    this.isSurfaceHandoff = false;
+    this.surfaceHandoffPath = "";
+    this.browser.currentPath = "";
+    this.browser.parentPath = "";
     this.browser.entries = [];
     this.openDropdownPath = null;
     this.searchQuery = "";
@@ -155,10 +212,117 @@ const model = {
     this.pathInput = "";
     this.pathError = "";
     this.isPathSubmitting = false;
+    this.resetPickerState();
     this.resetRenameState();
   },
 
+  setupFloatingModal(element = null) {
+    this._floatingCleanup?.();
+    this._floatingCleanup = setupFloatingSurfaceModalChrome({
+      root: element,
+      modalClass: "file-browser-modal",
+      focusButtonClass: "file-browser-modal-focus-button",
+      minWidth: 420,
+      minHeight: 360,
+    });
+  },
+
+  cancelMountedDefaultLoad() {
+    if (!this._mountedDefaultLoadTimer) return;
+    globalThis.clearTimeout(this._mountedDefaultLoadTimer);
+    this._mountedDefaultLoadTimer = null;
+  },
+
+  scheduleMountedDefaultLoad() {
+    this.cancelMountedDefaultLoad();
+    this._mountedDefaultLoadTimer = globalThis.setTimeout(async () => {
+      this._mountedDefaultLoadTimer = null;
+      if (this.isLoading) return;
+      const targetPath = this.browser.currentPath || "";
+      if (targetPath && this.browser.entries.length) {
+        this.syncPathInput();
+        return;
+      }
+      try {
+        await this.loadOpeningPath(targetPath);
+      } catch (error) {
+        console.error("File browser default path load failed:", error);
+      }
+    }, 120);
+  },
+
   // --- Helpers -------------------------------------------------------------
+  resetOpenState(options = {}) {
+    this.cancelMountedDefaultLoad();
+    this.isLoading = true;
+    this.error = null;
+    this.history = [];
+    this.searchQuery = "";
+    this.isBulkBusy = false;
+    this.pathError = "";
+    this.isPathSubmitting = false;
+    this.configurePicker(options);
+  },
+
+  configurePicker(options = {}) {
+    const mode = String(options?.pickerMode || PICKER_MODE_NONE).trim();
+    this.pickerMode = [PICKER_MODE_TEXT_OPEN, PICKER_MODE_SAVE_AS].includes(mode)
+      ? mode
+      : PICKER_MODE_NONE;
+    this.pickerConfirmLabel = String(options?.confirmLabel || "").trim()
+      || (this.pickerMode === PICKER_MODE_SAVE_AS ? "Save Here" : "Open Selected");
+    this.pickerFilename = String(options?.filename || "").trim();
+    this.pickerDefaultExtension = this.normalizedEditorTextExtension(
+      options?.defaultExtension || this.fileExtension({ name: this.pickerFilename }) || "md",
+    );
+    this.pickerFilenameError = "";
+    this.pickerOnConfirm = typeof options?.onConfirm === "function" ? options.onConfirm : null;
+    if (this.pickerMode) this.clearSelection();
+  },
+
+  resetPickerState() {
+    this.pickerMode = PICKER_MODE_NONE;
+    this.pickerConfirmLabel = "";
+    this.pickerFilename = "";
+    this.pickerDefaultExtension = "md";
+    this.pickerFilenameError = "";
+    this.pickerOnConfirm = null;
+  },
+
+  async loadOpeningPath(path = "") {
+    await this.loadDirectoryPreference();
+    const explicitPath = this.normalizeOpeningPath(path || this.initialPath);
+    const rememberedPath = !explicitPath ? this.getRememberedDirectory() : "";
+    const targetPath = explicitPath || rememberedPath || "$WORK_DIR";
+    this.browser.currentPath = targetPath;
+    this.syncPathInput();
+
+    const loaded = await this.fetchFiles(this.browser.currentPath, {
+      preserveOnError: Boolean(rememberedPath && targetPath === rememberedPath),
+      suppressErrorToast: Boolean(rememberedPath && targetPath === rememberedPath),
+    });
+    if (!loaded && rememberedPath && targetPath === rememberedPath) {
+      this.clearRememberedDirectory();
+      return await this.fetchFiles("$WORK_DIR");
+    }
+    return loaded;
+  },
+
+  beginSurfaceHandoff() {
+    this.isSurfaceHandoff = true;
+    this.surfaceHandoffPath = this.browser.currentPath || this.pathInput || "";
+  },
+
+  finishSurfaceHandoff() {
+    this.isSurfaceHandoff = false;
+    this.surfaceHandoffPath = "";
+  },
+
+  cancelSurfaceHandoff() {
+    this.isSurfaceHandoff = false;
+    this.surfaceHandoffPath = "";
+  },
+
   isArchive(filename) {
     const archiveExts = ["zip", "tar", "gz", "rar", "7z"];
     const ext = filename.split(".").pop().toLowerCase();
@@ -219,9 +383,9 @@ const model = {
 
   get filteredEntries() {
     const query = this.searchQuery.trim().toLowerCase();
-    if (!query) return this.browser.entries;
-
     return this.browser.entries.filter((file) => {
+      if (!this.pickerAllowsEntry(file)) return false;
+      if (!query) return true;
       const searchable = [
         file.name,
         file.path,
@@ -245,7 +409,11 @@ const model = {
   },
 
   get selectedFiles() {
-    return this.browser.entries.filter((file) => file.selected);
+    return this.browser.entries.filter((file) => file.selected && this.isSelectableEntry(file));
+  },
+
+  get selectableEntries() {
+    return this.filteredEntries.filter((file) => this.isSelectableEntry(file));
   },
 
   get selectedCount() {
@@ -258,18 +426,18 @@ const model = {
 
   get allVisibleSelected() {
     return (
-      this.filteredEntries.length > 0 &&
-      this.filteredEntries.every((file) => file.selected)
+      this.selectableEntries.length > 0 &&
+      this.selectableEntries.every((file) => file.selected)
     );
   },
 
   get someVisibleSelected() {
-    return this.filteredEntries.some((file) => file.selected);
+    return this.selectableEntries.some((file) => file.selected);
   },
 
   toggleSelectAllVisible() {
     const shouldSelect = !this.allVisibleSelected;
-    this.filteredEntries.forEach((file) => {
+    this.selectableEntries.forEach((file) => {
       file.selected = shouldSelect;
     });
   },
@@ -278,6 +446,24 @@ const model = {
     this.browser.entries.forEach((file) => {
       file.selected = false;
     });
+  },
+
+  isPickerMode() {
+    return this.pickerMode !== PICKER_MODE_NONE;
+  },
+
+  isTextOpenPicker() {
+    return this.pickerMode === PICKER_MODE_TEXT_OPEN;
+  },
+
+  isSaveAsPicker() {
+    return this.pickerMode === PICKER_MODE_SAVE_AS;
+  },
+
+  isSelectableEntry(file = {}) {
+    if (this.isSaveAsPicker()) return false;
+    if (this.isTextOpenPicker()) return !file?.is_dir && this.fileSurfaceTarget(file) === "editor";
+    return true;
   },
 
   normalizeOpeningPath(path) {
@@ -374,14 +560,136 @@ const model = {
   fileSurfaceTarget(file = {}) {
     if (!file || file.is_dir) return "";
     const ext = this.fileExtension(file);
-    if (MARKDOWN_EXTENSIONS.has(ext)) return "editor";
+    if (EDITOR_TEXT_EXTENSIONS.has(ext)) return "editor";
     if (BROWSER_EXTENSIONS.has(ext)) return "browser";
     if (DESKTOP_EXTENSIONS.has(ext)) return "desktop";
     return "";
   },
 
+  pickerAllowsEntry(file = {}) {
+    if (!this.isTextOpenPicker()) return true;
+    return Boolean(file?.is_dir || this.fileSurfaceTarget(file) === "editor");
+  },
+
+  pickerSelectedFiles() {
+    if (!this.isTextOpenPicker()) return [];
+    return this.selectedFiles.filter((file) => !file.is_dir && this.fileSurfaceTarget(file) === "editor");
+  },
+
+  pickerSelectionLabel() {
+    if (!this.isTextOpenPicker()) return "";
+    const count = this.pickerSelectedFiles().length;
+    if (!count) return "No text files selected";
+    return `${count} text ${count === 1 ? "file" : "files"} selected`;
+  },
+
+  normalizedEditorTextExtension(value = "") {
+    const ext = String(value || "").toLowerCase().trim().replace(/^\./, "");
+    return EDITOR_TEXT_EXTENSIONS.has(ext) ? ext : "md";
+  },
+
+  pickerFilenameValue() {
+    const raw = String(this.pickerFilename || "").trim();
+    if (!raw) return "";
+    const ext = this.fileExtension({ name: raw });
+    return ext ? raw : `${raw}.${this.pickerDefaultExtension || "md"}`;
+  },
+
+  validatePickerFilename(updateError = true) {
+    if (!this.isSaveAsPicker()) return true;
+    const raw = String(this.pickerFilename || "").trim();
+    const filename = this.pickerFilenameValue();
+    let error = "";
+    if (!raw) {
+      error = "File name is required.";
+    } else if (raw === "." || raw === "..") {
+      error = "File name cannot be '.' or '..'.";
+    } else if (raw.includes("/") || raw.includes("\\")) {
+      error = "File name cannot include path separators.";
+    } else if (!EDITOR_TEXT_EXTENSIONS.has(this.fileExtension({ name: filename }))) {
+      error = "Use a .md or .txt file name.";
+    } else if ((this.browser.entries || []).some((entry) => entry?.name === filename)) {
+      error = `An item named "${filename}" already exists.`;
+    }
+    if (updateError) this.pickerFilenameError = error;
+    return !error;
+  },
+
+  onPickerFilenameInput() {
+    if (this.pickerFilenameError) this.validatePickerFilename(true);
+  },
+
+  canConfirmPicker() {
+    if (this.isTextOpenPicker()) return this.pickerSelectedFiles().length > 0;
+    if (this.isSaveAsPicker()) return Boolean(this.pickerFilenameValue()) && !this.pickerFilenameError;
+    return false;
+  },
+
+  pickerTargetPath() {
+    if (!this.isSaveAsPicker()) return "";
+    return this.buildChildPath(this.pickerFilenameValue());
+  },
+
+  togglePickerFile(file = {}) {
+    if (!this.isTextOpenPicker() || file?.is_dir || this.fileSurfaceTarget(file) !== "editor") return;
+    file.selected = !file.selected;
+  },
+
+  async confirmPicker() {
+    if (!this.isPickerMode() || this.isBulkBusy) return;
+    if (this.isSaveAsPicker() && !this.validatePickerFilename(true)) return;
+    const payload = this.isSaveAsPicker()
+      ? {
+        mode: this.pickerMode,
+        directory: this.browser.currentPath,
+        filename: this.pickerFilenameValue(),
+        path: this.pickerTargetPath(),
+      }
+      : {
+        mode: this.pickerMode,
+        directory: this.browser.currentPath,
+        selectedFiles: this.pickerSelectedFiles(),
+      };
+    try {
+      this.isBulkBusy = true;
+      const result = await this.pickerOnConfirm?.(payload);
+      if (result === false) return;
+      this.disposeScopedTooltips();
+      window.closeModal(FILE_BROWSER_MODAL_PATH);
+    } catch (error) {
+      const message = error?.message || "File selection failed";
+      if (this.isSaveAsPicker()) this.pickerFilenameError = message;
+      window.toastFrontendError?.(message, "File Browser");
+    } finally {
+      this.isBulkBusy = false;
+    }
+  },
+
+  cancelPicker() {
+    this.disposeScopedTooltips();
+    window.closeModal(FILE_BROWSER_MODAL_PATH);
+  },
+
+  handleFileNameClick(file = {}) {
+    if (file?.is_dir) {
+      return this.navigateToFolder(file.path);
+    }
+    if (this.isTextOpenPicker()) {
+      this.togglePickerFile(file);
+    }
+  },
+
   canOpenInSurface(file = {}) {
     return Boolean(this.fileSurfaceTarget(file));
+  },
+
+  isEditorSurface(file = {}) {
+    return this.fileSurfaceTarget(file) === "editor";
+  },
+
+  canOpenInActionMenu(file = {}) {
+    const target = this.fileSurfaceTarget(file);
+    return Boolean(target && target !== "editor");
   },
 
   surfaceAction(file = {}) {
@@ -476,9 +784,14 @@ const model = {
   },
 
   // --- Dropdown Management -------------------------------------------------
-  toggleDropdown(filePath) {
+  toggleDropdown(filePath, triggerElement = null) {
     // Toggle: if already open, close it; otherwise open this one (closing any other)
-    this.openDropdownPath = this.openDropdownPath === filePath ? null : filePath;
+    if (this.openDropdownPath === filePath) {
+      this.closeDropdown();
+      return;
+    }
+    this.openDropdownPath = filePath;
+    this.dropdownStyle = this.getDropdownStyle(triggerElement);
   },
 
   isDropdownOpen(filePath) {
@@ -487,17 +800,46 @@ const model = {
 
   closeDropdown() {
     this.openDropdownPath = null;
+    this.dropdownStyle = {};
+  },
+
+  getDropdownStyle(triggerElement) {
+    if (!triggerElement) return {};
+
+    const rect = triggerElement.getBoundingClientRect();
+    const gap = 6;
+    const padding = 8;
+    const minWidth = 180;
+    const spaceBelow = window.innerHeight - rect.bottom - gap - padding;
+    const spaceAbove = rect.top - gap - padding;
+    const openUp = spaceBelow < 160 && spaceAbove > spaceBelow;
+    const maxHeight = Math.max(96, openUp ? spaceAbove : spaceBelow);
+    const maxLeft = Math.max(padding, window.innerWidth - minWidth - padding);
+    const left = Math.min(Math.max(rect.right - minWidth, padding), maxLeft);
+
+    return {
+      position: "fixed",
+      left: `${Math.round(left)}px`,
+      right: "auto",
+      top: openUp ? "auto" : `${Math.round(rect.bottom + gap)}px`,
+      bottom: openUp ? `${Math.round(window.innerHeight - rect.top + gap)}px` : "auto",
+      minWidth: `${minWidth}px`,
+      maxHeight: `${Math.round(maxHeight)}px`,
+      zIndex: "6000",
+    };
   },
 
   // --- Navigation ----------------------------------------------------------
   async fetchFiles(path = "", options = {}) {
     const preserveOnError = options?.preserveOnError === true;
     const suppressErrorToast = options?.suppressErrorToast === true;
+    const requestedPath = this.normalizeOpeningPath(path) || "$WORK_DIR";
     this.isLoading = true;
     
     // Preserve scroll position if refreshing the same path
-    const isSamePath = this.browser.currentPath === path || 
-                       (!path && !this.browser.currentPath);
+    const isSamePath =
+      this.browser.currentPath === requestedPath ||
+      (requestedPath === "$WORK_DIR" && ["/a0", "$WORK_DIR", ""].includes(this.browser.currentPath));
     const scrollPos = isSamePath ? this.saveScrollPosition() : null;
     const selectedPaths = isSamePath
       ? new Set(this.selectedFiles.map((file) => file.path))
@@ -505,12 +847,14 @@ const model = {
     
     try {
       const response = await fetchApi(
-        `/get_work_dir_files?path=${encodeURIComponent(path)}`
+        `/get_work_dir_files?path=${encodeURIComponent(requestedPath)}`
       );
       const data = await response.json().catch(() => ({}));
 
       const result = data.data || {};
-      const requestedPath = String(path || "");
+      const entries = result.entries || [];
+      const resolvedCurrentPath =
+        result.current_path || (requestedPath === "$WORK_DIR" ? "/a0" : requestedPath);
       const resultError =
         data.error ||
         result.error ||
@@ -518,7 +862,7 @@ const model = {
           requestedPath &&
           requestedPath !== "$WORK_DIR" &&
           !result.current_path &&
-          !(result.entries || []).length
+          !entries.length
             ? "Directory not found or not accessible"
             : ""
         );
@@ -526,10 +870,10 @@ const model = {
       if (response.ok && !resultError) {
         if (!isSamePath) this.searchQuery = "";
         this.browser.entries = this.decorateEntries(
-          result.entries || [],
+          entries,
           selectedPaths
         );
-        this.browser.currentPath = result.current_path;
+        this.browser.currentPath = resolvedCurrentPath;
         this.browser.parentPath = result.parent_path;
         this.syncPathInput();
         this.pathError = "";
@@ -1004,7 +1348,7 @@ const model = {
           if (!this.storeHasPath(editorStore, path)) {
             const session = await editorStore.openPath(path, { source: "file-browser" });
             if (!session || session.ok === false) {
-              throw new Error(editorStore.error || "Markdown could not be opened.");
+              throw new Error(editorStore.error || "Text document could not be opened.");
             }
           }
         }
@@ -1020,7 +1364,7 @@ const model = {
       }
 
       this.disposeScopedTooltips();
-      await window.closeModal?.("modals/file-browser/file-browser.html");
+      await window.closeModal?.(FILE_BROWSER_MODAL_PATH);
     } catch (error) {
       window.toastFrontendError?.(
         error?.message || "Could not open file",

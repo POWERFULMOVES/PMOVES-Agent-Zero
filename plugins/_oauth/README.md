@@ -25,7 +25,7 @@ OAuth-backed model providers do not require users to enter API keys. Agent Zero 
 - Exchanges the GitHub access token for a Copilot API token.
 - Stores credentials under `usr/plugins/_oauth/github_copilot/auth.json`.
 
-### Google Gemini API (`gemini_api_oauth`)
+### Google Cloud Gemini (`gemini_api_oauth`)
 
 - Uses Google's OAuth authorization-code flow with PKCE.
 - Requires a user-provided Google Cloud OAuth client with the Generative Language API enabled.
@@ -41,7 +41,7 @@ OAuth-backed model providers do not require users to enter API keys. Agent Zero 
 
 ## Usage Plan Metadata
 
-The status API exposes `usage_plan_catalog` for subscription and billing context. It covers only connectable providers: Codex, GitHub Copilot, Google Gemini API, and xAI Grok.
+The status API exposes `usage_plan_catalog` for subscription and billing context. It covers only connectable providers: Codex, GitHub Copilot, Google Cloud Gemini, and xAI Grok.
 
 The same status response also includes `oauth_accounts`, a compact summary used by the settings modal, welcome discovery card, and onboarding wizard. Keep that summary provider-registry driven so new OAuth providers appear consistently across those surfaces.
 

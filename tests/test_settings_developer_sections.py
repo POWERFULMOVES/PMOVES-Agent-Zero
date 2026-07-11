@@ -51,3 +51,29 @@ def test_timezone_settings_section_is_present():
     assert "12-hour (AM/PM)" in locale
     assert "24-hour" in locale
     assert "$store.settings.settings.time_format" in locale
+
+
+def test_settings_secret_fields_use_masked_text_inputs():
+    auth_template = (
+        PROJECT_ROOT
+        / "webui"
+        / "components"
+        / "settings"
+        / "external"
+        / "auth.html"
+    ).read_text(encoding="utf-8")
+    dev_template = (
+        PROJECT_ROOT
+        / "webui"
+        / "components"
+        / "settings"
+        / "developer"
+        / "dev.html"
+    ).read_text(encoding="utf-8")
+    settings_css = (PROJECT_ROOT / "webui" / "css" / "settings.css").read_text(encoding="utf-8")
+
+    settings_templates = "\n".join([auth_template, dev_template])
+
+    assert 'type="password"' not in settings_templates
+    assert 'class="masked-text-input"' in settings_templates
+    assert "-webkit-text-security: disc" in settings_css

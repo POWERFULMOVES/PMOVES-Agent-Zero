@@ -11,7 +11,7 @@ def build_context(context_id: str = "", max_items: int = 20) -> str:
         return ""
 
     lines = [
-        "These Markdown files are open in the Editor for the active Agent Zero context. Content is omitted; use `text_editor` with action `read` before content-sensitive edits.",
+        "These Markdown or plain text files are open in the Editor for the active Agent Zero context. Content is omitted; use `text_editor` with action `read` before content-sensitive edits.",
     ]
     for item in files:
         lines.append(format_open_file_line(item))

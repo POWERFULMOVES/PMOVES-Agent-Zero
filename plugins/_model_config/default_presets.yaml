@@ -13,7 +13,7 @@
 - name: "Balance"
   chat:
     provider: "openrouter"
-    name: "anthropic/claude-sonnet-4.6"
+    name: "anthropic/claude-sonnet-5"
     api_key: ""
     api_base: ""
     ctx_length: 200000
@@ -21,7 +21,7 @@
     vision: true
   utility:
     provider: "openrouter"
-    name: "google/gemini-3.1-flash-lite-preview"
+    name: "google/gemini-3.1-flash-lite"
 - name: "Cost Efficient"
   chat:
     provider: "openrouter"

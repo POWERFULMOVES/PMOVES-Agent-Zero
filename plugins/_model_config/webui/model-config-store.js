@@ -73,6 +73,7 @@ const IMPLICIT_PRESET_SLOT_DEFAULTS = {
     kwargs: {},
   },
 };
+const PRESET_REPLACE_FIELDS = new Set(['kwargs']);
 
 function presetDefaultValuesEqual(value, defaultValue) {
   if (typeof defaultValue === 'number') return Number(value) === defaultValue;
@@ -118,6 +119,14 @@ export function mergeModelSlot(baseSlot, presetSlot, stripApiKey = true, slotKey
       result[key] = clonePlain(value);
     }
   }
+  for (const key of PRESET_REPLACE_FIELDS) {
+    if (Object.prototype.hasOwnProperty.call(clean, key)) {
+      const value = clean[key];
+      result[key] = value && typeof value === 'object' && !Array.isArray(value) ? clonePlain(value) : {};
+    } else if (Object.prototype.hasOwnProperty.call(baseSlot || {}, key)) {
+      result[key] = {};
+    }
+  }
   return result;
 }
 
@@ -149,6 +158,8 @@ export const store = createStore("modelConfig", {
   embeddingProviders: [],
   chatProviderDetails: [],
   embeddingProviderDetails: [],
+  modelConfigured: false,
+  modelConfiguredLabel: "",
   _loaded: false,
 
   // API Keys state (from mixin)
@@ -194,6 +205,8 @@ export const store = createStore("modelConfig", {
     this.chatProviderDetails = data.chat_provider_details || [];
     this.embeddingProviderDetails = data.embedding_provider_details || [];
     this.apiKeyStatus = data.api_key_status || {};
+    this.modelConfigured = !!data.model_configured;
+    this.modelConfiguredLabel = data.model_configured_label || "";
     const keys = {};
     const dirty = {};
     const seen = new Set();
@@ -255,6 +268,35 @@ export const store = createStore("modelConfig", {
   },
 
   // Global presets
+  createPresetEditor() {
+    const store = this;
+    let nextPresetKey = 0;
+    const presets = clonePlain(this.globalPresets).map(preset => ({
+      ...preset,
+      _key: nextPresetKey++,
+    }));
+
+    return {
+      presets,
+      addPreset() {
+        this.presets = [...this.presets, {
+          _key: nextPresetKey++,
+          name: `Preset ${this.presets.length + 1}`,
+          chat: { provider: '', name: '', api_key: '', api_base: '', kwargs: {}, _kwargs_text: '' },
+          utility: { provider: '', name: '', api_key: '', api_base: '', kwargs: {}, _kwargs_text: '' },
+        }];
+      },
+      removePreset(index) {
+        this.presets.splice(index, 1);
+        this.presets = [...this.presets];
+      },
+      async savePresets() {
+        await store.persistAllDirtyApiKeys();
+        await store.saveGlobalPresets(this.presets);
+      },
+    };
+  },
+
   async loadGlobalPresets() {
     try {
       const res = await fetchApi(`${API_BASE}/model_presets`, {

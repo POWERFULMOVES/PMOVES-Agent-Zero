@@ -201,6 +201,36 @@ def test_browser_surface_restores_focus_mode_chrome():
     assert ".modal-inner.browser-modal.is-focus-mode" in browser_panel
 
 
+def test_files_and_editor_surface_modals_have_draggable_focus_chrome():
+    surfaces_js = read("webui", "js", "surfaces.js")
+    surfaces_css = read("webui", "css", "surfaces.css")
+    file_store = read("webui", "components", "modals", "file-browser", "file-browser-store.js")
+    file_modal = read("webui", "components", "modals", "file-browser", "file-browser.html")
+    editor_store = read("plugins", "_editor", "webui", "editor-store.js")
+    editor_panel = read("plugins", "_editor", "webui", "editor-panel.html")
+
+    assert "setupFloatingSurfaceModalChrome" in surfaces_js
+    assert "is-draggable-surface-modal" in surfaces_js
+    assert "surface-modal-focus-button" in surfaces_js
+    assert "fullscreen_exit" in surfaces_js
+    assert "Focus mode" in surfaces_js
+    assert "Restore size" in surfaces_js
+    assert ".modal-inner.surface-modal.is-draggable-surface-modal .modal-header" in surfaces_css
+    assert "cursor: move" in surfaces_css
+    assert ".surface-modal-focus-button.is-active" in surfaces_css
+
+    assert "setupFloatingSurfaceModalChrome" in file_store
+    assert 'focusButtonClass: "file-browser-modal-focus-button"' in file_store
+    assert ".modal-inner.file-browser-modal" in file_modal
+    assert "resize: both" in file_modal
+
+    assert "setupFloatingSurfaceModalChrome" in editor_store
+    assert 'focusButtonClass: "editor-modal-focus-button"' in editor_store
+    assert "onBoundsChange: () => this.refreshSourceEditorLayout()" in editor_store
+    assert "editor.resize?.(true)" in editor_store
+    assert ".modal-inner.editor-modal.is-focus-mode" in editor_panel
+
+
 def test_office_frontend_is_document_only_and_does_not_import_browser_or_desktop_runtime_code():
     office_store = read("plugins", "_office", "webui", "office-store.js")
     office_panel = read("plugins", "_office", "webui", "office-panel.html")
@@ -255,8 +285,8 @@ def test_desktop_plugin_owns_routes_runtime_surface_and_state_paths():
 
     assert "virtual_desktop_routes.install_route_hooks()" in desktop_startup
     assert 'action in {"open_document", "document"}' in desktop_api
-    assert 'if ext == "md":' in desktop_api
-    assert "Markdown documents use the Editor surface." in desktop_api
+    assert "document_store.EDITOR_TEXT_EXTENSIONS" in desktop_api
+    assert "Text documents use the Editor surface." in desktop_api
     assert "return self._open_markdown(doc, input, request)" not in desktop_api
     assert "markdown_sessions" not in desktop_api
     assert '"status": desktop.get("status") or {}' in desktop_api
@@ -371,8 +401,12 @@ def test_office_artifacts_only_open_desktop_from_explicit_document_ui_requests()
     assert "syncTextEditorResultsIntoOpenEditor" in editor_sync
     assert 'toolName(payload) !== "text_editor"' in editor_sync
     assert 'return ["write", "patch"].includes(action);' in editor_sync
+    assert "if (!context?.results?.length) return;" in editor_sync
+    assert "if (context.historyEmpty && !explicitOpen) continue;" in editor_sync
     assert "syncOpenEditorSurface" in editor_sync
     assert "isEditorSurfaceOpen" in editor_sync
+    assert "context_id" in editor_sync
+    assert "ctxid" in editor_sync
     assert "void syncOpenDocumentSurfaces(target);" in auto_open
     assert "void syncOpenDocumentSurfaces({ path, file_id: fileId });" not in auto_open
     assert "editorStore" not in auto_open
@@ -436,7 +470,7 @@ def test_office_artifacts_only_open_desktop_from_explicit_document_ui_requests()
     assert 'action == "desktop"' not in office_api
     assert 'action == "desktop_state"' not in office_api
     assert 'action == "desktop_shutdown"' not in office_api
-    assert "Markdown documents use the Editor surface." in office_api
+    assert "Text documents use the Editor surface." in office_api
     assert '"requires_editor": True' not in office_api
 
 
@@ -499,7 +533,7 @@ def test_editor_plugin_owns_markdown_sessions_and_active_context_extras():
     assert "editor_open_files" in editor_extras
     assert "desktop_state" in desktop_context
     assert 'pop("office_canvas"' in office_context
-    assert "Office WebSocket editing is not available for Markdown; use the Editor surface." in office_ws
+    assert "Office WebSocket editing is not available for text documents; use the Editor surface." in office_ws
     assert "from plugins._office.helpers import document_store, markdown_sessions" not in office_ws
     assert not (PROJECT_ROOT / "plugins" / "_office" / "helpers" / "markdown_sessions.py").exists()
     assert "syncTextEditorResultsIntoOpenEditor" in editor_result_sync
@@ -517,10 +551,13 @@ def test_editor_open_file_browser_prefers_context_home_before_workdir_fallback()
     assert home_lookup < settings_fallback
     assert "workdirPath = home.path;" in open_file_browser
     assert "workdirPath = response?.settings?.workdir_path || workdirPath;" in open_file_browser
+    assert "fileBrowserStore.openTextPicker" in open_file_browser
+    assert "selectedFiles" in open_file_browser
 
 
 def test_editor_toolbar_places_preview_toggle_left_and_save_on_right():
     editor_panel = read("plugins", "_editor", "webui", "editor-panel.html")
+    editor_store = read("plugins", "_editor", "webui", "editor-store.js")
     toolbar_start = editor_panel.index('<div class="editor-toolbar"')
     toolbar_end = editor_panel.index('<div class="editor-search-bar"', toolbar_start)
     toolbar = editor_panel[toolbar_start:toolbar_end]
@@ -530,18 +567,57 @@ def test_editor_toolbar_places_preview_toggle_left_and_save_on_right():
     preview_tools = toolbar.index("editor-preview-tools")
     spacer = toolbar.index("editor-toolbar-spacer")
     save_button = toolbar.index("editor-save-button")
+    save_as_button = toolbar.index("editor-save-as-button")
     file_actions = toolbar.index("editor-file-actions")
     file_menu = toolbar.index("editor-file-menu")
 
     assert mode_toggle < source_tools
     assert mode_toggle < preview_tools
-    assert spacer < save_button < file_actions < file_menu
+    assert spacer < save_button < save_as_button < file_actions < file_menu
     assert "@click=\"$store.editor.save()\"" in toolbar
+    assert "@click=\"$store.editor.saveAs()\"" in toolbar
+    assert "async saveAs()" in editor_store
+    assert "fileBrowserStore.openSaveAsPicker" in editor_store
+    assert 'callEditor("save_as"' in editor_store
+    assert "isTextDocument()" in toolbar
+    assert 'data-editor-new-action="text"' in editor_store
 
     file_menu_markup = toolbar[file_menu:]
     assert "<span>Save</span>" not in file_menu_markup
     assert "<span>Rename</span>" in file_menu_markup
     assert "<span>Close File</span>" in file_menu_markup
+
+
+def test_desktop_text_open_with_routes_to_editor_surface():
+    desktop_session = read("plugins", "_desktop", "helpers", "desktop_session.py")
+    desktop_store = read("plugins", "_desktop", "webui", "desktop-store.js")
+    editor_store = read("plugins", "_editor", "webui", "editor-store.js")
+    browser_store = read("plugins", "_browser", "webui", "browser-store.js")
+
+    assert 'EDITOR_HANDLER_DESKTOP_ID = "agent-zero-editor.desktop"' in desktop_session
+    assert "def _write_editor_bridge_script" in desktop_session
+    assert "a0-editor://open?path=" in desktop_session
+    assert "_editor_text_handler_mime_types()" in desktop_session
+    assert '"text/markdown"' in desktop_session
+    assert '"text/x-markdown"' in desktop_session
+    assert '"text/plain"' in desktop_session
+    assert "applications_dir / EDITOR_HANDLER_DESKTOP_ID" in desktop_session
+    assert 'desktop_dir / "Editor.desktop"' in desktop_session
+    assert "Opened text in Editor" in desktop_store
+    assert "registerUrlHandler" in editor_store
+    assert "handleEditorUrlIntent" in editor_store
+    assert 'openLatestSurface("editor"' in editor_store
+
+    # Text files default to LibreOffice Writer inside the Desktop; the Agent
+    # Zero Editor stays available as a secondary "Open With" association.
+    assert 'WRITER_HANDLER_DESKTOP_ID = "libreoffice-writer.desktop"' in desktop_session
+    assert "{mime_type}={WRITER_HANDLER_DESKTOP_ID}" in desktop_session
+    assert "[WRITER_HANDLER_DESKTOP_ID, editor_desktop_id, " in desktop_session
+
+    # The browser surface must not claim a0-editor: intents, otherwise the
+    # editor "Open With" handler lands on an unloadable about:blank page.
+    assert "function isWebUrlIntent" in browser_store
+    assert "if (!isWebUrlIntent(url)) return false;" in browser_store
 
 
 def test_office_and_desktop_skills_are_rehomed_and_renamed():

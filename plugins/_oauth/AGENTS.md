@@ -28,7 +28,12 @@
 - OAuth settings pending-auth controls such as device codes, manual callback input, and provider setup fields must render inline under the relevant provider row, not as a detached section below all providers.
 - OAuth device-code polling must honor provider `interval`, `expires_at`, and `slow_down` updates; do not poll immediately or keep a stale fixed interval after a provider asks the client to slow down.
 - OAuth settings model slots must keep provider choice editable per slot, list only connected OAuth account providers, and persist the selected provider IDs into `chat_model.provider` and `utility_model.provider`.
+- When exactly one OAuth provider is connected, use it as an unsaved default only for empty slots or slots already using that provider. A different saved provider must keep the explicit `Choose connected provider` prompt until the user opts into the switch.
+- OAuth provider rows show a status pill only for connected accounts; model catalogs open from the model-slot field or its embedded magnifier, not from provider-row model-check actions.
+- OAuth model-slot fields must match `_model_config` input and below-field dropdown geometry while opening the catalog when the field is clicked.
+- OAuth settings must dispatch `model-setup-changed` when a provider connection completes; provider defaults may be inferred from one connected account, but model-name selection remains explicit.
 - `helpers/providers/registry.py` is the source of truth for connectable OAuth providers.
+- The models API must preserve the legacy plain `models` slug list and may add `model_metadata` entries for richer provider catalogs.
 - OAuth provider config must not expose the dummy `oauth` API key in `conf/model_providers.yaml`; the dummy key is a runtime-only shim supplied by the `get_api_key` extension after the account provider reports connected.
 - Usage-plan metadata belongs only to connectable providers. Do not add metadata-only subscription families for providers this plugin cannot connect.
 - API handlers should remain provider-aware. Missing or blank `provider_id` defaults to Codex only for existing backward compatibility; falsey non-string IDs must not silently default.
@@ -38,6 +43,7 @@
 - Stored upstream base URLs and OAuth token endpoints must be validated against provider-owned allowlists before sending bearer or refresh tokens.
 - Browser callback providers must support manual callback paste when the browser cannot reach the local callback route.
 - Local proxy routes must remain loopback or token protected and must not add broad CORS access.
+- Codex Responses proxy requests must include Codex client metadata and compatibility headers such as `client_metadata`, `x-codex-installation-id`, `originator`, `session-id`, and `thread-id`, and must forward `input` as a list for upstream Codex compatibility.
 
 ## Work Guidance
 

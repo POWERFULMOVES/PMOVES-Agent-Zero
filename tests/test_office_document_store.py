@@ -84,15 +84,15 @@ def test_document_store_create_defaults_to_markdown(office_state):
     assert Path(doc["path"]).read_text(encoding="utf-8").startswith("# Research Note")
 
 
-def test_text_files_register_as_desktop_documents(office_state):
+def test_text_files_register_as_editor_documents(office_state):
     path = office_state.workdir / "plain-note.txt"
-    path.write_text("Plain text belongs on the Desktop surface.\n", encoding="utf-8")
+    path.write_text("Plain text belongs in the Editor surface.\n", encoding="utf-8")
 
     doc = document_store.register_document(path)
 
     assert doc["extension"] == "txt"
-    assert "txt" in document_store.DESKTOP_TEXT_EXTENSIONS
-    assert "txt" in desktop_session.OFFICIAL_EXTENSIONS
+    assert "txt" in document_store.EDITOR_TEXT_EXTENSIONS
+    assert "txt" not in desktop_session.OFFICIAL_EXTENSIONS
 
 
 def test_file_browser_can_register_runtime_root_markdown(office_state, monkeypatch):
@@ -519,6 +519,46 @@ def test_document_rename_saves_dirty_markdown_and_removes_original(office_state)
     assert updated["version"] == 2
     assert not original.exists()
     assert renamed.read_text(encoding="utf-8") == "# Clean Rename\n\nFresh text"
+
+
+def test_text_session_save_as_creates_new_file_without_mutating_original(office_state):
+    manager = editor_markdown_sessions.MarkdownSessionManager()
+    doc = document_store.create_document("document", "Original Note", "md", "# Original Note\n")
+    original = Path(doc["path"])
+    session = manager.open(doc, context_id="ctx-a")
+    target = office_state.workdir / "notes" / "Saved Copy.txt"
+
+    result = manager.save_as(
+        session["session_id"],
+        str(target),
+        text="Saved Copy\n\nExact body\n",
+    )
+
+    saved_session = manager._sessions[session["session_id"]]
+    assert result["ok"] is True
+    assert result["document"]["file_id"] != doc["file_id"]
+    assert result["previous_file_id"] == doc["file_id"]
+    assert saved_session.file_id == result["document"]["file_id"]
+    assert saved_session.path == str(target)
+    assert saved_session.extension == "txt"
+    assert saved_session.dirty is False
+    assert original.read_text(encoding="utf-8") == "# Original Note"
+    assert target.read_text(encoding="utf-8") == "Saved Copy\n\nExact body\n"
+
+
+def test_editor_session_opens_and_saves_txt_documents(office_state):
+    manager = editor_markdown_sessions.MarkdownSessionManager()
+    doc = document_store.create_document("document", "Plain Note", "txt", "First line")
+    session = manager.open(doc, context_id="ctx-a")
+
+    assert session["extension"] == "txt"
+    assert session["text"] == "First line"
+
+    result = manager.save(session["session_id"], text="Second line\n")
+
+    assert result["ok"] is True
+    assert result["document"]["extension"] == "txt"
+    assert Path(result["document"]["path"]).read_text(encoding="utf-8") == "Second line\n"
 
 
 def test_refresh_open_markdown_session_reloads_external_file_edits(office_state):

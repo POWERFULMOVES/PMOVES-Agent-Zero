@@ -83,7 +83,7 @@ You can always rename them later.
 | **Model Preset** | Which models power the chat. |
 | **Agent Profile** | The agent's role, tone, and prompt behavior. |
 | **Project** | Workspace, files, memory, secrets, and project instructions. |
-| **Skill** | A specific procedure added to prompt extras. |
+| **Skill** | A specific procedure added to prompt protocol. |
 
 For example, you can use the same "Researcher" Agent Profile with a cheaper
 preset for simple questions and a stronger preset for difficult investigations.

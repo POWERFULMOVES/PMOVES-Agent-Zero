@@ -21,8 +21,11 @@ def test_oauth_settings_exposes_provider_cards_and_model_slots():
     assert "oauth-plan-catalog" not in config_html
     assert "oauth-model-provider-field" in config_html
     assert "slotProviderChoices(slot.key)" in config_html
+    assert "<span>Provider</span>" not in config_html
+    assert ':aria-label="`${slot.title} provider`"' in config_html
     assert "connectedProviderCards().length" in config_html
     assert "useProviderForSlot(slot.key, $event.target.value)" in config_html
+    assert ":value=\"$store.oauthConfig.slotCanUseModels(slot.key) ? $store.oauthConfig.modelSlot(slot.key).provider : ''\"" in config_html
     assert "slotCanUseModels(slot.key)" in config_html
     assert "<span>Account</span>" not in config_html
     assert "oauth-connected-panel" not in config_html
@@ -41,8 +44,14 @@ def test_oauth_settings_exposes_provider_specific_controls_and_generic_copy():
     config_html = (PROJECT_ROOT / "plugins/_oauth/webui/config.html").read_text(encoding="utf-8")
     store_js = (PROJECT_ROOT / "plugins/_oauth/webui/oauth-config-store.js").read_text(encoding="utf-8")
 
-    assert "Check Models" not in config_html
-    assert "Check models" in config_html
+    assert "Check models" not in config_html
+    assert "card.connected ? 'Connected' : 'Available'" not in config_html
+    assert '<span class="oauth-account-state connected" x-show="card.connected">Connected</span>' in config_html
+    assert "Select account-backed models used by the Main model and Utility model slots." not in config_html
+    assert "Primary model for chat, reasoning, and browser tasks." not in config_html + store_js
+    assert "Background model for summaries, memory, and prompt preparation." not in config_html + store_js
+    assert '@click="$store.oauthConfig.openModelDropdown(slot.key, $el)"' in config_html
+    assert "top: calc(100% + 4px);" in config_html
     assert "enterprise_domain" in config_html + store_js
     assert "manualCallback" in config_html + store_js
     assert "Paste callback URL, query string, or code" in config_html + store_js
@@ -116,6 +125,17 @@ def test_oauth_model_slots_reuse_model_config_api():
     assert "if (!this.providerConnected(providerId)) return;" in store_js
     assert "const providerId = slot.provider;" in store_js
     assert "const providerId = this.isOauthProvider(this.activeModelProvider)" not in store_js
+    assert "applySoleConnectedProviderDefaults" in store_js
+    assert "this.applySoleConnectedProviderDefaults();" in store_js
+    assert "if (providers.length !== 1 || !this.modelConfig) return;" in store_js
+    assert "if (model.provider && model.provider !== providerId) continue;" in store_js
+    assert "model.name = \"\";" in store_js
+    assert "this.modelSlotCurrentProviders[key] ?? slot.provider" in store_js
+    assert "currentChatModelConfigured" not in store_js
+    assert "providerDefaultModel" not in store_js
+    assert 'new CustomEvent("model-setup-changed"' in store_js
+    assert 'detail: { source: "_oauth", providerId }' in store_js
+    assert "await this.handleProviderConnected(providerId)" in store_js
 
 
 def test_browser_callback_completion_is_observed_from_modal():
@@ -124,6 +144,7 @@ def test_browser_callback_completion_is_observed_from_modal():
     assert "startCallbackPolling(providerId)" in store_js
     assert "stopCallbackPolling(providerId)" in store_js
     assert "this.providerConnected(providerId)" in store_js
+    assert "await this.handleProviderConnected(providerId, { statusLoaded: true })" in store_js
 
 
 def test_device_polling_honors_provider_interval_updates():
@@ -148,7 +169,8 @@ def test_usage_plan_catalog_stays_backend_only_on_oauth_settings_page():
 
     assert "oauth-plan-catalog" not in config_html
     assert "usagePlanEntries" in store_js
-    assert "Google Gemini API" in plans_py
+    assert "Google Cloud Gemini" in plans_py
+    assert "Google Cloud project" in plans_py
     assert "GEMINI_API_PROVIDER_ID" in plans_py
     assert "Google Gemini / Antigravity" not in plans_py
     assert "Claude Code" not in plans_py
@@ -166,7 +188,7 @@ def test_oauth_model_wrappers_do_not_add_box_borders_or_lateral_padding():
     assert "'is-codex'" not in config_html
 
 
-def test_connected_codex_welcome_card_renders_usage_limit_bars():
+def test_oauth_discovery_card_renders_in_welcome_account_panel():
     discovery_cards = (
         PROJECT_ROOT
         / "plugins/_discovery/extensions/python/banners/10_discovery_cards.py"
@@ -179,6 +201,8 @@ def test_connected_codex_welcome_card_renders_usage_limit_bars():
 
     assert "discovery-oauth-accounts" in discovery_cards
     assert "Your AI accounts" in discovery_cards
+    assert "Use your subscription-backed logins for model access." in discovery_cards
+    assert "Link account-backed providers such as" not in discovery_cards
     assert "Connected OAuth accounts" not in discovery_cards
     assert "discovery-codex-oauth" not in discovery_cards
     assert "5h and weekly limits are ready." not in discovery_cards
@@ -186,8 +210,14 @@ def test_connected_codex_welcome_card_renders_usage_limit_bars():
     assert '"icon": "account_circle"' not in discovery_cards
     assert "usage_windows" in discovery_cards
     assert "account_chips" in discovery_cards
+    assert "discovery-account-card" in welcome_cards
     assert "discovery-account-chip" in welcome_cards
-    assert 'x-show="card.thumbnail || card.icon"' in welcome_cards
-    assert "discovery-usage" in welcome_cards
-    assert "discovery-usage-bar" in welcome_cards
-    assert "formatRemainingPercent(window)" in welcome_cards + discovery_store
+    assert "discovery-account-icon" not in welcome_cards
+    assert ".discovery-account-chip {\n            display: inline-grid;" in welcome_cards
+    assert "            border-radius: 8px;" in welcome_cards
+    assert "discovery-account-usage" in welcome_cards
+    assert "formatRemainingPercent(window)" in welcome_cards
+    assert "formatRemainingPercent(window)" in discovery_store
+    assert "usageWidth(window)" in discovery_store
+    assert "oauthAccountCards" in discovery_store
+    assert 'card.id === "discovery-oauth-accounts"' in discovery_store

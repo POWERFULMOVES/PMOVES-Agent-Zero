@@ -2,7 +2,7 @@ allow_chat_override: true
 
 chat_model:
   provider: "openrouter"
-  name: "anthropic/claude-sonnet-4.6"
+  name: "anthropic/claude-sonnet-5"
   api_base: ""
   ctx_length: 200000
   ctx_history: 0.7
@@ -15,7 +15,7 @@ chat_model:
 
 utility_model:
   provider: "openrouter"
-  name: "google/gemini-3.1-flash-lite-preview"
+  name: "google/gemini-3.1-flash-lite"
   api_base: ""
   ctx_length: 128000
   ctx_input: 0.7
