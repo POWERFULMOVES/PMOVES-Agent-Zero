@@ -38,13 +38,13 @@ class EditorSession(ApiHandler):
             return closed
         if action == "create":
             fmt = str(input.get("format") or "md").lower().lstrip(".")
-            if fmt != "md":
-                return {"ok": False, "error": "Editor can only create Markdown documents."}
+            if fmt not in document_store.EDITOR_TEXT_EXTENSIONS:
+                return {"ok": False, "error": "Editor can only create Markdown (.md) and text (.txt) documents."}
             try:
                 doc = document_store.create_document(
                     kind="document",
                     title=str(input.get("title") or "Untitled"),
-                    fmt="md",
+                    fmt=fmt,
                     content=str(input.get("content") or ""),
                     path=str(input.get("path") or ""),
                     context_id=context_id,
@@ -72,6 +72,28 @@ class EditorSession(ApiHandler):
             if not session_id:
                 return {"ok": False, "error": "session_id is required."}
             return markdown_sessions.get_manager().save(session_id, text=input.get("text"))
+        if action == "save_as":
+            session_id = str(input.get("session_id") or "").strip()
+            path = str(input.get("path") or "").strip()
+            if not session_id:
+                return {"ok": False, "error": "session_id is required."}
+            if not path:
+                return {"ok": False, "error": "path is required."}
+            try:
+                result = markdown_sessions.get_manager().save_as(session_id, path, text=input.get("text"))
+            except Exception as exc:
+                return {"ok": False, "error": str(exc)}
+            document_store.close_session(session_id=str(input.get("store_session_id") or "").strip())
+            store_session = document_store.create_session(
+                result["document"]["file_id"],
+                user_id=str(input.get("user_id") or "agent-zero-user"),
+                permission="write",
+                origin=self._origin(request),
+            )
+            return {
+                **result,
+                "store_session_id": store_session["session_id"],
+            }
         if action == "renamed":
             return self._renamed(input, context_id)
         if action == "refresh":
@@ -85,7 +107,7 @@ class EditorSession(ApiHandler):
         request: Request,
         context_id: str = "",
     ) -> dict:
-        if str(doc.get("extension") or "").lower() != "md":
+        if str(doc.get("extension") or "").lower() not in document_store.EDITOR_TEXT_EXTENSIONS:
             return {
                 "ok": False,
                 "error": f".{doc.get('extension', '')} documents use the Desktop surface.",

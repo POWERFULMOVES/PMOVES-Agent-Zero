@@ -120,7 +120,7 @@ def test_models_returns_curated_list_without_network(monkeypatch):
 
     models = provider.models()
 
-    assert models[:3] == ["gpt-5.2-codex", "gpt-5.2", "claude-sonnet-4.5"]
+    assert models[:3] == ["gpt-5.2", "claude-sonnet-4.5", "claude-opus-4.5"]
     assert "grok-code-fast-1" in models
 
 

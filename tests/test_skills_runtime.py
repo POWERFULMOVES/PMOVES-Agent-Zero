@@ -150,6 +150,35 @@ def test_hidden_skills_are_not_capped_like_active_skills():
     assert len(runtime.get_hidden_skills(agent)) == 25
 
 
+def test_active_skill_prompt_protocol_is_disabled(monkeypatch):
+    monkeypatch.setattr(
+        runtime.plugin_helpers,
+        "get_plugin_config",
+        lambda *args, **kwargs: _scope_config([{"name": "Pinned"}]),
+    )
+    agent = DummyAgent()
+
+    assert runtime.get_active_skills(agent) == [{"name": "Pinned"}]
+    assert runtime.build_active_skills_prompt(agent) == ""
+
+
+def test_hiding_skill_does_not_unload_history_loaded_skill():
+    agent = DummyAgent()
+    agent.context.set_data(
+        runtime.CONTEXT_DATA_NAME_LOADED_SKILLS,
+        ["history-skill"],
+    )
+
+    runtime.hide_chat_skill(agent, {"name": "history-skill"})
+
+    assert agent.context.get_data(runtime.CONTEXT_DATA_NAME_LOADED_SKILLS) == [
+        "history-skill"
+    ]
+    assert runtime.get_chat_disabled_skills(agent.context) == [
+        {"name": "history-skill"}
+    ]
+
+
 def test_chat_activation_can_override_scope_defaults(monkeypatch):
     monkeypatch.setattr(
         runtime.plugin_helpers,
@@ -228,7 +257,24 @@ def test_reactivating_name_only_scope_default_by_path_clears_hidden_override(mon
     assert runtime.get_chat_disabled_skills(agent.context) == []
 
 
-def test_loaded_skill_entries_come_from_agent_data():
+def test_loaded_skill_entries_come_from_context_data():
+    agent = DummyAgent()
+    agent.context.set_data(
+        runtime.CONTEXT_DATA_NAME_LOADED_SKILLS,
+        [
+            "host-computer-use",
+            "",
+            "a0-development",
+        ],
+    )
+
+    assert runtime.get_loaded_skill_entries(agent) == [
+        {"name": "host-computer-use"},
+        {"name": "a0-development"},
+    ]
+
+
+def test_loaded_skill_entries_migrate_legacy_agent_data():
     agent = DummyAgent()
     agent.data[runtime.AGENT_DATA_NAME_LOADED_SKILLS] = [
         "host-computer-use",
@@ -240,6 +286,20 @@ def test_loaded_skill_entries_come_from_agent_data():
         {"name": "host-computer-use"},
         {"name": "a0-development"},
     ]
+    assert agent.context.get_data(runtime.CONTEXT_DATA_NAME_LOADED_SKILLS) == [
+        "host-computer-use",
+        "a0-development",
+    ]
+    assert runtime.AGENT_DATA_NAME_LOADED_SKILLS not in agent.data
+
+
+def test_unloading_last_migrated_skill_does_not_restore_legacy_agent_data():
+    agent = DummyAgent()
+    agent.data[runtime.AGENT_DATA_NAME_LOADED_SKILLS] = ["host-computer-use"]
+
+    assert runtime.unload_agent_skill(agent, {"name": "host-computer-use"}) is True
+    assert agent.context.get_data(runtime.CONTEXT_DATA_NAME_LOADED_SKILLS) is None
+    assert runtime.get_loaded_skill_entries(agent) == []
 
 
 def test_skill_runtime_does_not_alias_old_office_skill_references():
@@ -262,12 +322,15 @@ def test_skill_runtime_does_not_alias_old_office_skill_references():
     ]
 
     agent = DummyAgent()
-    agent.data[runtime.AGENT_DATA_NAME_LOADED_SKILLS] = [
-        "office-artifacts",
-        "word-documents",
-        "excel-workbooks",
-        "presentation-decks",
-    ]
+    agent.context.set_data(
+        runtime.CONTEXT_DATA_NAME_LOADED_SKILLS,
+        [
+            "office-artifacts",
+            "word-documents",
+            "excel-workbooks",
+            "presentation-decks",
+        ],
+    )
 
     assert runtime.get_loaded_skill_entries(agent) == [
         {"name": "office-artifacts"},
@@ -277,7 +340,7 @@ def test_skill_runtime_does_not_alias_old_office_skill_references():
     ]
 
     assert runtime.unload_agent_skill(agent, {"name": "office-artifacts"}) is True
-    assert agent.data[runtime.AGENT_DATA_NAME_LOADED_SKILLS] == [
+    assert agent.context.get_data(runtime.CONTEXT_DATA_NAME_LOADED_SKILLS) == [
         "word-documents",
         "excel-workbooks",
         "presentation-decks",
@@ -295,6 +358,30 @@ def test_invalid_skill_frontmatter_reports_yaml_errors():
     assert frontmatter == {}
     assert errors
     assert errors[0].startswith("Invalid YAML frontmatter")
+
+
+def test_invalid_skill_frontmatter_warns_when_skill_is_skipped(monkeypatch, tmp_path: Path):
+    skills_root = tmp_path / "skills"
+    broken = skills_root / "broken-skill"
+    broken.mkdir(parents=True)
+    (broken / "SKILL.md").write_text(
+        "---\nname: broken-skill\ndescription: missing closing fence\nBody\n",
+        encoding="utf-8",
+    )
+
+    warnings: list[str] = []
+    runtime._WARNED_SKILL_PARSE_PATHS.clear()
+    monkeypatch.setattr(runtime, "get_skill_roots", lambda agent=None: [str(skills_root)])
+    monkeypatch.setattr(runtime, "_emit_skill_scan_warning", warnings.append)
+
+    assert runtime.list_skills() == []
+    assert warnings == [
+        "skill broken-skill skipped: invalid frontmatter at line 4: "
+        "Unterminated YAML frontmatter"
+    ]
+
+    assert runtime.list_skills() == []
+    assert len(warnings) == 1
 
 
 def test_a0_manage_plugin_skill_frontmatter_is_valid_yaml():
@@ -330,10 +417,81 @@ def test_renamed_skills_use_standard_frontmatter_only():
         expected_keys = {"name", "description"}
         if path.parent.name == "host-computer-use":
             expected_keys.update({"tags", "triggers"})
+        if path.parent.name in {"browser-automation", "browser-form-workflows"}:
+            expected_keys.add("triggers")
         assert set(frontmatter) == expected_keys
         assert frontmatter["name"] == path.parent.name
         assert frontmatter["description"]
         assert body
+
+
+def test_browser_skills_rank_for_browser_trigger_phrases(monkeypatch):
+    browser_automation = runtime.skill_from_markdown(
+        PROJECT_ROOT / "plugins" / "_browser" / "skills" / "browser-automation" / "SKILL.md"
+    )
+    browser_forms = runtime.skill_from_markdown(
+        PROJECT_ROOT / "plugins" / "_browser" / "skills" / "browser-form-workflows" / "SKILL.md"
+    )
+    document_query = runtime.skill_from_markdown(
+        PROJECT_ROOT / "plugins" / "_document_query" / "skills" / "document-query" / "SKILL.md"
+    )
+    host_computer = runtime.skill_from_markdown(
+        PROJECT_ROOT / "plugins" / "_a0_connector" / "skills" / "host-computer-use" / "SKILL.md"
+    )
+    assert browser_automation is not None
+    assert browser_forms is not None
+    assert document_query is not None
+    assert host_computer is not None
+    monkeypatch.setattr(
+        runtime,
+        "list_skills",
+        lambda *args, **kwargs: [
+            document_query,
+            host_computer,
+            browser_forms,
+            browser_automation,
+        ],
+    )
+
+    browser_queries = (
+        "open this URL in my browser and take a screenshot",
+        "interact with a JavaScript page and verify it visually",
+        "use the host browser for multi-tab browsing",
+    )
+    for query in browser_queries:
+        results = runtime.search_skills(query, limit=3)
+        assert results[0].name == "browser-automation"
+
+    form_results = [
+        skill.name
+        for skill in runtime.search_skills(
+            "fill a web form with a checkbox and file upload",
+            limit=3,
+        )
+    ]
+    assert "browser-automation" in form_results
+    assert "browser-form-workflows" in form_results
+
+
+def test_skill_search_does_not_score_description_terms_alone(monkeypatch):
+    browser_automation = runtime.Skill(
+        name="browser-automation",
+        description=(
+            "Use for browser automation, screenshots, forms, uploads, "
+            "and complex tool workflows."
+        ),
+        path=Path("/skills/browser-automation"),
+        skill_md_path=Path("/skills/browser-automation/SKILL.md"),
+    )
+    monkeypatch.setattr(runtime, "list_skills", lambda *args, **kwargs: [browser_automation])
+
+    rendered_user_message = (
+        'user: {"user_message": "Please reply with exactly OK. Do not use tools.", '
+        '"attachments": []}'
+    )
+
+    assert runtime.search_skills(rendered_user_message) == []
+    assert runtime.search_skills("Open a browser screenshot?", limit=1) == [browser_automation]
 
 
 def test_host_computer_use_ranks_before_linux_desktop_for_host_screen_queries(monkeypatch):
@@ -365,10 +523,13 @@ def test_host_computer_use_ranks_before_linux_desktop_for_host_screen_queries(mo
 
 def test_unload_agent_skill_removes_loaded_skill_by_name():
     agent = DummyAgent()
-    agent.data[runtime.AGENT_DATA_NAME_LOADED_SKILLS] = [
-        "host-computer-use",
-        "a0-development",
-    ]
+    agent.context.set_data(
+        runtime.CONTEXT_DATA_NAME_LOADED_SKILLS,
+        [
+            "host-computer-use",
+            "a0-development",
+        ],
+    )
 
     removed = runtime.unload_agent_skill(
         agent,
@@ -379,7 +540,7 @@ def test_unload_agent_skill_removes_loaded_skill_by_name():
     )
 
     assert removed is True
-    assert agent.data[runtime.AGENT_DATA_NAME_LOADED_SKILLS] == [
+    assert agent.context.get_data(runtime.CONTEXT_DATA_NAME_LOADED_SKILLS) == [
         "a0-development"
     ]
 

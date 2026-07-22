@@ -87,11 +87,11 @@ class DiscoveryCardsExtension(Extension):
             banners.append({
                 "id": "discovery-telegram",
                 "type": "feature",
-                "title": "Connect Telegram",
-                "description": "Chat with Agent Zero from Telegram wherever you are.",
+                "title": "Telegram",
+                "description": "Chat on Telegram wherever you are.",
                 "thumbnail": "/plugins/_discovery/webui/assets/thumb-telegram.png",
                 "icon": "send",
-                "cta_text": "Setup",
+                "cta_text": "Connect",
                 "cta_action": "open-plugin-config:_telegram_integration",
                 "dismissible": True,
                 "priority": 50,
@@ -105,11 +105,11 @@ class DiscoveryCardsExtension(Extension):
             banners.append({
                 "id": "discovery-email",
                 "type": "feature",
-                "title": "Setup Email",
+                "title": "Email",
                 "description": "Let Agent Zero read and send emails on your behalf.",
                 "thumbnail": "/plugins/_discovery/webui/assets/thumb-email.png",
                 "icon": "mail",
-                "cta_text": "Open Setup",
+                "cta_text": "Connect",
                 "cta_action": "open-plugin-config:_email_integration",
                 "dismissible": True,
                 "priority": 50,
@@ -121,11 +121,11 @@ class DiscoveryCardsExtension(Extension):
             banners.append({
                 "id": "discovery-whatsapp",
                 "type": "feature",
-                "title": "Connect WhatsApp",
+                "title": "WhatsApp",
                 "description": "Send and receive WhatsApp messages through A0.",
                 "thumbnail": "/plugins/_discovery/webui/assets/thumb-whatsapp.png",
                 "icon": "chat",
-                "cta_text": "Setup",
+                "cta_text": "Connect",
                 "cta_action": "open-plugin-config:_whatsapp_integration",
                 "dismissible": True,
                 "priority": 50,
@@ -138,7 +138,7 @@ class DiscoveryCardsExtension(Extension):
             "type": "hero",
             "placement": "after-features",
             "title": "Your AI accounts",
-            "description": "Link account-backed providers such as ChatGPT/Codex, GitHub Copilot, Gemini API, and xAI Grok."
+            "description": "Use your subscription-backed logins for model access."
             if not connected_count
             else "",
             "cta_text": "Connect accounts" if not connected_count else "Manage accounts",

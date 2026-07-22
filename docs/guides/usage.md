@@ -74,7 +74,7 @@ Use the selector to add or remove active skills.
 
 ![Skills selector](../res/usage/webui/skills-selector-checked.png)
 
-Active skills are added to the **Extras** part of the system prompt, so keep the
+Active skills are added to the **Protocol** part of the prompt, so keep the
 list short and intentional. See the [Skills guide](skills.md).
 
 ### Agent Profiles

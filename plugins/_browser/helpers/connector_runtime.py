@@ -57,8 +57,13 @@ HOST_BROWSER_PROFILE_MODE_KEY = getattr(
     "HOST_BROWSER_PROFILE_MODE_KEY",
     "host_browser_profile_mode",
 )
+HOST_BROWSER_SELECTION_KEY = getattr(
+    browser_config,
+    "HOST_BROWSER_SELECTION_KEY",
+    "host_browser_selection",
+)
 get_browser_config = browser_config.get_browser_config
-_LOCAL_PROVIDERS = {"ollama", "lm_studio"}
+_LOCAL_PROVIDERS = {"ollama", "lm_studio", "llama_cpp", "omlx", "vllm"}
 _LOCAL_HOSTS = {"localhost", "127.0.0.1", "::1", "host.docker.internal"}
 _SENSITIVE_ACTIONS = {"content", "detail", "evaluate", "screenshot", "screenshot_file"}
 _KEY_ALIASES = {
@@ -78,7 +83,8 @@ _REQUIRED_API_NAMES_RE = re.compile(
     re.S,
 )
 _HOST_BROWSER_REMOTE_DEBUGGING_HELP = (
-    'For an already-open Chrome-family browser, open `chrome://inspect/#remote-debugging`, '
+    "For an already-open Chromium-family browser, open its inspect page, such as "
+    "`chrome://inspect/#remote-debugging` or `opera://inspect/#remote-debugging`, "
     'enable "Allow remote debugging for this browser instance", run `/browser host on`, '
     "and retry."
 )
@@ -123,6 +129,7 @@ class ConnectorBrowserRuntime:
             "context_id": self.context_id,
             "action": action,
             "profile_mode": self._host_browser_profile_mode(),
+            "browser_selection": self._host_browser_selection(),
         }
 
         if action == "open":
@@ -283,6 +290,7 @@ class ConnectorBrowserRuntime:
                         "context_id": self.context_id,
                         "action": "ensure",
                         "profile_mode": self._host_browser_profile_mode(),
+                        "browser_selection": self._host_browser_selection(),
                     },
                 ),
             )
@@ -294,6 +302,10 @@ class ConnectorBrowserRuntime:
         config = get_browser_config(self.agent)
         mode = str(config.get(HOST_BROWSER_PROFILE_MODE_KEY) or "existing").strip().lower()
         return "agent" if mode == "agent" else "existing"
+
+    def _host_browser_selection(self) -> str:
+        config = get_browser_config(self.agent)
+        return str(config.get(HOST_BROWSER_SELECTION_KEY) or "").strip()
 
     def _with_content_helper(self, sid: str, payload: dict[str, Any]) -> dict[str, Any]:
         return self._with_browser_helpers(sid, payload)
@@ -508,7 +520,10 @@ class ConnectorBrowserRuntime:
         if not message:
             message = "Host browser operation failed"
         normalized = message.lower()
-        if "chrome://inspect/#remote-debugging" in normalized:
+        if (
+            "chrome://inspect/#remote-debugging" in normalized
+            or "opera://inspect/#remote-debugging" in normalized
+        ):
             return _append_docker_browser_recovery(message)
         if any(token in normalized for token in _REMOTE_DEBUGGING_ERROR_TOKENS):
             return _append_docker_browser_recovery(

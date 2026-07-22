@@ -57,10 +57,10 @@ USAGE_PLAN_CATALOG: dict[str, dict[str, Any]] = {
     },
     GEMINI_API_PROVIDER_ID: {
         "provider_id": GEMINI_API_PROVIDER_ID,
-        "display_name": "Google Gemini API",
+        "display_name": "Google Cloud Gemini",
         "implemented": True,
         "plans": [
-            {"id": "oauth_cloud_project", "label": "OAuth Cloud project", "billing": "Google Cloud project", "usage": "Official OAuth access using a user-provided Google Cloud OAuth client."},
+            {"id": "oauth_cloud_project", "label": "Google Cloud project", "billing": "Google Cloud project", "usage": "Official OAuth access using a user-provided Google Cloud OAuth client."},
             {"id": "api_key", "label": "API key", "billing": "Gemini API pricing", "usage": "Standard Gemini API key access through Google AI Studio or Google Cloud."},
             {"id": "vertex_ai", "label": "Vertex AI", "billing": "Google Cloud", "usage": "Enterprise Gemini API access through Vertex AI projects and IAM."},
         ],

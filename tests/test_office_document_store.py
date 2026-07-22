@@ -84,15 +84,15 @@ def test_document_store_create_defaults_to_markdown(office_state):
     assert Path(doc["path"]).read_text(encoding="utf-8").startswith("# Research Note")
 
 
-def test_text_files_register_as_desktop_documents(office_state):
+def test_text_files_register_as_editor_documents(office_state):
     path = office_state.workdir / "plain-note.txt"
-    path.write_text("Plain text belongs on the Desktop surface.\n", encoding="utf-8")
+    path.write_text("Plain text belongs in the Editor surface.\n", encoding="utf-8")
 
     doc = document_store.register_document(path)
 
     assert doc["extension"] == "txt"
-    assert "txt" in document_store.DESKTOP_TEXT_EXTENSIONS
-    assert "txt" in desktop_session.OFFICIAL_EXTENSIONS
+    assert "txt" in document_store.EDITOR_TEXT_EXTENSIONS
+    assert "txt" not in desktop_session.OFFICIAL_EXTENSIONS
 
 
 def test_file_browser_can_register_runtime_root_markdown(office_state, monkeypatch):
@@ -519,6 +519,46 @@ def test_document_rename_saves_dirty_markdown_and_removes_original(office_state)
     assert updated["version"] == 2
     assert not original.exists()
     assert renamed.read_text(encoding="utf-8") == "# Clean Rename\n\nFresh text"
+
+
+def test_text_session_save_as_creates_new_file_without_mutating_original(office_state):
+    manager = editor_markdown_sessions.MarkdownSessionManager()
+    doc = document_store.create_document("document", "Original Note", "md", "# Original Note\n")
+    original = Path(doc["path"])
+    session = manager.open(doc, context_id="ctx-a")
+    target = office_state.workdir / "notes" / "Saved Copy.txt"
+
+    result = manager.save_as(
+        session["session_id"],
+        str(target),
+        text="Saved Copy\n\nExact body\n",
+    )
+
+    saved_session = manager._sessions[session["session_id"]]
+    assert result["ok"] is True
+    assert result["document"]["file_id"] != doc["file_id"]
+    assert result["previous_file_id"] == doc["file_id"]
+    assert saved_session.file_id == result["document"]["file_id"]
+    assert saved_session.path == str(target)
+    assert saved_session.extension == "txt"
+    assert saved_session.dirty is False
+    assert original.read_text(encoding="utf-8") == "# Original Note"
+    assert target.read_text(encoding="utf-8") == "Saved Copy\n\nExact body\n"
+
+
+def test_editor_session_opens_and_saves_txt_documents(office_state):
+    manager = editor_markdown_sessions.MarkdownSessionManager()
+    doc = document_store.create_document("document", "Plain Note", "txt", "First line")
+    session = manager.open(doc, context_id="ctx-a")
+
+    assert session["extension"] == "txt"
+    assert session["text"] == "First line"
+
+    result = manager.save(session["session_id"], text="Second line\n")
+
+    assert result["ok"] is True
+    assert result["document"]["extension"] == "txt"
+    assert Path(result["document"]["path"]).read_text(encoding="utf-8") == "Second line\n"
 
 
 def test_refresh_open_markdown_session_reloads_external_file_edits(office_state):
@@ -995,6 +1035,123 @@ def test_official_desktop_session_manager_opens_binary_session(office_state, tmp
     assert manager.proxy_for_token(payload["token"]) == ("127.0.0.1", desktop_session.XPRA_PORT_BASE)
     assert manager.close(payload["session_id"], save_first=False)["closed"] == 0
     assert manager.close(payload["session_id"], save_first=False)["persistent"] is True
+
+
+def test_desktop_save_targets_requested_libreoffice_window(office_state, tmp_path, monkeypatch):
+    doc = document_store.create_document("spreadsheet", "Targeted Save", "ods", "Name,Value\nA,1")
+    session = desktop_session.DesktopSession(
+        session_id=desktop_session.SYSTEM_SESSION_ID,
+        file_id=doc["file_id"],
+        extension=doc["extension"],
+        path=doc["path"],
+        title=doc["basename"],
+        display=desktop_session.DISPLAY_BASE,
+        xpra_port=desktop_session.XPRA_PORT_BASE,
+        token=desktop_session.SYSTEM_SESSION_ID,
+        url="/desktop/session/agent-zero-desktop/index.html",
+        profile_dir=tmp_path / "profile",
+        processes={"xpra": types.SimpleNamespace(poll=lambda: None)},
+    )
+    manager = desktop_session.DesktopSessionManager()
+    manager._sessions[session.session_id] = session
+    commands = []
+
+    monkeypatch.setattr(desktop_session.shutil, "which", lambda name: f"/usr/bin/{name}")
+    monkeypatch.setattr(desktop_session.time, "sleep", lambda _seconds: None)
+
+    def fake_run(command, **_kwargs):
+        commands.append(command)
+        if command[1] == "search":
+            assert command == ["/usr/bin/xdotool", "search", "--onlyvisible", "--class", "libreoffice"]
+            return subprocess.CompletedProcess(command, 0, "222\n", "")
+        if command[1] == "getwindowname":
+            return subprocess.CompletedProcess(command, 0, f"{doc['basename']} — LibreOffice Calc\n", "")
+        Path(doc["path"]).write_bytes(Path(doc["path"]).read_bytes() + b"changed")
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr(desktop_session.subprocess, "run", fake_run)
+
+    result = manager.save(session.session_id, doc["file_id"])
+
+    assert result["ok"] is True
+    assert result["changed"] is True
+    assert commands[-1] == [
+        "/usr/bin/xdotool",
+        "windowactivate",
+        "--sync",
+        "222",
+        "key",
+        "--clearmodifiers",
+        "ctrl+s",
+    ]
+
+    session.file_id = desktop_session.SYSTEM_FILE_ID
+    command_count = len(commands)
+    assert manager.save(session.session_id)["changed"] is False
+    assert len(commands) == command_count
+
+
+def test_desktop_startup_waiters_probe_display_and_reject_dead_xfce(tmp_path, monkeypatch):
+    session = desktop_session.DesktopSession(
+        session_id=desktop_session.SYSTEM_SESSION_ID,
+        file_id=desktop_session.SYSTEM_FILE_ID,
+        extension="desktop",
+        path=str(tmp_path),
+        title=desktop_session.SYSTEM_TITLE,
+        display=desktop_session.DISPLAY_BASE,
+        xpra_port=desktop_session.XPRA_PORT_BASE,
+        token=desktop_session.SYSTEM_SESSION_ID,
+        url="/desktop/session/agent-zero-desktop/index.html",
+        profile_dir=tmp_path / "profile",
+        processes={"xvfb": types.SimpleNamespace(poll=lambda: None)},
+    )
+    manager = desktop_session.DesktopSessionManager()
+    probes = iter((None, (1920, 1080)))
+    monkeypatch.setattr(
+        desktop_session.virtual_desktop,
+        "current_display_size",
+        lambda *_args, **_kwargs: next(probes),
+    )
+    monkeypatch.setattr(desktop_session.time, "sleep", lambda _seconds: None)
+
+    manager._wait_for_display(session)
+
+    session.processes = {"xfce": types.SimpleNamespace(poll=lambda: 1)}
+    with pytest.raises(RuntimeError, match="XFCE desktop session exited"):
+        manager._wait_for_xfce(session)
+
+
+def test_desktop_manifest_is_replaced_atomically(tmp_path, monkeypatch):
+    session_dir = tmp_path / "sessions"
+    session_dir.mkdir()
+    manifest = session_dir / f"{desktop_session.SYSTEM_SESSION_ID}.json"
+    manifest.write_text('{"old": true}', encoding="utf-8")
+    session = desktop_session.DesktopSession(
+        session_id=desktop_session.SYSTEM_SESSION_ID,
+        file_id=desktop_session.SYSTEM_FILE_ID,
+        extension="desktop",
+        path=str(tmp_path),
+        title=desktop_session.SYSTEM_TITLE,
+        display=desktop_session.DISPLAY_BASE,
+        xpra_port=desktop_session.XPRA_PORT_BASE,
+        token=desktop_session.SYSTEM_SESSION_ID,
+        url="/desktop/session/agent-zero-desktop/index.html",
+        profile_dir=tmp_path / "profile",
+    )
+    real_replace = os.replace
+
+    def assert_atomic_replace(source, destination):
+        assert json.loads(Path(destination).read_text(encoding="utf-8")) == {"old": True}
+        assert json.loads(Path(source).read_text(encoding="utf-8"))["display"] == session.display
+        real_replace(source, destination)
+
+    monkeypatch.setattr(desktop_session, "SESSION_DIR", session_dir)
+    monkeypatch.setattr(desktop_session.os, "replace", assert_atomic_replace)
+
+    desktop_session.DesktopSessionManager()._write_manifest(session)
+
+    assert json.loads(manifest.read_text(encoding="utf-8"))["session_id"] == session.session_id
+    assert list(session_dir.glob(".*.tmp")) == []
 
 
 def test_shutdown_panel_launcher_requires_second_click(tmp_path):

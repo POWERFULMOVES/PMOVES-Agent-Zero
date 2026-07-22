@@ -379,8 +379,9 @@ class _FakeTool:
 
 
 class _FakeAgent:
-    def __init__(self) -> None:
+    def __init__(self, context_id: str = "") -> None:
         self.data = {}
+        self.context = types.SimpleNamespace(id=context_id) if context_id else None
 
     def read_prompt(self, name: str, **kwargs) -> str:
         if name.endswith("read_ok.md"):
@@ -556,7 +557,7 @@ def test_text_editor_write_result_carries_markdown_canvas_intent(
 ) -> None:
     module, _calls = _load_text_editor_tool(monkeypatch)
     target = tmp_path / "note.md"
-    tool = module.TextEditor(_FakeAgent(), "text_editor", "write", {}, "", None)
+    tool = module.TextEditor(_FakeAgent("ctx-write-1"), "text_editor", "write", {}, "", None)
 
     response = asyncio.run(
         tool._write(
@@ -574,6 +575,8 @@ def test_text_editor_write_result_carries_markdown_canvas_intent(
         "format": "md",
         "extension": "md",
         "open_in_canvas": True,
+        "context_id": "ctx-write-1",
+        "ctxid": "ctx-write-1",
     }
 
 

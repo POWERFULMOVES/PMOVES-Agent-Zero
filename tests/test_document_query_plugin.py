@@ -559,9 +559,15 @@ def test_document_query_prompt_uses_progressive_skill_disclosure():
     assert skill is not None
     assert "document_query for Q&A" in main_prompt
     assert "specific code files" in main_prompt
+    assert "use vision_load first for image files" in main_prompt
+    assert "document_query for image OCR only when vision tools cannot read" in main_prompt
     assert "skills_tool:load" in prompt
     assert "document-query" in prompt
     assert "document_query" in prompt
+    assert "Use vision tools first" in prompt
+    assert "fallback OCR" in prompt
     assert "answering questions over local or remote documents" in skill.description
+    assert "fallback OCR" in skill.description
     assert "### Answer Questions Over A Document" in skill.content
-    assert "### OCR Or Q&A Over A Document Image" in skill.content
+    assert "Use vision tools first" in skill.content
+    assert "### Fallback OCR After Vision Cannot Read A Document Image" in skill.content

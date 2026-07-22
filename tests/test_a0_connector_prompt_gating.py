@@ -27,6 +27,11 @@ from plugins._a0_connector.helpers import ws_runtime
 
 
 PROMPT_ROOT = PROJECT_ROOT / "plugins" / "_a0_connector" / "prompts"
+REMOTE_PROMPT_FILES = {
+    "code_execution_remote": "agent.system.tool.code_execution_remote.md",
+    "computer_use_remote": "agent.system.tool.computer_use_remote.md",
+    "text_editor_remote": "agent.system.tool.text_editor_remote.md",
+}
 GATE_PATH = (
     PROJECT_ROOT
     / "plugins"
@@ -34,9 +39,6 @@ GATE_PATH = (
     / "extensions"
     / "python"
     / "_functions"
-    / "extensions"
-    / "python"
-    / "system_prompt"
     / "_11_tools_prompt"
     / "build_prompt"
     / "end"
@@ -89,24 +91,167 @@ def _parse_skill_frontmatter(path: Path) -> dict:
     return yaml.safe_load(text.split("---", 2)[1]) or {}
 
 
-def _apply_gate(context_id: str) -> str:
-    data = {"result": "## available tools\nbase_tool"}
+def _remote_prompt_blob() -> str:
+    return "\n\n".join(
+        (PROMPT_ROOT / prompt_file).read_text(encoding="utf-8").strip()
+        for prompt_file in REMOTE_PROMPT_FILES.values()
+    )
+
+
+def _apply_gate(context_id: str, *, include_standard_remote_prompts: bool = True) -> str:
+    result = "## available tools\nbase_tool"
+    if include_standard_remote_prompts:
+        result = f"{result}\n\n{_remote_prompt_blob()}"
+    data = {"result": result}
     IncludeRemoteToolStubs(agent=FakeAgent(context_id)).execute(data=data)
     return data["result"]
 
 
-def test_remote_tool_gate_includes_runtime_checked_computer_use_contract():
+def _assert_remote_tool_absent(prompt: str, tool_name: str) -> None:
+    assert f'"tool_name": "{tool_name}"' not in prompt
+
+
+def test_remote_tool_gate_hides_remote_prompts_without_connected_cli():
     prompt = _apply_gate(_context_id())
 
-    assert "text_editor_remote tool" not in prompt
-    assert "code_execution_remote tool" not in prompt
+    for tool_name in REMOTE_PROMPT_FILES:
+        _assert_remote_tool_absent(prompt, tool_name)
+    assert "base_tool" in prompt
+
+
+def test_remote_tool_gate_includes_file_prompt_for_read_only_connected_cli():
+    context_id = _context_id()
+    sid = _sid()
+    ws_runtime.register_sid(sid)
+    ws_runtime.store_sid_remote_file_metadata(
+        sid,
+        {"enabled": True, "write_enabled": False, "mode": "read_only"},
+    )
+    try:
+        prompt = _apply_gate(context_id)
+    finally:
+        ws_runtime.unregister_sid(sid)
+
+    assert '"tool_name": "text_editor_remote"' in prompt
+    _assert_remote_tool_absent(prompt, "code_execution_remote")
+    _assert_remote_tool_absent(prompt, "computer_use_remote")
+
+
+def test_remote_tool_gate_requires_f4_enabled_remote_exec_metadata():
+    context_id = _context_id()
+    sid = _sid()
+    ws_runtime.register_sid(sid)
+    ws_runtime.store_sid_remote_file_metadata(
+        sid,
+        {"enabled": True, "write_enabled": True, "mode": "read_write"},
+    )
+    ws_runtime.store_sid_remote_exec_metadata(sid, {"enabled": False})
+    try:
+        prompt = _apply_gate(context_id)
+        _assert_remote_tool_absent(prompt, "code_execution_remote")
+
+        ws_runtime.store_sid_remote_exec_metadata(sid, {"enabled": True})
+        prompt = _apply_gate(context_id)
+    finally:
+        ws_runtime.unregister_sid(sid)
+
+    assert '"tool_name": "code_execution_remote"' in prompt
+
+
+def test_remote_tool_gate_requires_enabled_computer_use_metadata():
+    context_id = _context_id()
+    sid = _sid()
+    ws_runtime.register_sid(sid)
+    ws_runtime.store_sid_computer_use_metadata(
+        sid,
+        {"supported": True, "enabled": False, "status": "off"},
+    )
+    try:
+        prompt = _apply_gate(context_id)
+        _assert_remote_tool_absent(prompt, "computer_use_remote")
+
+        ws_runtime.store_sid_computer_use_metadata(
+            sid,
+            {"supported": True, "enabled": True, "status": "ready"},
+        )
+        prompt = _apply_gate(context_id)
+    finally:
+        ws_runtime.unregister_sid(sid)
+
     assert '"tool_name": "computer_use_remote"' in prompt
     assert "### computer_use_remote" in prompt
-    assert "checked when the tool runs" in prompt
+
+
+def test_remote_tool_gate_hides_rearm_required_computer_use_prompt():
+    context_id = _context_id()
+    sid = _sid()
+    ws_runtime.register_sid(sid)
+    ws_runtime.store_sid_computer_use_metadata(
+        sid,
+        {
+            "supported": True,
+            "enabled": True,
+            "status": "rearm required",
+            "last_error": "permission expired",
+        },
+    )
+    try:
+        prompt = _apply_gate(context_id)
+    finally:
+        ws_runtime.unregister_sid(sid)
+
+    _assert_remote_tool_absent(prompt, "computer_use_remote")
+
+
+def test_remote_tool_gate_appends_available_prompt_when_standard_prompt_missing():
+    context_id = _context_id()
+    sid = _sid()
+    ws_runtime.register_sid(sid)
+    ws_runtime.store_sid_remote_file_metadata(sid, {"enabled": True})
+    try:
+        prompt = _apply_gate(context_id, include_standard_remote_prompts=False)
+    finally:
+        ws_runtime.unregister_sid(sid)
+
+    assert '"tool_name": "text_editor_remote"' in prompt
+    _assert_remote_tool_absent(prompt, "code_execution_remote")
+    _assert_remote_tool_absent(prompt, "computer_use_remote")
+
+
+def test_responses_function_tools_follow_remote_prompt_gate(monkeypatch):
+    from helpers import responses_tools
+
+    context_id = _context_id()
+    agent = FakeAgent(context_id)
+    monkeypatch.setattr(
+        responses_tools.subagents,
+        "get_paths",
+        lambda *args, **kwargs: [str(PROMPT_ROOT)],
+    )
+
+    names = {name for name, _prompt in responses_tools._local_tool_prompts(agent)}
+    assert names.isdisjoint(REMOTE_PROMPT_FILES)
+
+    sid = _sid()
+    ws_runtime.register_sid(sid)
+    ws_runtime.store_sid_remote_file_metadata(sid, {"enabled": True})
+    ws_runtime.store_sid_remote_exec_metadata(sid, {"enabled": True})
+    ws_runtime.store_sid_computer_use_metadata(
+        sid,
+        {"supported": True, "enabled": True, "status": "ready"},
+    )
+    try:
+        names = {name for name, _prompt in responses_tools._local_tool_prompts(agent)}
+    finally:
+        ws_runtime.unregister_sid(sid)
+
+    assert REMOTE_PROMPT_FILES.keys() <= names
 
 
 def test_computer_use_remote_prompt_is_cli_session_wide_not_context_scoped():
-    prompt = _apply_gate(_context_id())
+    prompt = (PROMPT_ROOT / "agent.system.tool.computer_use_remote.md").read_text(
+        encoding="utf-8"
+    )
 
     assert "### computer_use_remote" in prompt
     assert '"tool_name": "computer_use_remote"' in prompt
@@ -115,16 +260,21 @@ def test_computer_use_remote_prompt_is_cli_session_wide_not_context_scoped():
 
 
 def test_computer_use_remote_prompt_keeps_runtime_failures_actionable():
-    prompt = _apply_gate(_context_id())
+    prompt = (PROMPT_ROOT / "agent.system.tool.computer_use_remote.md").read_text(
+        encoding="utf-8"
+    )
 
     assert "no CLI" in prompt
     assert "disabled computer use" in prompt
     assert "COMPUTER_USE_REARM_REQUIRED" in prompt
     assert "/computer-use on" in prompt
+    assert "A0 Launcher chat" in prompt
 
 
 def test_computer_use_remote_prompt_requires_visual_verification_after_actions():
-    prompt = _apply_gate(_context_id())
+    prompt = (PROMPT_ROOT / "agent.system.tool.computer_use_remote.md").read_text(
+        encoding="utf-8"
+    )
     skill = (
         PROJECT_ROOT
         / "plugins"
@@ -152,7 +302,7 @@ def test_computer_use_remote_prompt_requires_visual_verification_after_actions()
     assert "window-manager" not in skill
 
 
-def test_remote_file_and_exec_tools_are_standard_tool_prompts_independent_from_context():
+def test_remote_file_and_exec_tool_prompt_files_remain_standard_tool_prompts():
     text_stub = (PROMPT_ROOT / "agent.system.tool.text_editor_remote.md").read_text(encoding="utf-8")
     exec_stub = (PROMPT_ROOT / "agent.system.tool.code_execution_remote.md").read_text(encoding="utf-8")
 
@@ -475,6 +625,7 @@ def test_host_browser_requests_route_to_browser_tool_not_desktop_or_shell_fallba
     assert "code_execution_remote" in browser_prompt
     assert "Python `webbrowser.open`" in browser_prompt
     assert "chrome://inspect/#remote-debugging" in browser_prompt
+    assert "opera://inspect/#remote-debugging" in browser_prompt
     assert "Do not start `computer_use_remote` for web-page navigation" in computer_skill
     assert (
         "Do not fall back to `code_execution_remote`, `xdg-open`, `sensible-browser`, "

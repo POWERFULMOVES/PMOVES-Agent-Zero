@@ -20,7 +20,7 @@ from plugins._oauth.helpers.state import (
 )
 
 
-CODEX_DEFAULT_MODELS = ["gpt-5.2-codex", "gpt-5.2"]
+CODEX_DEFAULT_MODEL = "gpt-5.5"
 CODEX_FALLBACK_CONFIG = {
     "enabled": True,
     "models": [],
@@ -35,7 +35,7 @@ class CodexOAuthProvider:
 
     def metadata(self) -> OAuthProviderMetadata:
         cfg = _codex_config()
-        models = cfg["models"] or CODEX_DEFAULT_MODELS
+        models = list(cfg["models"])
         return OAuthProviderMetadata(
             provider_id=CODEX_PROVIDER_ID,
             display_name="Codex/ChatGPT",
@@ -43,7 +43,7 @@ class CodexOAuthProvider:
             model_provider_id=CODEX_PROVIDER_ID,
             icon="openai",
             auth_flow="device_code",
-            default_model=models[0] if models else "gpt-5.2-codex",
+            default_model=models[0] if models else CODEX_DEFAULT_MODEL,
             default_models=models,
             proxy_base_path=cfg["proxy_base_path"],
             callback_path=cfg["callback_path"],
@@ -231,6 +231,11 @@ class CodexOAuthProvider:
         from plugins._oauth.helpers import codex
 
         return codex.fetch_models()
+
+    def model_catalog(self) -> list[dict[str, Any]]:
+        from plugins._oauth.helpers import codex
+
+        return codex.fetch_model_catalog()
 
     def disconnect(self) -> dict[str, Any]:
         from plugins._oauth.helpers import codex

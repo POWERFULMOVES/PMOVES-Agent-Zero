@@ -14,9 +14,13 @@
 ## Local Contracts
 
 - Tests must not require real API keys, network-only services, private user data, or local `usr/` runtime state.
-- Keep tests deterministic and isolated from existing chats, uploads, downloads, memory, and settings.
+- Keep tests deterministic and isolated from existing chats, uploads, downloads, plugin state, and settings.
 - Prefer exercising public helper/API contracts over fragile implementation details when practical.
 - Security regression tests should assert the protected behavior directly.
+- Launcher gateway tests must cover feature negotiation, authenticated and
+  CSRF-protected control, acknowledgement timeout, identity lifecycle,
+  context-bound CLI routing precedence, duplicate/multiple-host behavior,
+  scope-driven availability, and emergency disconnect without a live host.
 
 ## Work Guidance
 

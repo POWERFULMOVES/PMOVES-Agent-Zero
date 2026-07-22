@@ -35,7 +35,6 @@ COPILOT_HEADERS = {
     "Copilot-Integration-Id": "vscode-chat",
 }
 CURATED_MODELS = [
-    "gpt-5.2-codex",
     "gpt-5.2",
     "claude-sonnet-4.5",
     "claude-opus-4.5",
@@ -203,7 +202,7 @@ class GitHubCopilotOAuthProvider:
             model_provider_id=GITHUB_COPILOT_PROVIDER_ID,
             icon="github",
             auth_flow="device_code",
-            default_model="gpt-5.2-codex",
+            default_model=CURATED_MODELS[0],
             default_models=list(CURATED_MODELS),
             proxy_base_path="/oauth/github-copilot",
             supports_enterprise_domain=True,

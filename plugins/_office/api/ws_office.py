@@ -22,7 +22,7 @@ class WsOffice(WsHandler):
             if event in {"office_input", "office_save", "office_close"}:
                 return {
                     "ok": False,
-                    "error": "Office WebSocket editing is not available for Markdown; use the Editor surface.",
+                    "error": "Office WebSocket editing is not available for text documents; use the Editor surface.",
                 }
         except FileNotFoundError as exc:
             return WsResult.error(code="OFFICE_SESSION_NOT_FOUND", message=str(exc), correlation_id=data.get("correlationId"))
@@ -59,10 +59,10 @@ class WsOffice(WsHandler):
                 context_id=context_id,
             )
         ext = str(doc.get("extension") or "").lower()
-        if ext == "md":
+        if ext in document_store.EDITOR_TEXT_EXTENSIONS:
             return WsResult.error(
                 code="UNSUPPORTED_OFFICE_DOCUMENT",
-                message="Markdown documents use the Editor surface.",
+                message="Text documents use the Editor surface.",
                 correlation_id=data.get("correlationId"),
             )
         if ext in desktop_session.OFFICIAL_EXTENSIONS:

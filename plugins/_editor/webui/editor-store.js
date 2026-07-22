@@ -2,7 +2,12 @@ import { createStore } from "/js/AlpineStore.js";
 import { callJsonApi } from "/js/api.js";
 import { getNamespacedClient } from "/js/websocket.js";
 import { store as fileBrowserStore } from "/components/modals/file-browser/file-browser-store.js";
-import { placeSurfaceModalHeaderAction } from "/js/surfaces.js";
+import {
+  openLatest as openLatestSurface,
+  placeSurfaceModalHeaderAction,
+  registerUrlHandler,
+  setupFloatingSurfaceModalChrome,
+} from "/js/surfaces.js";
 import {
   buildMarkdownPages,
   isExternalHref,
@@ -21,6 +26,7 @@ const INPUT_PUSH_DELAY_MS = 650;
 const MAX_HISTORY = 80;
 const SOURCE_MODE = "source";
 const PREVIEW_MODE = "preview";
+const EDITOR_TEXT_EXTENSIONS = new Set(["md", "txt"]);
 
 function currentContextId() {
   try {
@@ -46,6 +52,33 @@ function parentPath(path = "") {
   const index = normalized.lastIndexOf("/");
   if (index <= 0) return "/";
   return normalized.slice(0, index);
+}
+
+function textDocumentFilename(path = "", fallback = "Untitled.md") {
+  const name = basename(path || fallback || "Untitled.md");
+  const ext = extensionOf(name);
+  if (EDITOR_TEXT_EXTENSIONS.has(ext)) return name;
+  return `${name.replace(/\.+$/, "") || "Untitled"}.md`;
+}
+
+function textDocumentDefaultExtension(path = "") {
+  const ext = extensionOf(path);
+  return EDITOR_TEXT_EXTENSIONS.has(ext) ? ext : "md";
+}
+
+function editorIntent(url = "") {
+  const raw = String(url || "").trim();
+  if (!raw) return null;
+  try {
+    const parsed = new URL(raw);
+    if (parsed.protocol !== "a0-editor:") return null;
+    if (parsed.hostname === "open") {
+      return { path: parsed.searchParams.get("path") || "" };
+    }
+    return null;
+  } catch {
+    return null;
+  }
 }
 
 function uniqueTabId(session = {}) {
@@ -74,7 +107,7 @@ function placeCaretAtEnd(element) {
   selection.addRange(range);
 }
 
-function normalizeMarkdown(doc = {}) {
+function normalizeTextDocument(doc = {}) {
   const path = doc.path || "";
   const extension = String(doc.extension || extensionOf(path)).toLowerCase();
   return {
@@ -87,7 +120,7 @@ function normalizeMarkdown(doc = {}) {
 }
 
 function normalizeSession(payload = {}) {
-  const document = normalizeMarkdown(payload.document || payload);
+  const document = normalizeTextDocument(payload.document || payload);
   return {
     ...payload,
     document,
@@ -149,17 +182,19 @@ function taskLineIndexes(markdown = "") {
 }
 
 async function callEditor(action, payload = {}) {
+  const explicitContextId = String(payload.ctxid || payload.context_id || "").trim();
   return await callJsonApi("/plugins/_editor/editor_session", {
     action,
-    ctxid: currentContextId(),
     ...payload,
+    ctxid: explicitContextId || currentContextId(),
   });
 }
 
 async function requestEditor(eventType, payload = {}, timeoutMs = 5000) {
+  const explicitContextId = String(payload.ctxid || payload.context_id || "").trim();
   const response = await editorSocket.request(eventType, {
-    ctxid: currentContextId(),
     ...payload,
+    ctxid: explicitContextId || currentContextId(),
   }, { timeoutMs });
   const results = Array.isArray(response?.results) ? response.results : [];
   const first = results.find((item) => item?.ok === true && isEditorSocketData(item?.data))
@@ -216,6 +251,7 @@ const model = {
   _inputTimer: null,
   _history: [],
   _historyIndex: -1,
+  _historyPushedAt: 0,
   _pendingFocus: false,
   _pendingFocusEnd: true,
   _focusAttempts: 0,
@@ -251,9 +287,12 @@ const model = {
     await this.init();
     await this.refresh();
     if (payload?.path || payload?.file_id) {
+      const contextId = String(payload.ctxid || payload.context_id || "").trim();
       await this.openSession({
         path: payload.path || "",
         file_id: payload.file_id || "",
+        ctxid: contextId,
+        context_id: contextId,
         refresh: payload.refresh === true,
         source: payload.source || "",
       });
@@ -298,7 +337,7 @@ const model = {
   },
 
   async setViewMode(mode) {
-    const next = mode === PREVIEW_MODE ? PREVIEW_MODE : SOURCE_MODE;
+    const next = mode === PREVIEW_MODE && this.isTextDocument() ? PREVIEW_MODE : SOURCE_MODE;
     if (this.viewMode === next) return;
     this.applyPreviewEdit({ silent: true });
     this.syncEditorText();
@@ -316,6 +355,7 @@ const model = {
   },
 
   async toggleViewMode() {
+    if (!this.isTextDocument()) return;
     await this.setViewMode(this.isPreviewMode() ? SOURCE_MODE : PREVIEW_MODE);
   },
 
@@ -328,6 +368,7 @@ const model = {
   },
 
   pages() {
+    if (!this.isTextDocument()) return [];
     return buildMarkdownPages(this.editorText, this.tabTitle(this.session || {}));
   },
 
@@ -341,34 +382,13 @@ const model = {
     return this.currentPage().title || this.tabTitle(this.session || {});
   },
 
-  pagePositionLabel() {
-    const pages = this.pages();
-    if (!pages.length) return "";
-    return `${Math.min(this.activePageIndex + 1, pages.length)} of ${pages.length}`;
-  },
-
   previewHtml() {
+    if (!this.isTextDocument()) return "";
     return renderEditorPreviewMarkdown(this.currentPage().markdown || "", this.editorText);
   },
 
-  selectPage(index) {
-    if (this.previewEditing) return;
-    const pages = this.pages();
-    if (!pages.length) return;
-    this.activePageIndex = Math.max(0, Math.min(Number(index) || 0, pages.length - 1));
-    this.schedulePreviewEnhance();
-  },
-
-  nextPage() {
-    this.selectPage(this.activePageIndex + 1);
-  },
-
-  previousPage() {
-    this.selectPage(this.activePageIndex - 1);
-  },
-
   startPreviewEdit() {
-    if (!this.session || !this.isMarkdown() || !this.isPreviewMode()) return;
+    if (!this.session || !this.isTextDocument() || !this.isPreviewMode()) return;
     const page = this.currentPage();
     this.previewEditing = true;
     this.previewEditDirty = false;
@@ -416,7 +436,7 @@ const model = {
     this.previewEditPageIndex = -1;
 
     return this.replacePageMarkdown(page, replacement, {
-      message: "Page updated",
+      message: "Document updated",
       silent: options.silent,
     });
   },
@@ -452,7 +472,7 @@ const model = {
   },
 
   togglePreviewTask(taskIndex, checked) {
-    if (!this.session || !this.isMarkdown() || !this.isPreviewMode() || this.previewEditing) return false;
+    if (!this.session || !this.isTextDocument() || !this.isPreviewMode() || this.previewEditing) return false;
     const page = this.currentPage();
     const lines = String(page.markdown || "").split("\n");
     const indexes = taskLineIndexes(page.markdown || "");
@@ -473,7 +493,7 @@ const model = {
   },
 
   schedulePreviewEnhance() {
-    if (!this.isPreviewMode()) return;
+    if (!this.isTextDocument() || !this.isPreviewMode()) return;
     if (this._previewEnhanceTimer) globalThis.clearTimeout(this._previewEnhanceTimer);
     this._previewEnhanceTimer = globalThis.setTimeout(() => {
       this._previewEnhanceTimer = null;
@@ -666,6 +686,7 @@ const model = {
   },
 
   openSearch() {
+    if (!this.isTextDocument()) return;
     if (!this.isPreviewMode()) {
       this.setViewMode(PREVIEW_MODE);
     }
@@ -828,14 +849,27 @@ const model = {
   },
 
   handleEditorKeydown(event) {
-    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "f") {
+    if (!(event.metaKey || event.ctrlKey) || !this.isTextDocument()) return;
+    const key = event.key.toLowerCase();
+    const historyAction = key === "y" || (key === "z" && event.shiftKey) ? "redo" : key === "z" ? "undo" : "";
+    const nativeEditing = event.target?.matches?.("input, textarea, [contenteditable='true']")
+      && !event.target.closest?.("[data-editor-ace], [data-editor-source]");
+    if (nativeEditing) return;
+    if (historyAction && !this.previewEditing) {
+      event.preventDefault();
+      event.stopPropagation();
+      this[historyAction]();
+      return;
+    }
+    if (key === "f") {
       event.preventDefault();
       this.openSearch();
     }
   },
 
   async create(kind = "document", format = "") {
-    const fmt = "md";
+    const requested = String(format || "md").toLowerCase().replace(/^\./, "");
+    const fmt = EDITOR_TEXT_EXTENSIONS.has(requested) ? requested : "md";
     const title = this.defaultTitle(kind, fmt);
     return await this.openSession({
       action: "create",
@@ -863,7 +897,17 @@ const model = {
         // The file browser can still open with the static fallback.
       }
     }
-    await fileBrowserStore.open(workdirPath);
+    await fileBrowserStore.openTextPicker(workdirPath, async ({ selectedFiles = [] } = {}) => {
+      const files = selectedFiles.filter((file) => file?.path);
+      if (!files.length) return false;
+      for (const file of files) {
+        const session = await this.openPath(fileBrowserStore.normalizePath(file.path), { source: "file-browser", refresh: true });
+        if (!session || session.ok === false) {
+          throw new Error(this.error || `Could not open ${file.name || file.path}`);
+        }
+      }
+      return true;
+    });
   },
 
   async openPath(path, options = {}) {
@@ -880,11 +924,11 @@ const model = {
     try {
       const response = await callEditor(payload.action || "open", payload);
       if (response?.ok === false) {
-        this.error = response.error || "Markdown could not be opened.";
+        this.error = response.error || "Text document could not be opened.";
         return null;
       }
       if (response?.requires_desktop) {
-        const document = normalizeMarkdown(response.document || response);
+        const document = normalizeTextDocument(response.document || response);
         this.setMessage(`${documentLabel(document)} uses the Desktop surface.`);
         await this.refresh();
         return response;
@@ -938,6 +982,7 @@ const model = {
     this.searchIndex = -1;
     this.resetHistory(this.editorText);
     this.setSourceEditorText(this.editorText);
+    this.updateSourceEditorMode();
     if (tab?.session_id) {
       requestEditor("editor_activate", { session_id: tab.session_id }, 2500).catch(() => {});
     }
@@ -991,7 +1036,7 @@ const model = {
     if (!pending) return "";
     const dirtyCount = Number(pending.dirtyCount || 0);
     if (pending.kind === "all") {
-      if (dirtyCount === 0) return "All open Markdown files will be closed.";
+      if (dirtyCount === 0) return "All open text files will be closed.";
       return `${dirtyCount} open ${dirtyCount === 1 ? "file has" : "files have"} unsaved changes.`;
     }
     if (dirtyCount > 0) return "This file has unsaved changes.";
@@ -1066,7 +1111,7 @@ const model = {
         file_id: tab.file_id || "",
       });
     } catch (error) {
-      console.warn("Markdown close skipped", error);
+      console.warn("Editor close skipped", error);
     }
     this.tabs = this.tabs.filter((item) => item.tab_id !== tabId);
     if (this.pendingClose?.tabId === tabId || this.pendingClose?.tabIds?.includes(tabId)) {
@@ -1137,7 +1182,7 @@ const model = {
     const darkMode = globalThis.localStorage?.getItem("darkMode");
     const theme = darkMode !== "false" ? "ace/theme/github_dark" : "ace/theme/github";
     editor.setTheme(theme);
-    editor.session.setMode("ace/mode/markdown");
+    editor.session.setMode(this.sourceEditorMode());
     editor.session.setUseWrapMode(true);
     editor.setOptions({
       fontSize: "13px",
@@ -1156,7 +1201,18 @@ const model = {
     editor.session.on("change", this._sourceEditorChangeHandler);
     this.sourceEditor = editor;
     this.aceUnavailable = false;
+    this.updateSourceEditorMode();
     this.queueRender({ focus: Boolean(this.session), end: false });
+  },
+
+  sourceEditorMode(tab = this.session) {
+    return this.isMarkdown(tab) ? "ace/mode/markdown" : "ace/mode/text";
+  },
+
+  updateSourceEditorMode(tab = this.session) {
+    try {
+      this.sourceEditor?.session?.setMode(this.sourceEditorMode(tab));
+    } catch {}
   },
 
   destroySourceEditor() {
@@ -1196,7 +1252,7 @@ const model = {
   },
 
   async save() {
-    if (!this.session || this.saving || !this.isMarkdown()) return;
+    if (!this.session || this.saving || !this.isTextDocument()) return;
     this.applyPreviewEdit({ silent: true });
     this.syncEditorText();
     this.saving = true;
@@ -1210,7 +1266,7 @@ const model = {
         response = await callEditor("save", payload);
       }
       if (response?.ok === false) throw new Error(response.error || "Save failed.");
-      const document = normalizeMarkdown(response.document || this.session.document || {});
+      const document = normalizeTextDocument(response.document || this.session.document || {});
       const updated = {
         ...this.session,
         text: this.editorText,
@@ -1218,6 +1274,7 @@ const model = {
         document,
         path: document.path || this.session.path,
         file_id: document.file_id || this.session.file_id,
+        extension: document.extension || this.session.extension,
         version: document.version || response.version || this.session.version,
       };
       this.replaceActiveSession(updated);
@@ -1231,8 +1288,81 @@ const model = {
     }
   },
 
+  async downloadActiveFile() {
+    if (!this.session || this.saving || !this.isTextDocument()) return;
+    if (this.dirty) await this.save();
+    if (this.dirty) return;
+    const path = this.session.path || this.session.document?.path;
+    if (path) fileBrowserStore.downloadFile({ path, name: this.tabTitle() });
+  },
+
+  async saveAs() {
+    if (!this.session || this.saving || !this.isTextDocument()) return;
+    this.applyPreviewEdit({ silent: true });
+    this.syncEditorText();
+
+    let startPath = parentPath(this.session.path || this.session.document?.path || "");
+    if (!startPath || startPath === "/") {
+      try {
+        const home = await callEditor("home");
+        startPath = home?.path || startPath || "/a0/usr/workdir";
+      } catch {
+        startPath = "/a0/usr/workdir";
+      }
+    }
+
+    await fileBrowserStore.openSaveAsPicker(startPath, {
+      filename: textDocumentFilename(this.session.path || this.session.title || "Untitled.md"),
+      defaultExtension: textDocumentDefaultExtension(this.session.path || this.session.title || "Untitled.md"),
+      onConfirm: async ({ path } = {}) => {
+        if (!path) return false;
+        await this.saveAsPath(path);
+        return true;
+      },
+    });
+  },
+
+  async saveAsPath(path) {
+    if (!this.session || this.saving || !this.isTextDocument()) return null;
+    this.saving = true;
+    this.error = "";
+    try {
+      const payload = {
+        session_id: this.session.session_id,
+        store_session_id: this.session.store_session_id || "",
+        path,
+        text: this.editorText,
+      };
+      const response = await callEditor("save_as", payload);
+      if (response?.ok === false) throw new Error(response.error || "Save As failed.");
+      const document = normalizeTextDocument(response.document || this.session.document || {});
+      const updated = {
+        ...this.session,
+        text: this.editorText,
+        dirty: false,
+        document,
+        title: document.title || document.basename || basename(document.path),
+        path: document.path || path,
+        file_id: document.file_id || this.session.file_id,
+        extension: document.extension || this.session.extension,
+        store_session_id: response.store_session_id || this.session.store_session_id,
+        version: document.version || response.version || this.session.version,
+      };
+      this.replaceActiveSession(updated);
+      this.dirty = false;
+      this.setMessage("Saved As");
+      await this.refresh();
+      return updated;
+    } catch (error) {
+      this.error = error instanceof Error ? error.message : String(error);
+      throw error;
+    } finally {
+      this.saving = false;
+    }
+  },
+
   async saveTab(tab) {
-    if (!tab || this.saving || !this.isMarkdown(tab)) return false;
+    if (!tab || this.saving || !this.isTextDocument(tab)) return false;
     if (this.isActiveTab(tab)) {
       this.applyPreviewEdit({ silent: true });
       this.syncEditorText();
@@ -1251,7 +1381,7 @@ const model = {
         response = await callEditor("save", payload);
       }
       if (response?.ok === false) throw new Error(response.error || "Save failed.");
-      const document = normalizeMarkdown(response.document || tab.document || {});
+      const document = normalizeTextDocument(response.document || tab.document || {});
       const updated = {
         ...tab,
         text: payload.text,
@@ -1259,6 +1389,7 @@ const model = {
         document,
         path: document.path || tab.path,
         file_id: document.file_id || tab.file_id,
+        extension: document.extension || tab.extension,
         version: document.version || response.version || tab.version,
       };
       this.replaceSession(tab, updated);
@@ -1307,7 +1438,7 @@ const model = {
             file_id: session.file_id || "",
             path: renamedPath,
           };
-          if (this.isMarkdown(session)) {
+          if (this.isTextDocument(session)) {
             this.syncEditorText();
             payload.text = this.session?.tab_id === session.tab_id ? this.editorText : session.text || "";
           }
@@ -1327,7 +1458,7 @@ const model = {
     });
     if (response?.ok === false) throw new Error(response.error || "Rename failed.");
 
-    const document = normalizeMarkdown(response.document || session.document || {});
+    const document = normalizeTextDocument(response.document || session.document || {});
     const updated = {
       ...session,
       document,
@@ -1352,7 +1483,10 @@ const model = {
 
   replaceSession(previous, next) {
     const wasActive = this.activeTabId === (previous?.tab_id || next.tab_id);
-    if (wasActive) this.session = next;
+    if (wasActive) {
+      this.session = next;
+      this.updateSourceEditorMode(next);
+    }
     const index = this.tabs.findIndex((tab) => tab.tab_id === (previous?.tab_id || next.tab_id));
     if (index >= 0) this.tabs.splice(index, 1, next);
   },
@@ -1369,37 +1503,41 @@ const model = {
   resetHistory(text) {
     this._history = [String(text || "")];
     this._historyIndex = 0;
+    this._historyPushedAt = 0;
   },
 
-  pushHistory(text) {
+  pushHistory(text, coalesce = false) {
     const value = String(text || "");
     if (this._history[this._historyIndex] === value) return;
+    const now = Date.now();
+    if (
+      coalesce
+      && this._historyPushedAt
+      && now - this._historyPushedAt <= INPUT_PUSH_DELAY_MS
+      && this._historyIndex === this._history.length - 1
+      && this._historyIndex > 0
+    ) {
+      this._history[this._historyIndex] = value;
+      this._historyPushedAt = now;
+      return;
+    }
     this._history = this._history.slice(0, this._historyIndex + 1);
     this._history.push(value);
     if (this._history.length > MAX_HISTORY) this._history.shift();
     this._historyIndex = this._history.length - 1;
+    this._historyPushedAt = coalesce ? now : 0;
   },
 
   undo() {
-    if (this.sourceEditor && this.isSourceMode()) {
-      this.sourceEditor.undo();
-      this.editorText = this.sourceEditor.getValue();
-      this.syncEditorText();
-      return;
-    }
     if (this._historyIndex <= 0) return;
+    this._historyPushedAt = 0;
     this._historyIndex -= 1;
     this.applyEditorText(this._history[this._historyIndex], true);
   },
 
   redo() {
-    if (this.sourceEditor && this.isSourceMode()) {
-      this.sourceEditor.redo();
-      this.editorText = this.sourceEditor.getValue();
-      this.syncEditorText();
-      return;
-    }
     if (this._historyIndex >= this._history.length - 1) return;
+    this._historyPushedAt = 0;
     this._historyIndex += 1;
     this.applyEditorText(this._history[this._historyIndex], true);
   },
@@ -1430,7 +1568,7 @@ const model = {
 
   onSourceInput() {
     this.markDirty();
-    this.pushHistory(this.editorText);
+    this.pushHistory(this.editorText, true);
     this.scheduleInputPush();
   },
 
@@ -1444,7 +1582,7 @@ const model = {
   },
 
   scheduleInputPush() {
-    if (!this.session?.session_id || !this.isMarkdown()) return;
+    if (!this.session?.session_id || !this.isTextDocument()) return;
     if (this._inputTimer) globalThis.clearTimeout(this._inputTimer);
     this._inputTimer = globalThis.setTimeout(() => {
       this._inputTimer = null;
@@ -1453,7 +1591,7 @@ const model = {
   },
 
   flushInput() {
-    if (!this.session?.session_id || !this.isMarkdown()) return;
+    if (!this.session?.session_id || !this.isTextDocument()) return;
     if (this.previewEditing) return;
     this.syncEditorText();
     requestEditor("editor_input", {
@@ -1463,7 +1601,7 @@ const model = {
   },
 
   format(command) {
-    if (!this.session || !this.isMarkdown()) return;
+    if (!this.session || !this.isTextDocument()) return;
     if (this.sourceEditor && this.isSourceMode()) {
       const selected = this.sourceEditor.getSelectedText();
       const replacement = this.formatReplacement(command, selected);
@@ -1522,7 +1660,7 @@ const model = {
   },
 
   focusEditor(options = {}) {
-    if (!this.session || !this.isMarkdown()) return false;
+    if (!this.session || !this.isTextDocument()) return false;
     if (this.sourceEditor && this.isSourceMode()) {
       this.sourceEditor.focus();
       if (options.end !== false) {
@@ -1546,8 +1684,13 @@ const model = {
     return ext === "md";
   },
 
+  isTextDocument(tab = this.session) {
+    const ext = String(tab?.extension || tab?.document?.extension || "").toLowerCase();
+    return EDITOR_TEXT_EXTENSIONS.has(ext);
+  },
+
   hasActiveFile(tab = this.session) {
-    return Boolean(tab && this.isMarkdown(tab));
+    return Boolean(tab && this.isTextDocument(tab));
   },
 
   visibleTabs() {
@@ -1557,7 +1700,8 @@ const model = {
   defaultTitle(kind, fmt) {
     const date = new Date().toISOString().slice(0, 10);
     if (fmt === "md") return `Markdown ${date}`;
-    return `Markdown ${date}`;
+    if (fmt === "txt") return `Text ${date}`;
+    return `Text ${date}`;
   },
 
   tabTitle(tab = {}) {
@@ -1575,6 +1719,7 @@ const model = {
     tab = tab || {};
     const ext = String(tab.extension || tab.document?.extension || "").toLowerCase();
     if (ext === "md") return "article";
+    if (ext === "txt") return "description";
     return "draft";
   },
 
@@ -1582,6 +1727,7 @@ const model = {
     const normalized = String(action || "").trim().toLowerCase();
     if (normalized === "open") return await this.openFileBrowser();
     if (normalized === "markdown") return await this.create("document", "md");
+    if (normalized === "text") return await this.create("document", "txt");
     return null;
   },
 
@@ -1604,6 +1750,10 @@ const model = {
         <button type="button" class="editor-new-menu-item" role="menuitem" data-editor-new-action="markdown">
           <span class="material-symbols-outlined" aria-hidden="true">article</span>
           <span>Markdown</span>
+        </button>
+        <button type="button" class="editor-new-menu-item" role="menuitem" data-editor-new-action="text">
+          <span class="material-symbols-outlined" aria-hidden="true">description</span>
+          <span>Text</span>
         </button>
       </div>
     `;
@@ -1658,40 +1808,36 @@ const model = {
     if (!inner || !header || inner.dataset.editorModalReady === "1") return;
     inner.dataset.editorModalReady = "1";
     inner.classList.add("editor-modal");
-    const cleanup = [];
-    const focusButton = document.createElement("button");
-    focusButton.type = "button";
-    focusButton.className = "surface-button editor-modal-focus-button";
-    focusButton.innerHTML = '<span class="material-symbols-outlined" aria-hidden="true">fullscreen</span>';
-    const updateFocusButton = (active) => {
-      const label = active ? "Restore size" : "Focus mode";
-      focusButton.setAttribute("aria-label", label);
-      focusButton.setAttribute("title", label);
-      focusButton.querySelector(".material-symbols-outlined").textContent = active ? "fullscreen_exit" : "fullscreen";
-    };
-    updateFocusButton(false);
-    const onFocusClick = () => {
-      const active = !inner.classList.contains("is-focus-mode");
-      inner.classList.toggle("is-focus-mode", active);
-      updateFocusButton(active);
-    };
-    focusButton.addEventListener("click", onFocusClick);
-    placeSurfaceModalHeaderAction(header, focusButton, "window");
-    cleanup.push(() => focusButton.removeEventListener("click", onFocusClick));
-    cleanup.push(() => focusButton.remove());
-
+    const floatingCleanup = setupFloatingSurfaceModalChrome({
+      root,
+      modalClass: "editor-modal",
+      focusButtonClass: "editor-modal-focus-button",
+      minWidth: 640,
+      minHeight: 460,
+      onBoundsChange: () => this.refreshSourceEditorLayout(),
+      onFocusChange: () => this.refreshSourceEditorLayout(),
+    });
+    const menuCleanup = this.installHeaderNewMenu(header);
     this._headerCleanup = () => {
-      cleanup.splice(0).reverse().forEach((entry) => entry());
+      menuCleanup?.();
+      floatingCleanup?.();
       delete inner.dataset.editorModalReady;
       inner.classList.remove("editor-modal", "is-focus-mode");
     };
-    const menuCleanup = this.installHeaderNewMenu(header);
-    const previousCleanup = this._headerCleanup;
-    this._headerCleanup = () => {
-      menuCleanup?.();
-      previousCleanup?.();
-    };
+  },
+
+  async handleEditorUrlIntent(intent = {}) {
+    const editor = editorIntent(intent?.url || "");
+    if (!editor) return false;
+    await openLatestSurface("editor", {
+      path: editor.path,
+      refresh: true,
+      source: intent?.source || "desktop-open",
+    });
+    return true;
   },
 };
 
 export const store = createStore("editor", model);
+
+registerUrlHandler((intent) => model.handleEditorUrlIntent(intent));

@@ -21,9 +21,11 @@ except Exception:  # pragma: no cover
 MAX_ACTIVE_SKILLS = 20
 ACTIVE_SKILLS_PLUGIN_NAME = "_skills"
 AGENT_DATA_NAME_LOADED_SKILLS = "loaded_skills"
+CONTEXT_DATA_NAME_LOADED_SKILLS = AGENT_DATA_NAME_LOADED_SKILLS
 CONTEXT_DATA_NAME_CHAT_ACTIVE_SKILLS = "skills_chat_active"
 CONTEXT_DATA_NAME_CHAT_DISABLED_SKILLS = "skills_chat_disabled"
 CONTEXT_DATA_NAME_CHAT_VISIBLE_SKILLS = "skills_chat_visible"
+_WARNED_SKILL_PARSE_PATHS: set[Path] = set()
 
 
 class ActiveSkillEntry(TypedDict, total=False):
@@ -253,6 +255,47 @@ def parse_frontmatter(frontmatter_text: str) -> Tuple[Dict[str, Any], List[str]]
     return parsed, errors
 
 
+def _emit_skill_scan_warning(message: str) -> None:
+    try:
+        from helpers.print_style import PrintStyle
+
+        PrintStyle.warning(message)
+    except Exception:
+        print(f"Warning: {message}")
+
+
+def _frontmatter_error_line(lines: List[str], error: str) -> int | None:
+    if not lines:
+        return 1
+
+    if error.startswith("Frontmatter must start"):
+        for index, line in enumerate(lines, start=1):
+            if line.strip():
+                return index
+        return 1
+    if error.startswith("Missing YAML frontmatter"):
+        return 1
+    if error.startswith("Unterminated YAML frontmatter"):
+        return max(len(lines), 1)
+    return None
+
+
+def _warn_skill_skipped(skill_md_path: Path, markdown: str, errors: List[str]) -> None:
+    if not errors:
+        return
+    if skill_md_path in _WARNED_SKILL_PARSE_PATHS:
+        return
+    _WARNED_SKILL_PARSE_PATHS.add(skill_md_path)
+
+    error = str(errors[0] or "invalid frontmatter").strip()
+    line = _frontmatter_error_line((markdown or "").splitlines(), error)
+    skill_label = skill_md_path.parent.name or str(skill_md_path)
+    location = f" at line {line}" if line is not None else ""
+    _emit_skill_scan_warning(
+        f"skill {skill_label} skipped: invalid frontmatter{location}: {error}"
+    )
+
+
 def skill_from_markdown(
     skill_md_path: Path,
     *,
@@ -266,6 +309,7 @@ def skill_from_markdown(
 
     fm, body, fm_errors = split_frontmatter(text)
     if fm_errors:
+        _warn_skill_skipped(skill_md_path, text, fm_errors)
         return None
     skill_dir = Path(files.normalize_a0_path(str(skill_md_path.parent)))
 
@@ -387,6 +431,7 @@ def find_skill(
     agent:Agent|None=None,
     include_content: bool = False,
     include_hidden: bool = False,
+    validate: bool = True,
 ) -> Optional[Skill]:
     target = _normalize_name(skill_name)
     if not target:
@@ -396,7 +441,11 @@ def find_skill(
 
     for root in roots:
         for skill_md in discover_skill_md_files(Path(root)):
-            s = skill_from_markdown(skill_md, include_content=include_content)
+            s = skill_from_markdown(
+                skill_md,
+                include_content=include_content,
+                validate=validate,
+            )
             if not s:
                 continue
             if _normalize_name(s.name) == target or _normalize_name(s.path.name) == target:
@@ -451,6 +500,20 @@ def load_skill_for_agent(
     return "\n".join(lines)
 
 
+def skill_instruction_name(message: Any) -> str:
+    match message:
+        case {
+            "content": {
+                "skill_instructions": {
+                    "content_included": included,
+                    "name": name,
+                }
+            }
+        } if included:
+            return str(name or "").strip()
+    return ""
+
+
 def _get_skill_files(skill_dir: Path) -> str:
     """Get file tree for skill directory."""
     if not skill_dir.exists():
@@ -485,11 +548,15 @@ def search_skills(
     if not q:
         return []
 
-    raw_terms = [t for t in re.split(r"\s+", q) if t]
+    raw_terms = re.findall(r"[a-z0-9][a-z0-9_-]*", q)
     terms = [
         t for t in raw_terms
-        if len(t) >= 3 or any(ch.isdigit() for ch in t)
-    ] or raw_terms
+        if len(t) >= 4 or any(ch.isdigit() for ch in t)
+    ]
+    long_terms = [
+        t for t in raw_terms
+        if len(t) >= 6 or any(ch.isdigit() for ch in t)
+    ]
     candidates = list_skills(agent, include_hidden=include_hidden)
 
     scored: List[Tuple[int, Skill]] = []
@@ -510,14 +577,13 @@ def search_skills(
             score += 4
         if any(q in tag for tag in tags):
             score += 3
-        if any(q in trigger for trigger in triggers):
+        if any(q in trigger or trigger in q for trigger in triggers):
             score += 8
 
         for term in terms:
             if term in name:
                 score += 3
-            if term in desc:
-                score += 2
+        for term in long_terms:
             if any(term in tag for tag in tags):
                 score += 1
             if any(term in trigger for trigger in triggers):
@@ -830,19 +896,77 @@ def get_active_skills(agent: Agent | None) -> list[ActiveSkillEntry]:
     return _build_active_skills(agent, limit=get_max_active_skills(agent=agent))
 
 
-def get_loaded_skill_entries(agent: Agent | None) -> list[ActiveSkillEntry]:
+def _normalize_loaded_skill_names(raw: Any) -> list[str]:
+    if not isinstance(raw, list):
+        return []
+
+    names: list[str] = []
+    for value in raw:
+        name = str(value or "").strip()
+        if name and name not in names:
+            names.append(name)
+    return names
+
+
+def get_loaded_skill_names(agent: Agent | None) -> list[str]:
     if not agent:
         return []
 
-    loaded = getattr(agent, "data", {}).get(AGENT_DATA_NAME_LOADED_SKILLS)
-    if not isinstance(loaded, list):
-        return []
+    context = getattr(agent, "context", None)
+    if context and hasattr(context, "get_data"):
+        names = _normalize_loaded_skill_names(
+            context.get_data(CONTEXT_DATA_NAME_LOADED_SKILLS)
+        )
+        if names:
+            data = getattr(agent, "data", None)
+            if isinstance(data, dict):
+                data.pop(AGENT_DATA_NAME_LOADED_SKILLS, None)
+            return names
 
-    return [
-        {"name": str(skill_name).strip()}
-        for skill_name in loaded
-        if str(skill_name).strip()
-    ]
+    legacy_names = _normalize_loaded_skill_names(
+        getattr(agent, "data", {}).get(AGENT_DATA_NAME_LOADED_SKILLS)
+    )
+    if legacy_names:
+        set_loaded_skill_names(agent, legacy_names)
+    return legacy_names
+
+
+def set_loaded_skill_names(agent: Agent | None, skill_names: Any) -> list[str]:
+    names = _normalize_loaded_skill_names(skill_names)[-MAX_ACTIVE_SKILLS:]
+    if not agent:
+        return names
+
+    context = getattr(agent, "context", None)
+    if context and hasattr(context, "set_data"):
+        context.set_data(CONTEXT_DATA_NAME_LOADED_SKILLS, names or None)
+        data = getattr(agent, "data", None)
+        if isinstance(data, dict):
+            data.pop(AGENT_DATA_NAME_LOADED_SKILLS, None)
+        return names
+
+    data = getattr(agent, "data", None)
+    if isinstance(data, dict):
+        data[AGENT_DATA_NAME_LOADED_SKILLS] = names
+    return names
+
+
+def add_loaded_skill_name(
+    agent: Agent | None,
+    skill_name: str,
+    *,
+    limit: int | None = None,
+) -> list[str]:
+    name = str(skill_name or "").strip()
+    if not name:
+        return get_loaded_skill_names(agent)
+
+    names = [loaded for loaded in get_loaded_skill_names(agent) if loaded != name]
+    names.append(name)
+    return set_loaded_skill_names(agent, names[-(limit or MAX_ACTIVE_SKILLS):])
+
+
+def get_loaded_skill_entries(agent: Agent | None) -> list[ActiveSkillEntry]:
+    return [{"name": skill_name} for skill_name in get_loaded_skill_names(agent)]
 
 
 def unload_agent_skill(agent: Agent | None, entry: Any) -> bool:
@@ -850,17 +974,9 @@ def unload_agent_skill(agent: Agent | None, entry: Any) -> bool:
     if not agent or not normalized:
         return False
 
-    data = getattr(agent, "data", None)
-    if not isinstance(data, dict):
-        return False
-
-    loaded = data.get(AGENT_DATA_NAME_LOADED_SKILLS)
-    if not isinstance(loaded, list):
-        return False
-
     next_loaded: list[str] = []
     removed = False
-    for skill_name in loaded:
+    for skill_name in get_loaded_skill_names(agent):
         loaded_entry = _normalize_active_skill_entry(str(skill_name))
         if loaded_entry and _entries_match(loaded_entry, normalized):
             removed = True
@@ -868,7 +984,7 @@ def unload_agent_skill(agent: Agent | None, entry: Any) -> bool:
         next_loaded.append(skill_name)
 
     if removed:
-        data[AGENT_DATA_NAME_LOADED_SKILLS] = next_loaded
+        set_loaded_skill_names(agent, next_loaded)
     return removed
 
 
@@ -1024,7 +1140,6 @@ def hide_chat_skill(agent: Agent, entry: Any) -> list[ActiveSkillEntry]:
         CONTEXT_DATA_NAME_CHAT_VISIBLE_SKILLS,
         visible_entries,
     )
-    unload_agent_skill(agent, normalized)
     return get_hidden_skills(agent)
 
 
@@ -1075,8 +1190,7 @@ def clear_chat_skill_overrides(agent: Agent) -> list[ActiveSkillEntry]:
 
 
 def build_active_skills_prompt(agent: Agent | None) -> str:
-    items = _resolve_active_skill_entries(agent, get_active_skills(agent))
-    return "\n\n".join(item["content"] for item in items if item.get("content")).strip()
+    return ""
 
 
 def _format_skill_prompt(skill: Skill) -> str:
