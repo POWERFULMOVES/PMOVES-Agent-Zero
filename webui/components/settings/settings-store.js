@@ -1,6 +1,7 @@
 import { createStore } from "/js/AlpineStore.js";
 import * as API from "/js/api.js";
 import { store as notificationStore } from "/components/notifications/notification-store.js";
+import { store as preferencesStore } from "/components/sidebar/bottom/preferences/preferences-store.js";
 import {
   getBrowserTimezone,
   setConfiguredTimeFormat,
@@ -14,6 +15,13 @@ const UPDATE_STATUS_REFRESH_COOLDOWN_MS = 60 * 1000;
 // Match the modal header/padding breathing room before promoting a section link.
 const SECTION_ACTIVATION_OFFSET = 56;
 
+const UI_CONTROLS = Object.freeze([
+  { id: "projectSelector", label: "Project selector", icon: "folder_open" },
+  { id: "time", label: "Time", icon: "schedule" },
+  { id: "connectionStatus", label: "Connection status", icon: "wifi" },
+  { id: "rightCanvasRail", label: "Right canvas rail", icon: "dock_to_right" },
+]);
+
 const TAB_ITEMS = Object.freeze([
   {
     id: "agent",
@@ -25,6 +33,7 @@ const TAB_ITEMS = Object.freeze([
       { id: "section-voice", label: "Voice", icon: "mic" },
       { id: "section-workdir", label: "Workdir", icon: "folder" },
       { id: "section-locale", label: "Locale", icon: "language" },
+      { id: "section-interface", label: "Interface", icon: "dashboard_customize" },
       { id: "section-agent-plugins", label: "Plugins", icon: "extension" },
     ],
   },
@@ -35,6 +44,7 @@ const TAB_ITEMS = Object.freeze([
     sections: [
       { id: "section-skills-list", label: "List Skills", icon: "view_list" },
       { id: "section-skills-import", label: "Import Skills", icon: "upload_file" },
+      { id: "section-skills-scan", label: "Scan Skills", icon: "radar" },
     ],
   },
   {
@@ -48,6 +58,7 @@ const TAB_ITEMS = Object.freeze([
       { id: "section-auth", label: "Authentication", icon: "passkey" },
       { id: "section-external-api", label: "External API", icon: "api" },
       { id: "section-tunnel", label: "Remote Control", icon: "share" },
+      { id: "section-external-plugins", label: "Plugins", icon: "extension" },
     ],
   },
   {
@@ -74,7 +85,7 @@ const TAB_ITEMS = Object.freeze([
     icon: "system_update_alt",
     sections: [
       { id: "section-self-update", label: "Self Update", icon: "system_update_alt" },
-      { id: "section-update-advanced", label: "Advanced Settings", icon: "tune" },
+      { id: "section-backup-restore", label: "Backup & Restore", icon: "backup" },
     ],
   },
 ]);
@@ -106,6 +117,9 @@ const model = {
   _paneScrollPane: null,
   _scrollSyncFrame: null,
   _updateStatusRefreshedAt: 0,
+  expandedNavGroups: {},
+  searchQuery: "",
+  uiVisibility: null,
   
   // Tab state
   _activeTab: DEFAULT_TAB,
@@ -130,11 +144,13 @@ const model = {
       if (saved) this._activeTab = this.normalizeTabId(saved);
     } catch {}
     this._activeSection = this.getFirstSectionId(this._activeTab);
+    this.expandedNavGroups = this.createDefaultExpandedNavGroups(this._activeTab);
   },
 
   async onOpen() {
     this.error = null;
     this.isLoading = true;
+    this.uiVisibility = preferencesStore.uiVisibilitySnapshot();
     
     try {
       const response = await API.callJsonApi("settings_get", null);
@@ -142,6 +158,8 @@ const model = {
         this.settings = response.settings;
         this.additional = response.additional || null;
         this.applyLocaleRuntime(this.settings);
+        preferencesStore.setUiVisibility(this.settings.ui_control_visibility);
+        this.uiVisibility = preferencesStore.uiVisibilitySnapshot();
       } else {
         throw new Error("Invalid settings response");
       }
@@ -176,6 +194,35 @@ const model = {
     this.additional = null;
     this.error = null;
     this.isLoading = false;
+    this.searchQuery = "";
+    this.uiVisibility = null;
+  },
+
+  get uiControls() {
+    return UI_CONTROLS;
+  },
+
+  isUiControlVisible(control, device) {
+    return this.uiVisibility?.[control]?.[device] !== false;
+  },
+
+  toggleUiControl(control, device) {
+    this.uiVisibility = {
+      ...this.uiVisibility,
+      [control]: {
+        ...this.uiVisibility?.[control],
+        [device]: !this.isUiControlVisible(control, device),
+      },
+    };
+  },
+
+  uiControlVisibilityLabel(control) {
+    const mobile = this.isUiControlVisible(control, "mobile");
+    const desktop = this.isUiControlVisible(control, "desktop");
+    if (mobile && desktop) return "Shown everywhere";
+    if (mobile) return "Mobile only";
+    if (desktop) return "Desktop only";
+    return "Hidden everywhere";
   },
 
   // Tab management
@@ -189,6 +236,7 @@ const model = {
       localStorage.setItem(VIEW_MODE_STORAGE_KEY, current);
     } catch {}
 
+    this.setNavGroupExpanded(current, true);
     this.bindPaneScroll();
   },
 
@@ -204,6 +252,29 @@ const model = {
     return TAB_ITEMS;
   },
 
+  get normalizedSearchQuery() {
+    return String(this.searchQuery || "").trim().toLowerCase();
+  },
+
+  get hasSearchQuery() {
+    return this.normalizedSearchQuery.length > 0;
+  },
+
+  get filteredNavItems() {
+    const query = this.normalizedSearchQuery;
+    if (!query) return TAB_ITEMS;
+
+    return TAB_ITEMS
+      .map((item) => {
+        const itemMatches = this.getNavSearchText(item).includes(query);
+        const sections = itemMatches
+          ? item.sections
+          : item.sections.filter((section) => this.getNavSearchText(section).includes(query));
+        return sections.length ? { ...item, sections } : null;
+      })
+      .filter(Boolean);
+  },
+
   get activeTabItem() {
     return TAB_ITEMS.find((item) => item.id === this.activeTab) || TAB_ITEMS[0];
   },
@@ -215,6 +286,59 @@ const model = {
   getFirstSectionId(tabName = this.activeTab) {
     const tab = TAB_ITEMS.find((item) => item.id === tabName) || TAB_ITEMS[0];
     return tab?.sections?.[0]?.id || null;
+  },
+
+  getNavSearchText(item) {
+    return `${item?.label || ""} ${item?.id || ""}`.toLowerCase();
+  },
+
+  createDefaultExpandedNavGroups(activeTab = this.activeTab) {
+    return TAB_ITEMS.reduce((groups, item) => {
+      groups[item.id] = item.id === activeTab;
+      return groups;
+    }, {});
+  },
+
+  isNavGroupExpanded(tabName) {
+    if (this.hasSearchQuery) return true;
+    const tabId = this.normalizeTabId(tabName);
+    return Boolean(this.expandedNavGroups?.[tabId]);
+  },
+
+  setNavGroupExpanded(tabName, expanded) {
+    const tabId = this.normalizeTabId(tabName);
+    this.expandedNavGroups = {
+      ...(this.expandedNavGroups || {}),
+      [tabId]: Boolean(expanded),
+    };
+  },
+
+  toggleNavGroup(tabName) {
+    const tabId = this.normalizeTabId(tabName);
+    if (this.hasSearchQuery) {
+      this.enterTab(tabId);
+      return;
+    }
+    if (this.activeTab !== tabId) {
+      this.enterTab(tabId);
+      this.setNavGroupExpanded(tabId, true);
+      return;
+    }
+    this.setNavGroupExpanded(tabId, !this.isNavGroupExpanded(tabId));
+  },
+
+  clearSearch() {
+    this.searchQuery = "";
+  },
+
+  openFirstSearchResult() {
+    const item = this.filteredNavItems[0];
+    const section = item?.sections?.[0];
+    if (section?.id) {
+      this.scrollToSection(section.id);
+    } else if (item?.id) {
+      this.enterTab(item.id);
+    }
   },
 
   get browserTimezone() {
@@ -281,6 +405,7 @@ const model = {
   enterTab(tabName) {
     this.activeTab = tabName;
     this._activeSection = this.getFirstSectionId(this.activeTab);
+    this.setNavGroupExpanded(this.activeTab, true);
     this.resetPaneScroll();
     if (tabName === "backup") this.refreshUpdateStatus();
   },
@@ -505,6 +630,7 @@ const model = {
       return false;
     }
 
+    this.settings.ui_control_visibility = this.uiVisibility;
     this.isLoading = true;
     try {
       const response = await API.callJsonApi("settings_set", {
@@ -515,6 +641,7 @@ const model = {
         this.settings = response.settings;
         this.additional = response.additional || this.additional;
         this.applyLocaleRuntime(this.settings);
+        preferencesStore.setUiVisibility(response.settings.ui_control_visibility);
         toast("Settings saved successfully", "success");
         document.dispatchEvent(
           new CustomEvent("settings-updated", { detail: response.settings })

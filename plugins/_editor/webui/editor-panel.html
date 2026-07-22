@@ -8,8 +8,8 @@
   <div x-data>
     <template x-if="$store.editor">
       <div class="editor-panel" x-create="$store.editor.onMount($el, xAttrs($el) || {})" x-destroy="$store.editor.cleanup()">
-        <div class="editor-shell" @keydown="$store.editor.handleEditorKeydown($event)">
-          <div class="editor-tabs" x-show="$store.editor.visibleTabs().length > 0" style="display: none;" role="tablist" aria-label="Open Markdown files">
+        <div class="editor-shell" @keydown.capture="$store.editor.handleEditorKeydown($event)">
+          <div class="editor-tabs" x-show="$store.editor.visibleTabs().length > 0" style="display: none;" role="tablist" aria-label="Open text files">
             <template x-for="tab in $store.editor.visibleTabs()" :key="tab.tab_id">
               <div
                 class="editor-tab-shell"
@@ -82,6 +82,8 @@
               <button
                 type="button"
                 class="editor-icon-button editor-mode-toggle"
+                x-show="$store.editor.isTextDocument()"
+                style="display: none;"
                 :title="$store.editor.viewModeTitle()"
                 :aria-label="$store.editor.viewModeTitle()"
                 @click="$store.editor.toggleViewMode()"
@@ -89,13 +91,16 @@
                 <span class="material-symbols-outlined" aria-hidden="true" x-text="$store.editor.viewModeIcon()"></span>
               </button>
 
-              <div class="editor-tool-group editor-source-tools" x-show="$store.editor.isMarkdown() && $store.editor.isSourceMode()" style="display: none;">
-                <button type="button" class="editor-icon-button" title="Undo" aria-label="Undo" :disabled="!$store.editor.canUndo()" @click="$store.editor.undo()">
+              <div class="editor-tool-group editor-history-tools" x-show="$store.editor.isTextDocument()" style="display: none;">
+                <button type="button" class="editor-icon-button" title="Undo" aria-label="Undo" :disabled="$store.editor.previewEditing || !$store.editor.canUndo()" @click="$store.editor.undo()">
                   <span class="material-symbols-outlined">undo</span>
                 </button>
-                <button type="button" class="editor-icon-button" title="Redo" aria-label="Redo" :disabled="!$store.editor.canRedo()" @click="$store.editor.redo()">
+                <button type="button" class="editor-icon-button" title="Redo" aria-label="Redo" :disabled="$store.editor.previewEditing || !$store.editor.canRedo()" @click="$store.editor.redo()">
                   <span class="material-symbols-outlined">redo</span>
                 </button>
+              </div>
+
+              <div class="editor-tool-group editor-source-tools" x-show="$store.editor.isTextDocument() && $store.editor.isSourceMode()" style="display: none;">
                 <button type="button" class="editor-icon-button" title="Bold" aria-label="Bold" @click="$store.editor.format('bold')">
                   <span class="material-symbols-outlined">format_bold</span>
                 </button>
@@ -112,21 +117,14 @@
                   <span class="material-symbols-outlined">table</span>
                 </button>
               </div>
-              <div class="editor-tool-group editor-preview-tools" x-show="$store.editor.isPreviewMode()" style="display: none;">
-                <button type="button" class="editor-icon-button" title="Previous page" aria-label="Previous page" :disabled="$store.editor.previewEditing || $store.editor.activePageIndex <= 0" @click="$store.editor.previousPage()">
-                  <span class="material-symbols-outlined">chevron_left</span>
-                </button>
-                <span class="editor-page-count" x-text="$store.editor.pagePositionLabel()"></span>
-                <button type="button" class="editor-icon-button" title="Next page" aria-label="Next page" :disabled="$store.editor.previewEditing || $store.editor.activePageIndex >= $store.editor.pages().length - 1" @click="$store.editor.nextPage()">
-                  <span class="material-symbols-outlined">chevron_right</span>
-                </button>
-                <button type="button" class="editor-icon-button" title="Edit page" aria-label="Edit page" x-show="!$store.editor.previewEditing" @click="$store.editor.startPreviewEdit()">
+              <div class="editor-tool-group editor-preview-tools" x-show="$store.editor.isTextDocument() && $store.editor.isPreviewMode()" style="display: none;">
+                <button type="button" class="editor-icon-button" title="Edit document" aria-label="Edit document" x-show="!$store.editor.previewEditing" @click="$store.editor.startPreviewEdit()">
                   <span class="material-symbols-outlined">edit_note</span>
                 </button>
-                <button type="button" class="editor-icon-button is-primary" title="Apply page edit" aria-label="Apply page edit" x-show="$store.editor.previewEditing" @click="$store.editor.applyPreviewEdit()">
+                <button type="button" class="editor-icon-button is-primary" title="Apply document edit" aria-label="Apply document edit" x-show="$store.editor.previewEditing" @click="$store.editor.applyPreviewEdit()">
                   <span class="material-symbols-outlined">check</span>
                 </button>
-                <button type="button" class="editor-icon-button" title="Cancel page edit" aria-label="Cancel page edit" x-show="$store.editor.previewEditing" @click="$store.editor.cancelPreviewEdit()">
+                <button type="button" class="editor-icon-button" title="Cancel document edit" aria-label="Cancel document edit" x-show="$store.editor.previewEditing" @click="$store.editor.cancelPreviewEdit()">
                   <span class="material-symbols-outlined">close</span>
                 </button>
                 <button type="button" class="editor-icon-button" title="Search" aria-label="Search" :disabled="$store.editor.previewEditing" @click="$store.editor.openSearch()">
@@ -147,6 +145,17 @@
                 <span class="material-symbols-outlined" :class="{ spinning: $store.editor.saving }" x-text="$store.editor.saving ? 'progress_activity' : 'save'"></span>
               </button>
 
+              <button
+                type="button"
+                class="editor-icon-button editor-save-as-button"
+                title="Save As"
+                aria-label="Save As"
+                :disabled="$store.editor.saving"
+                @click="$store.editor.saveAs()"
+              >
+                <span class="material-symbols-outlined">save_as</span>
+              </button>
+
               <div class="editor-file-actions" x-data="{ open: false }" @click.outside="open = false" @keydown.escape.window="open = false">
                 <button
                   type="button"
@@ -161,6 +170,10 @@
                   <span class="material-symbols-outlined">more_vert</span>
                 </button>
                 <div class="editor-new-menu editor-file-menu" role="menu" x-show="open" @click.stop>
+                  <button type="button" class="editor-new-menu-item" role="menuitem" :disabled="$store.editor.saving" @click="open = false; $store.editor.downloadActiveFile()">
+                    <span class="material-symbols-outlined" aria-hidden="true">download</span>
+                    <span>Download</span>
+                  </button>
                   <button type="button" class="editor-new-menu-item" role="menuitem" :disabled="$store.editor.saving" @click="open = false; $store.editor.renameActiveFile()">
                     <span class="material-symbols-outlined" aria-hidden="true">edit</span>
                     <span>Rename</span>
@@ -213,7 +226,7 @@
                 <textarea
                   class="editor-source-editor"
                   data-editor-source
-                  aria-label="Markdown source"
+                  aria-label="Text source"
                   x-show="$store.editor.aceUnavailable"
                   x-model="$store.editor.editorText"
                   @input="$store.editor.onSourceInput()"
@@ -224,7 +237,7 @@
               </div>
             </div>
 
-            <div class="editor-preview-shell" x-show="$store.editor.session && $store.editor.isPreviewMode()" style="display: none;">
+            <div class="editor-preview-shell" x-show="$store.editor.session && $store.editor.isTextDocument() && $store.editor.isPreviewMode()" style="display: none;">
               <div class="editor-preview-title">
                 <h1 x-text="$store.editor.pageTitle()"></h1>
               </div>
@@ -232,7 +245,7 @@
                 <textarea
                   class="editor-preview-page-editor"
                   data-editor-preview-source
-                  aria-label="Markdown page source"
+                  aria-label="Document source"
                   x-model="$store.editor.previewEditText"
                   @input="$store.editor.onPreviewEditInput()"
                   @keydown.meta.enter.prevent="$store.editor.applyPreviewEdit()"
@@ -246,7 +259,7 @@
                 data-editor-preview
                 x-show="!$store.editor.previewEditing"
                 x-html="$store.editor.previewHtml()"
-                x-effect="$store.editor.activePageIndex; $store.editor.editorText; $store.editor.searchQuery; $store.editor.searchIndex; $store.editor.schedulePreviewEnhance()"
+                x-effect="$store.editor.editorText; $store.editor.searchQuery; $store.editor.searchIndex; $store.editor.schedulePreviewEnhance()"
                 @click="$store.editor.handlePreviewClick($event)"
               ></div>
             </div>
@@ -260,6 +273,10 @@
                 <button type="button" class="editor-icon-button editor-command-button" @click="$store.editor.runNewMenuAction('markdown')">
                   <span class="material-symbols-outlined" aria-hidden="true">article</span>
                   <span class="editor-button-label">Markdown</span>
+                </button>
+                <button type="button" class="editor-icon-button editor-command-button" @click="$store.editor.runNewMenuAction('text')">
+                  <span class="material-symbols-outlined" aria-hidden="true">description</span>
+                  <span class="editor-button-label">Text</span>
                 </button>
               </div>
             </div>
@@ -576,7 +593,6 @@
       min-width: 8px;
     }
 
-    .editor-page-count,
     .editor-search-count {
       min-width: 54px;
       color: var(--color-text-secondary);

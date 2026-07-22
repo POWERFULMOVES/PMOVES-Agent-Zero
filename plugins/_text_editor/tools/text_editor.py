@@ -152,7 +152,7 @@ class TextEditor(Tool):
         return Response(
             message=msg,
             break_loop=False,
-            additional=_result_additional("write", info, kwargs),
+            additional=_result_additional("write", info, kwargs, agent=self.agent),
         )
 
     # ------------------------------------------------------------------
@@ -256,7 +256,7 @@ class TextEditor(Tool):
         return Response(
             message=msg,
             break_loop=False,
-            additional=_result_additional("patch", post_info, options),
+            additional=_result_additional("patch", post_info, options, agent=self.agent),
         )
 
     async def _patch_replace(
@@ -315,7 +315,7 @@ class TextEditor(Tool):
         return Response(
             message=msg,
             break_loop=False,
-            additional=_result_additional("patch", post_info, options),
+            additional=_result_additional("patch", post_info, options, agent=self.agent),
         )
 
     async def _patch_context(
@@ -377,7 +377,7 @@ class TextEditor(Tool):
         return Response(
             message=msg,
             break_loop=False,
-            additional=_result_additional("patch", post_info, options),
+            additional=_result_additional("patch", post_info, options, agent=self.agent),
         )
 
     # ------------------------------------------------------------------
@@ -475,7 +475,7 @@ def _freshness_error_message(agent, info: FileInfo, code: str) -> str:
     return agent.read_prompt(prompt, path=info["expanded"])
 
 
-def _result_additional(action: str, info: FileInfo, options: dict | None = None) -> dict:
+def _result_additional(action: str, info: FileInfo, options: dict | None = None, agent=None) -> dict:
     path = str(info.get("expanded") or "")
     extension = Path(path).suffix.lower().lstrip(".")
     options = options or {}
@@ -484,7 +484,7 @@ def _result_additional(action: str, info: FileInfo, options: dict | None = None)
         or options.get("open_canvas")
         or options.get("open_document")
     )
-    return {
+    additional = {
         "_tool_name": "text_editor",
         "action": action,
         "path": path,
@@ -492,6 +492,11 @@ def _result_additional(action: str, info: FileInfo, options: dict | None = None)
         "extension": extension,
         "open_in_canvas": open_in_canvas,
     }
+    context_id = str(getattr(getattr(agent, "context", None), "id", "") or "").strip()
+    if context_id:
+        additional["context_id"] = context_id
+        additional["ctxid"] = context_id
+    return additional
 
 
 def _truthy(value) -> bool:

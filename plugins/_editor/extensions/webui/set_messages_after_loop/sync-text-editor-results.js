@@ -5,7 +5,7 @@ const SYNC_WINDOW_MS = 10 * 60 * 1000;
 const syncedTextEditorResults = new Set();
 
 export default async function syncTextEditorResultsIntoOpenEditor(context) {
-  if (!context?.results?.length || context.historyEmpty) return;
+  if (!context?.results?.length) return;
 
   for (const { args } of context.results) {
     const payload = getTextEditorPayload(args);
@@ -14,6 +14,8 @@ export default async function syncTextEditorResultsIntoOpenEditor(context) {
 
     const target = textEditorTarget(payload);
     if (!target.path || target.extension !== "md") continue;
+    const explicitOpen = shouldOpenEditorUiFromResult(payload, target);
+    if (context.historyEmpty && !explicitOpen) continue;
 
     const key = [
       args?.id || "",
@@ -26,10 +28,12 @@ export default async function syncTextEditorResultsIntoOpenEditor(context) {
     syncedTextEditorResults.add(key);
 
     globalThis.setTimeout(() => {
-      if (shouldOpenEditorUiFromResult(payload, target)) {
+      if (explicitOpen) {
         void openSurface("editor", {
           path: target.path || "",
           file_id: target.file_id || "",
+          ctxid: target.ctxid || target.context_id || "",
+          context_id: target.context_id || target.ctxid || "",
           refresh: true,
           source: "tool-result-open",
         });
@@ -60,6 +64,8 @@ function pickPayloadFields(args = {}) {
     "action",
     "extension",
     "format",
+    "context_id",
+    "ctxid",
     "last_modified",
     "open_canvas",
     "open_document",
@@ -97,9 +103,12 @@ function isExplicitEditorUiRequest(payload = {}) {
 function textEditorTarget(payload = {}) {
   const path = String(payload.path || "").trim();
   const extension = documentExtension(payload, { path });
+  const contextId = contextIdFromPayload(payload);
   return {
     path,
     file_id: "",
+    context_id: contextId,
+    ctxid: contextId,
     extension,
     format: extension,
     version: payload.version || "",
@@ -139,6 +148,8 @@ async function syncOpenEditorSurface(document = {}) {
   await editor.openSession?.({
     path: document.path || "",
     file_id: document.file_id || "",
+    ctxid: document.ctxid || document.context_id || "",
+    context_id: document.context_id || document.ctxid || "",
     refresh: true,
     source: "tool-result-sync",
   });
@@ -173,6 +184,10 @@ function documentsMatch(entry = {}, document = {}) {
     (fileId && entryFileId === fileId)
       || (path && entryPath === path),
   );
+}
+
+function contextIdFromPayload(payload = {}) {
+  return String(payload.context_id || payload.ctxid || "").trim();
 }
 
 function truthy(value) {

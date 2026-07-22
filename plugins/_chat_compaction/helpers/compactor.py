@@ -4,8 +4,8 @@ from collections import deque
 
 import models as models_module
 from agent import Agent
-from helpers import tokens
-from helpers.history import History, output_text
+from helpers import files, tokens
+from helpers.history import History, clear_responses_provider_state, output_text
 from helpers.persist_chat import (
     export_json_chat,
     get_chat_folder_path,
@@ -42,11 +42,8 @@ def _save_pre_compaction_backup(context, full_text: str) -> dict[str, str]:
     txt_path = os.path.join(backup_dir, f"pre-compact-{timestamp}.txt")
 
     json_content = export_json_chat(context)
-    with open(json_path, "w", encoding="utf-8") as f:
-        f.write(json_content)
-
-    with open(txt_path, "w", encoding="utf-8") as f:
-        f.write(full_text)
+    files.write_file(json_path, json_content)
+    files.write_file(txt_path, full_text)
 
     return {"json": json_path, "txt": txt_path}
 
@@ -148,6 +145,7 @@ async def run_compaction(
 
         agent.history = History(agent=agent)
         agent.history.add_message(ai=True, content=compacted_content)
+        clear_responses_provider_state(agent)
         
         # Clear subordinate chain
         agent.data.pop(Agent.DATA_NAME_SUBORDINATE, None)

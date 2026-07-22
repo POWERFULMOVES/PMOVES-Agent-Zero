@@ -140,6 +140,20 @@ def _apply_agent_profile_metadata(
     context_data["agent_profile_label"] = labels.get(profile, profile) if profile else ""
 
 
+def _prune_missing_saved_contexts() -> None:
+    from helpers import persist_chat
+
+    saved_ids = persist_chat.saved_chat_ids()
+    for ctx in AgentContext.all():
+        if ctx.type == AgentContextType.BACKGROUND or ctx.is_running():
+            continue
+        if (
+            ctx.data.get(persist_chat.SAVED_CHAT_CONTEXT_DATA_KEY)
+            and ctx.id not in saved_ids
+        ):
+            AgentContext.remove(ctx.id)
+
+
 def parse_state_request_payload(payload: Mapping[str, Any]) -> StateRequestV1:
     context = payload.get("context")
     log_from = payload.get("log_from")
@@ -255,6 +269,8 @@ async def build_snapshot_from_request(*, request: StateRequestV1) -> SnapshotV1:
     from_no = _coerce_non_negative_int(request.log_from, default=0)
     notifications_from_no = _coerce_non_negative_int(request.notifications_from, default=0)
 
+    _prune_missing_saved_contexts()
+
     active_context = AgentContext.get(ctxid) if ctxid else None
 
     if active_context:
@@ -266,7 +282,9 @@ async def build_snapshot_from_request(*, request: StateRequestV1) -> SnapshotV1:
         log_end = 0
 
     notification_manager = AgentContext.get_notification_manager()
-    notifications = notification_manager.output(start=notifications_from_no)
+    notifications, notifications_guid, notifications_version = (
+        notification_manager.output_with_state(start=notifications_from_no)
+    )
 
     scheduler = TaskScheduler.get()
 
@@ -336,8 +354,8 @@ async def build_snapshot_from_request(*, request: StateRequestV1) -> SnapshotV1:
         "log_progress_active": bool(active_context.log.progress_active) if active_context else False,
         "paused": active_context.paused if active_context else False,
         "notifications": notifications,
-        "notifications_guid": notification_manager.guid,
-        "notifications_version": len(notification_manager.updates),
+        "notifications_guid": notifications_guid,
+        "notifications_version": notifications_version,
     }
 
     validate_snapshot_schema_v1(snapshot)

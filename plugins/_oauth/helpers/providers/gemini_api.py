@@ -69,8 +69,8 @@ class GeminiApiOAuthProvider:
         base_path = cfg["proxy_base_path"]
         return OAuthProviderMetadata(
             provider_id=GEMINI_API_PROVIDER_ID,
-            display_name="Google Gemini API",
-            short_name="Gemini API",
+            display_name="Google Cloud Gemini",
+            short_name="Google Cloud",
             model_provider_id=GEMINI_API_PROVIDER_ID,
             icon="google",
             auth_flow="browser_pkce",

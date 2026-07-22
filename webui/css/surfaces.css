@@ -20,6 +20,22 @@
   pointer-events: auto;
 }
 
+.modal-inner.surface-modal.is-draggable-surface-modal .modal-header {
+  cursor: move;
+  user-select: none;
+}
+
+.modal-inner.surface-modal.is-focus-mode {
+  resize: none;
+}
+
+.modal-inner.surface-modal.is-focus-mode .surface-modal-focus-button,
+.surface-modal-focus-button.is-active {
+  color: var(--color-text);
+  border-color: color-mix(in srgb, var(--color-primary) 42%, var(--color-border));
+  background: color-mix(in srgb, var(--color-primary) 16%, var(--color-background));
+}
+
 .surface-switcher,
 .modal-surface-switcher {
   display: grid;
@@ -157,6 +173,23 @@
 
   .surface-modal-new-button span:not(.material-symbols-outlined) {
     display: none;
+  }
+}
+
+@media (max-width: 768px) {
+  .modal-inner.surface-modal .surface-modal-action-group-surfaces,
+  .modal-inner.surface-modal .surface-modal-action-group-window,
+  .modal-inner.surface-modal .surface-modal-action-separator,
+  .modal-inner.surface-modal .surface-modal-action-group-new {
+    display: none !important;
+  }
+
+  .modal-inner.editor-modal .surface-modal-action-group-new {
+    display: inline-flex !important;
+  }
+
+  .modal-inner.editor-modal .surface-modal-action-group-new .surface-modal-new-action:not(.editor-header-actions) {
+    display: none !important;
   }
 }
 

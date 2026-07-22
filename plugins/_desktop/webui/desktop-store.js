@@ -311,6 +311,7 @@ const model = {
   },
 
   cleanup() {
+    const wasModal = this._mode === "modal";
     this.flushInput();
     this.stopDesktopMonitor();
     this.stopDesktopResizeObserver();
@@ -321,7 +322,11 @@ const model = {
     if (!this._desktopIntentionalShutdown) this.moveDesktopFrameToKeepalive();
     this._floatingCleanup?.();
     this._floatingCleanup = null;
-    if (this._mode === "modal") this._root = null;
+    if (wasModal) {
+      this._root = null;
+      this._mode = "canvas";
+      this._desktopHostVisible = false;
+    }
   },
 
   async refresh() {
@@ -1098,7 +1103,9 @@ const model = {
   },
 
   isDesktopHostVisible() {
-    if (this._mode === "modal") return true;
+    if (this._mode === "modal") {
+      return Boolean(this._root?.isConnected && this._root.closest?.(".modal"));
+    }
     const surface = this._root?.closest?.('[data-surface-id="desktop"]');
     return Boolean(surface?.classList?.contains("is-mounted") || surface?.classList?.contains("is-active"));
   },
@@ -2239,7 +2246,12 @@ const model = {
   async openDesktopUrlIntent(intent = {}) {
     const url = String(intent?.url || "").trim();
     const handled = await handleUrlIntent({ url, source: "desktop-url" });
-    this.setMessage(handled ? "Opened link in Browser" : "Browser is not available");
+    const isEditorIntent = url.startsWith("a0-editor:");
+    this.setMessage(
+      handled
+        ? (isEditorIntent ? "Opened text in Editor" : "Opened link in Browser")
+        : (isEditorIntent ? "Editor is not available" : "Browser is not available"),
+    );
   },
 
   browserDestinationForDesktopUrl() {

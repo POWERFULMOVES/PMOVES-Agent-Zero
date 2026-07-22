@@ -26,13 +26,11 @@ const MODEL_SLOTS = [
   {
     key: "chat_model",
     title: "Main model",
-    description: "Primary model for chat, reasoning, and browser tasks.",
     icon: "forum",
   },
   {
     key: "utility_model",
     title: "Utility model",
-    description: "Background model for summaries, memory, and prompt preparation.",
     icon: "manufacturing",
   },
 ];
@@ -107,6 +105,7 @@ export const store = createStore("oauthConfig", {
   disconnecting: false,
   loadingModels: false,
   providerModels: {},
+  providerModelMetadata: {},
   providerUi: providerUiDefaults(),
   connectingProvider: "",
   disconnectingProvider: "",
@@ -119,6 +118,7 @@ export const store = createStore("oauthConfig", {
   modelConfigLoading: false,
   modelConfigSaving: false,
   modelConfigDirty: false,
+  modelSlotCurrentProviders: {},
   modelSlotDirty: {
     chat_model: false,
     utility_model: false,
@@ -139,6 +139,7 @@ export const store = createStore("oauthConfig", {
     this.bindConfig(config);
     this.installSettingsHooks(context);
     await Promise.all([this.loadStatus(), this.loadModelConfig()]);
+    this.applySoleConnectedProviderDefaults();
   },
 
   cleanup() {
@@ -150,6 +151,7 @@ export const store = createStore("oauthConfig", {
     this.disconnecting = false;
     this.loadingModels = false;
     this.providerModels = {};
+    this.providerModelMetadata = {};
     this.providerUi = providerUiDefaults();
     this.connectingProvider = "";
     this.disconnectingProvider = "";
@@ -161,6 +163,7 @@ export const store = createStore("oauthConfig", {
     this.modelConfigLoading = false;
     this.modelConfigSaving = false;
     this.modelConfigDirty = false;
+    this.modelSlotCurrentProviders = {};
     this.modelSlotDirty = { chat_model: false, utility_model: false };
     this.modelDropdown = {
       chat_model: { open: false },
@@ -502,6 +505,9 @@ export const store = createStore("oauthConfig", {
       ensureModelSlot(modelConfig, "chat_model");
       ensureModelSlot(modelConfig, "utility_model");
       this.modelConfig = modelConfig;
+      this.modelSlotCurrentProviders = Object.fromEntries(
+        MODEL_SLOTS.map((slot) => [slot.key, modelConfig[slot.key].provider || ""]),
+      );
       this.modelConfigDirty = false;
       this.modelSlotDirty = { chat_model: false, utility_model: false };
     } catch (error) {
@@ -540,10 +546,28 @@ export const store = createStore("oauthConfig", {
     return provider?.display_name || provider?.short_name || provider?.provider_id || "Connected account";
   },
 
+  applySoleConnectedProviderDefaults() {
+    const providers = this.connectedProviderCards();
+    if (providers.length !== 1 || !this.modelConfig) return;
+    const providerId = providers[0].provider_id;
+    for (const slot of MODEL_SLOTS) {
+      const model = this.modelSlot(slot.key);
+      if (model.provider && model.provider !== providerId) continue;
+      if (this.providerConnected(model.provider)) continue;
+      model.provider = providerId;
+      model.name = "";
+      model.api_base = "";
+      model.kwargs = {};
+    }
+    this.activeModelProvider = providerId;
+    this.models = this.activeProviderModels();
+  },
+
   slotStatusLabel(key) {
     const slot = this.modelSlot(key);
-    if (this.slotUsesOauth(key)) return "";
-    return `Currently ${this.providerName(slot.provider)}`;
+    const currentProvider = this.modelSlotCurrentProviders[key] ?? slot.provider;
+    if (this.isOauthProvider(currentProvider)) return "";
+    return `Currently ${this.providerName(currentProvider)}`;
   },
 
   slotCanUseModels(key) {
@@ -554,6 +578,14 @@ export const store = createStore("oauthConfig", {
   activeProviderModels() {
     if (!this.providerConnected(this.activeModelProvider)) return [];
     return this.providerModels[this.activeModelProvider] || [];
+  },
+
+  modelMetadata(providerId, model) {
+    return this.providerModelMetadata[providerId]?.[model] || {};
+  },
+
+  modelDescription(providerId, model) {
+    return this.modelMetadata(providerId, model).description || "";
   },
 
   activeModelsDescription() {
@@ -599,8 +631,9 @@ export const store = createStore("oauthConfig", {
     this.markModelDirty("utility_model");
   },
 
-  openModelDropdown(key) {
+  openModelDropdown(key, trigger = null) {
     if (!this.slotCanUseModels(key)) return;
+    trigger?.scrollIntoView({ block: "center" });
     const providerId = this.modelSlot(key).provider;
     this.activeModelProvider = providerId;
     this.models = this.activeProviderModels();
@@ -670,6 +703,18 @@ export const store = createStore("oauthConfig", {
     }
   },
 
+  notifyModelSetupChanged(providerId) {
+    if (typeof document === "undefined") return;
+    document.dispatchEvent(new CustomEvent("model-setup-changed", {
+      detail: { source: "_oauth", providerId },
+    }));
+  },
+
+  async handleProviderConnected(providerId, { statusLoaded = false } = {}) {
+    if (!statusLoaded) await this.loadStatus();
+    this.notifyModelSetupChanged(providerId);
+  },
+
   async loadStatus() {
     if (this.loadingStatus) return;
     this.loadingStatus = true;
@@ -699,6 +744,7 @@ export const store = createStore("oauthConfig", {
           || this.providerCards()[0]?.provider_id
           || "";
       }
+      this.applySoleConnectedProviderDefaults();
     } catch (error) {
       void toastFrontendError(messageOf(error), "OAuth Connections");
     } finally {
@@ -788,7 +834,7 @@ export const store = createStore("oauthConfig", {
           throw new Error(response?.error || `Could not finish ${this.providerLabel(providerId)} sign-in.`);
         }
         if (response.completed) {
-          await this.loadStatus();
+          await this.handleProviderConnected(providerId);
           this.clearProviderDevice(providerId);
           this.stopPolling(providerId);
           if (this.connectingProvider === providerId) this.connectingProvider = "";
@@ -840,6 +886,7 @@ export const store = createStore("oauthConfig", {
     const tick = async () => {
       await this.loadStatus();
       if (this.providerConnected(providerId)) {
+        await this.handleProviderConnected(providerId, { statusLoaded: true });
         this.clearProviderDevice(providerId);
         this.stopCallbackPolling(providerId);
         if (this.connectingProvider === providerId) this.connectingProvider = "";
@@ -932,7 +979,7 @@ export const store = createStore("oauthConfig", {
       this.providerUiFor(providerId).manualCallback = "";
       this.clearProviderDevice(providerId);
       this.stopCallbackPolling(providerId);
-      await this.loadStatus();
+      await this.handleProviderConnected(providerId);
       void toastFrontendSuccess(`${this.providerLabel(providerId)} connected.`, "OAuth Connections");
     } catch (error) {
       void toastFrontendError(messageOf(error), "OAuth Connections");
@@ -954,12 +1001,20 @@ export const store = createStore("oauthConfig", {
         throw new Error(response?.error || `Could not load ${this.providerLabel(selectedProvider)} models.`);
       }
       const models = Array.isArray(response.models) ? response.models : [];
+      const metadata = Array.isArray(response.model_metadata) ? response.model_metadata : [];
+      const metadataMap = metadata.reduce((result, item) => {
+        const key = String(item?.slug || item?.id || "");
+        if (key) result[key] = item;
+        return result;
+      }, {});
       this.providerModels = { ...this.providerModels, [selectedProvider]: models };
+      this.providerModelMetadata = { ...this.providerModelMetadata, [selectedProvider]: metadataMap };
       this.models = models;
       if (openDropdown) this.openModelDropdown(openDropdown);
       if (!silent) void toastFrontendSuccess(`${this.providerLabel(selectedProvider)} models loaded.`, "OAuth Connections");
     } catch (error) {
       this.providerModels = { ...this.providerModels, [selectedProvider]: [] };
+      this.providerModelMetadata = { ...this.providerModelMetadata, [selectedProvider]: {} };
       this.models = [];
       if (!silent) void toastFrontendError(messageOf(error), "OAuth Connections");
     } finally {
@@ -986,6 +1041,9 @@ export const store = createStore("oauthConfig", {
       const providerModels = { ...this.providerModels };
       delete providerModels[providerId];
       this.providerModels = providerModels;
+      const providerModelMetadata = { ...this.providerModelMetadata };
+      delete providerModelMetadata[providerId];
+      this.providerModelMetadata = providerModelMetadata;
       if (this.activeModelProvider === providerId) this.models = [];
       this.clearProviderDevice(providerId);
       if (this.connectingProvider === providerId) this.connectingProvider = "";

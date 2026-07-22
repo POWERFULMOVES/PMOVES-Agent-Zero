@@ -1,6 +1,7 @@
 from dataclasses import dataclass, field
 from datetime import timedelta
 import asyncio
+import json
 import logging
 import os
 import secrets
@@ -37,6 +38,19 @@ from helpers.ws_manager import WsManager, set_shared_ws_manager
 
 
 UPLOAD_LIMIT_BYTES = 5 * 1024 * 1024 * 1024
+SOCKETIO_PING_INTERVAL_SECONDS = 45
+SOCKETIO_PING_TIMEOUT_SECONDS = 120
+
+
+def _positive_int_env(name: str, default: int) -> int:
+    raw_value = os.getenv(name)
+    if raw_value is None:
+        return default
+    try:
+        value = int(raw_value)
+    except (TypeError, ValueError):
+        return default
+    return value if value > 0 else default
 
 
 def configure_process_environment() -> None:
@@ -85,8 +99,14 @@ class UiServerRuntime:
             cors_allowed_origins=lambda _origin, environ: validate_ws_origin(environ)[0],
             logger=False,
             engineio_logger=False,
-            ping_interval=25,
-            ping_timeout=20,
+            ping_interval=_positive_int_env(
+                "A0_SOCKETIO_PING_INTERVAL_SECONDS",
+                SOCKETIO_PING_INTERVAL_SECONDS,
+            ),
+            ping_timeout=_positive_int_env(
+                "A0_SOCKETIO_PING_TIMEOUT_SECONDS",
+                SOCKETIO_PING_TIMEOUT_SECONDS,
+            ),
             max_http_buffer_size=50 * 1024 * 1024,
         )
 
@@ -243,6 +263,13 @@ class UiRouteHandlers:
             user_time_format_setting = str(settings_helper.get_settings().get("time_format", "12h"))
         except Exception:
             user_time_format_setting = "12h"
+        try:
+            user_ui_control_visibility = json.dumps(
+                settings_helper.get_settings()["ui_control_visibility"],
+                separators=(",", ":"),
+            )
+        except Exception:
+            user_ui_control_visibility = json.dumps(settings_helper.UI_CONTROL_VISIBILITY_DEFAULTS)
 
         index = files.read_file("webui/index.html")
         return files.replace_placeholders_text(
@@ -254,6 +281,7 @@ class UiRouteHandlers:
             logged_in=("true" if login.get_credentials_hash() else "false"),
             user_timezone_setting=user_timezone_setting,
             user_time_format_setting=user_time_format_setting,
+            user_ui_control_visibility=user_ui_control_visibility,
         )
 
     @requires_auth

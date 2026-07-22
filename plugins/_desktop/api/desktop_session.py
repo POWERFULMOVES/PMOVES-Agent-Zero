@@ -74,10 +74,10 @@ class DesktopSession(ApiHandler):
             return {"ok": False, "error": str(exc)}
 
         ext = str(doc.get("extension") or "").lower()
-        if ext == "md":
+        if ext in document_store.EDITOR_TEXT_EXTENSIONS:
             return {
                 "ok": False,
-                "error": "Markdown documents use the Editor surface.",
+                "error": "Text documents use the Editor surface.",
                 "requires_editor": True,
                 "document": _public_doc(doc),
             }

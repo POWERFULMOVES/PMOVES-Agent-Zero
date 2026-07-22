@@ -31,7 +31,7 @@ class MarkdownSession:
 
 
 class MarkdownSessionManager:
-    """Owns native Editor sessions for Markdown documents."""
+    """Owns native Editor sessions for Markdown and plain text documents."""
 
     def __init__(self) -> None:
         self._sessions: dict[str, MarkdownSession] = {}
@@ -39,8 +39,8 @@ class MarkdownSessionManager:
 
     def open(self, doc: dict[str, Any], sid: str = "", context_id: str = "", refresh: bool = False) -> dict[str, Any]:
         ext = str(doc["extension"]).lower()
-        if ext != "md":
-            raise ValueError(f"Editor is only available for Markdown. Open .{ext} files in the Desktop.")
+        if ext not in document_store.EDITOR_TEXT_EXTENSIONS:
+            raise ValueError(f"Editor is only available for Markdown and text files. Open .{ext} files in the Desktop.")
 
         normalized_context = str(context_id or "")
         if refresh:
@@ -64,6 +64,7 @@ class MarkdownSessionManager:
                 _mark_session_external(session, doc)
             session.path = doc["path"]
             session.title = doc["basename"]
+            session.extension = ext
             session.updated_at = time.time()
             self.activate(session.session_id)
             return self._payload(session, doc)
@@ -103,11 +104,12 @@ class MarkdownSessionManager:
         if conflict is not None:
             return conflict
 
-        updated = document_store.write_markdown(session.file_id, session.text)
+        updated = document_store.write_text_document(session.file_id, session.text)
         session.updated_at = time.time()
         session.dirty = False
         session.path = updated["path"]
         session.title = updated["basename"]
+        session.extension = str(updated.get("extension") or session.extension).lower()
         _set_session_base(session, updated)
         self._refresh_file_sessions(
             updated,
@@ -117,6 +119,32 @@ class MarkdownSessionManager:
         )
         return {
             "ok": True,
+            "document": _public_doc(updated),
+            "version": document_store.item_version(updated),
+        }
+
+    def save_as(self, session_id: str, path: str, text: str | None = None) -> dict[str, Any]:
+        session = self._require(session_id)
+        if text is not None:
+            session.text = str(text)
+
+        updated = document_store.save_text_document_as(
+            session.file_id,
+            path,
+            session.text,
+            context_id=session.context_id,
+        )
+        old_file_id = session.file_id
+        session.file_id = updated["file_id"]
+        session.updated_at = time.time()
+        session.dirty = False
+        session.path = updated["path"]
+        session.title = updated["basename"]
+        session.extension = str(updated.get("extension") or session.extension).lower()
+        _set_session_base(session, updated)
+        return {
+            "ok": True,
+            "previous_file_id": old_file_id,
             "document": _public_doc(updated),
             "version": document_store.item_version(updated),
         }
@@ -145,7 +173,7 @@ class MarkdownSessionManager:
             doc = document_store.get_document(normalized)
         except Exception:
             return {"ok": False, "refreshed": 0, "sessions": []}
-        if str(doc.get("extension") or "").lower() != "md":
+        if str(doc.get("extension") or "").lower() not in document_store.EDITOR_TEXT_EXTENSIONS:
             return {"ok": True, "refreshed": 0, "sessions": []}
 
         refreshed = self._refresh_file_sessions(
@@ -342,6 +370,7 @@ class MarkdownSessionManager:
                 session.text = str(text)
             session.path = doc["path"]
             session.title = doc["basename"]
+            session.extension = str(doc.get("extension") or session.extension).lower()
             if dirty is not None and (can_replace_text or refresh_dirty or not session.dirty):
                 session.dirty = dirty
             if can_replace_text or not session.dirty:

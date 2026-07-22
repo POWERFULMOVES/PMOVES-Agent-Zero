@@ -317,8 +317,11 @@ class _BrowserScreencast:
         self.browser_id = browser_id
         self.session = session
         self.mime = mime
+        self.frame_consumer: Any | None = None
+        self.stop_callback: Any | None = None
         self.queue = asyncio.Queue(maxsize=1)
         self.stopped = False
+        self._closed = False
         self._ack_tasks: set[asyncio.Task] = set()
         self._expected_width = 0
         self._expected_height = 0
@@ -329,10 +332,14 @@ class _BrowserScreencast:
         quality: int,
         every_nth_frame: int,
         viewport: dict[str, int],
+        capture_scale: float = 1.0,
     ) -> None:
         self.session.on("Page.screencastFrame", self._on_frame)
         width = max(320, min(4096, int(viewport.get("width") or DEFAULT_VIEWPORT["width"])))
         height = max(200, min(4096, int(viewport.get("height") or DEFAULT_VIEWPORT["height"])))
+        scale = max(1.0, min(2.0, float(capture_scale or 1.0)))
+        max_width = max(320, min(SCREENCAST_MAX_WIDTH, int(round(width * scale))))
+        max_height = max(200, min(SCREENCAST_MAX_HEIGHT, int(round(height * scale))))
         self._expected_width = width
         self._expected_height = height
         with contextlib.suppress(Exception):
@@ -343,8 +350,8 @@ class _BrowserScreencast:
             {
                 "format": "jpeg",
                 "quality": max(20, min(95, int(quality))),
-                "maxWidth": SCREENCAST_MAX_WIDTH,
-                "maxHeight": SCREENCAST_MAX_HEIGHT,
+                "maxWidth": max_width,
+                "maxHeight": max_height,
                 "everyNthFrame": max(1, int(every_nth_frame)),
             },
         )
@@ -394,10 +401,21 @@ class _BrowserScreencast:
             raise RuntimeError("Browser screencast stopped.")
         return frame
 
+    async def attach_consumer(self, frame_consumer: Any, stop_callback: Any | None = None) -> None:
+        self.frame_consumer = frame_consumer
+        self.stop_callback = stop_callback
+        frame = await self.pop_frame()
+        if frame:
+            await self._deliver_frame(frame)
+
     async def stop(self) -> None:
-        if self.stopped:
+        if self._closed:
             return
+        was_stopped = self.stopped
+        self._closed = True
         self.stopped = True
+        if not was_stopped:
+            self._notify_stopped()
         self._drop_queued_frames()
         with contextlib.suppress(asyncio.QueueFull):
             self.queue.put_nowait(None)
@@ -419,6 +437,8 @@ class _BrowserScreencast:
         task.add_done_callback(self._ack_tasks.discard)
 
     async def _handle_frame(self, params: dict[str, Any]) -> None:
+        stop_after_ack = False
+        notify_stop = False
         try:
             data = params.get("data") or ""
             if data:
@@ -428,7 +448,7 @@ class _BrowserScreencast:
                     metadata["jpegWidth"], metadata["jpegHeight"] = size
                 metadata["expectedWidth"] = self._expected_width
                 metadata["expectedHeight"] = self._expected_height
-                self._queue_latest(
+                await self._deliver_frame(
                     {
                         "browser_id": self.browser_id,
                         "mime": self.mime,
@@ -436,6 +456,14 @@ class _BrowserScreencast:
                         "metadata": metadata,
                     }
                 )
+        except asyncio.CancelledError:
+            stop_after_ack = True
+        except Exception:
+            if self.frame_consumer:
+                stop_after_ack = True
+                notify_stop = True
+            else:
+                raise
         finally:
             session_id = params.get("sessionId")
             if session_id is not None and not self.stopped:
@@ -444,6 +472,24 @@ class _BrowserScreencast:
                         "Page.screencastFrameAck",
                         {"sessionId": int(session_id)},
                     )
+            if stop_after_ack:
+                self.stopped = True
+                if notify_stop:
+                    self._notify_stopped()
+
+    def _notify_stopped(self) -> None:
+        if not self.stop_callback:
+            return
+        with contextlib.suppress(Exception):
+            self.stop_callback()
+
+    async def _deliver_frame(self, frame: dict[str, Any]) -> None:
+        if not self.frame_consumer:
+            self._queue_latest(frame)
+            return
+        future = self.frame_consumer(frame)
+        if future is not None:
+            await asyncio.wrap_future(future)
 
     def _queue_latest(self, frame: dict[str, Any]) -> None:
         self._drop_queued_frames()
@@ -1616,6 +1662,7 @@ class _BrowserRuntimeCore:
         *,
         quality: int = 78,
         every_nth_frame: int = 1,
+        capture_scale: float = 1.0,
     ) -> dict[str, Any]:
         await self.ensure_started()
         resolved_id = self._resolve_browser_id(browser_id)
@@ -1634,6 +1681,7 @@ class _BrowserRuntimeCore:
                 quality=quality,
                 every_nth_frame=every_nth_frame,
                 viewport=page.viewport_size or DEFAULT_VIEWPORT,
+                capture_scale=capture_scale,
             )
         except Exception:
             self.screencasts.pop(stream_id, None)
@@ -1662,6 +1710,17 @@ class _BrowserRuntimeCore:
         if not screencast:
             raise KeyError("Browser screencast is not active.")
         return await screencast.pop_frame()
+
+    async def attach_screencast_consumer(
+        self,
+        stream_id: str,
+        frame_consumer: Any,
+        stop_callback: Any | None = None,
+    ) -> None:
+        screencast = self.screencasts.get(str(stream_id or ""))
+        if not screencast:
+            raise KeyError("Browser screencast is not active.")
+        await screencast.attach_consumer(frame_consumer, stop_callback)
 
     async def stop_screencast(self, stream_id: str) -> None:
         screencast = self.screencasts.pop(str(stream_id or ""), None)
