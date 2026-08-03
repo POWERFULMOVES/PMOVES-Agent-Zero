@@ -26,7 +26,7 @@
                                         <img :src="card.thumbnail" :alt="card.title" loading="lazy">
                                     </template>
                                     <template x-if="!card.thumbnail && card.icon">
-                                        <span class="material-symbols-outlined discovery-feature-icon" x-text="card.icon"></span>
+                                        <x-icon class="discovery-feature-icon" :name="card.icon"></x-icon>
                                     </template>
                                 </div>
                                 <h4 class="discovery-feature-title" x-text="card.title"></h4>
@@ -36,7 +36,7 @@
                                     type="button"
                                     @click.stop="$store.discoveryStore.executeCta(card.cta_action)">
                                 <span x-text="card.cta_text"></span>
-                                <span class="material-symbols-outlined">arrow_forward</span>
+                                <x-icon name="arrow_forward"></x-icon>
                             </button>
                         </article>
                     </template>
@@ -56,7 +56,7 @@
                                 @click.stop="$store.discoveryStore.dismissCard(card.id)"
                                 :aria-label="`Dismiss ${card.title}`"
                                 title="Dismiss">
-                            <span class="material-symbols-outlined">close</span>
+                            <x-icon name="close"></x-icon>
                         </button>
 
                         <div class="discovery-hero-content">
@@ -66,7 +66,7 @@
                                     type="button"
                                     @click.stop="$store.discoveryStore.executeCta(card.cta_action)">
                                 <span x-text="card.cta_text"></span>
-                                <span class="material-symbols-outlined">arrow_forward</span>
+                                <x-icon name="arrow_forward"></x-icon>
                             </button>
                         </div>
 
@@ -75,7 +75,7 @@
                                 <img :src="card.thumbnail" :alt="card.title" loading="lazy">
                             </template>
                             <template x-if="!card.thumbnail && card.icon">
-                                <span class="material-symbols-outlined discovery-hero-icon" x-text="card.icon"></span>
+                                <x-icon class="discovery-hero-icon" :name="card.icon"></x-icon>
                             </template>
                         </div>
                     </article>
@@ -112,7 +112,7 @@
                     <button type="button"
                             class="discovery-undismiss-btn"
                             @click="$store.discoveryStore.undismissCards()">
-                        <span class="material-symbols-outlined">undo</span>
+                        <x-icon name="undo"></x-icon>
                         <span>Show dismissed suggestions</span>
                     </button>
                 </div>

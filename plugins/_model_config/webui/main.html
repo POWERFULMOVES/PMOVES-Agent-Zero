@@ -35,13 +35,13 @@
             </select>
           </label>
           <button type="button" class="button" @click="addPreset()">
-            <span class="icon material-symbols-outlined">add</span>
+            <x-icon class="icon" name="add"></x-icon>
             Add
           </button>
           <button type="button" class="button"
                   x-show="canDeleteSelected"
                   @click="$confirmClick($event, () => removeSelectedPreset())">
-            <span class="icon material-symbols-outlined">delete</span>
+            <x-icon class="icon" name="delete"></x-icon>
             Delete
           </button>
         </div>
@@ -96,12 +96,12 @@
 
         <div class="preset-editor-secondary-actions">
           <button type="button" class="text-button" @click="$store.modelConfig.openApiKeysFromSummary()">
-            <span class="material-symbols-outlined">key</span>
+            <x-icon name="key"></x-icon>
             API Keys
           </button>
           <button type="button" class="text-button"
                   @click="$confirmClick($event, () => resetPresets())">
-            <span class="material-symbols-outlined">restart_alt</span>
+            <x-icon name="restart_alt"></x-icon>
             Restore bundled presets
           </button>
         </div>

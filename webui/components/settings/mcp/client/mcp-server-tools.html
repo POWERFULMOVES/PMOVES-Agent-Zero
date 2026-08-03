@@ -20,20 +20,20 @@
                     <div class="mcp-tools-actions">
                         <span class="mcp-tools-count" x-text="$store.mcpServersStore.serverDetailToolsCountLabel"></span>
                         <button type="button" class="button confirm" :disabled="$store.mcpServersStore.applying" @click="$store.mcpServersStore.applyNow()">
-                            <span class="material-symbols-outlined" aria-hidden="true">check</span>
+                            <x-icon aria-hidden="true" name="check"></x-icon>
                             <span x-text="$store.mcpServersStore.applying ? 'Applying' : 'Apply'"></span>
                         </button>
                     </div>
                 </div>
 
                 <label class="mcp-tool-search">
-                    <span class="material-symbols-outlined" aria-hidden="true">search</span>
+                    <x-icon aria-hidden="true" name="search"></x-icon>
                     <input type="search" x-model.debounce.150ms="$store.mcpServersStore.toolSearch" placeholder="Search tools" />
                     <button type="button" class="mcp-tool-search-clear"
                         x-show="$store.mcpServersStore.toolSearch"
                         @click="$store.mcpServersStore.clearToolSearch()"
                         title="Clear search">
-                        <span class="material-symbols-outlined" aria-hidden="true">close</span>
+                        <x-icon aria-hidden="true" name="close"></x-icon>
                     </button>
                 </label>
 

@@ -17,6 +17,10 @@ RUNTIME_BACKEND_KEY = "runtime_backend"
 HOST_BROWSER_PRIVACY_POLICY_KEY = "host_browser_privacy_policy"
 HOST_BROWSER_PROFILE_MODE_KEY = "host_browser_profile_mode"
 HOST_BROWSER_SELECTION_KEY = "host_browser_selection"
+PROXY_SERVER_KEY = "proxy_server"
+PROXY_BYPASS_KEY = "proxy_bypass"
+PROXY_USERNAME_KEY = "proxy_username"
+PROXY_PASSWORD_KEY = "proxy_password"
 RUNTIME_BACKENDS = {"container", "host_required"}
 BROWSER_TAB_SCOPES = {"per_context", "shared"}
 HOST_BROWSER_PRIVACY_POLICIES = {"enforce_local", "warn", "allow"}
@@ -161,6 +165,10 @@ def normalize_browser_config(settings: dict[str, Any] | None) -> dict[str, Any]:
         HOST_BROWSER_SELECTION_KEY: _normalize_host_browser_selection(
             raw.get(HOST_BROWSER_SELECTION_KEY, raw.get("host_browser_choice", ""))
         ),
+        PROXY_SERVER_KEY: str(raw.get(PROXY_SERVER_KEY, "") or "").strip()[:2048],
+        PROXY_BYPASS_KEY: str(raw.get(PROXY_BYPASS_KEY, "") or "").strip()[:4096],
+        PROXY_USERNAME_KEY: str(raw.get(PROXY_USERNAME_KEY, "") or "")[:1024],
+        PROXY_PASSWORD_KEY: str(raw.get(PROXY_PASSWORD_KEY, "") or "")[:4096],
         MODEL_PRESET_KEY: _normalize_model_preset(raw.get(MODEL_PRESET_KEY, "")),
     }
 
@@ -169,6 +177,10 @@ def browser_runtime_config(settings: dict[str, Any] | None) -> dict[str, Any]:
     config = normalize_browser_config(settings)
     return {
         "extension_paths": config["extension_paths"],
+        PROXY_SERVER_KEY: config[PROXY_SERVER_KEY],
+        PROXY_BYPASS_KEY: config[PROXY_BYPASS_KEY],
+        PROXY_USERNAME_KEY: config[PROXY_USERNAME_KEY],
+        PROXY_PASSWORD_KEY: config[PROXY_PASSWORD_KEY],
     }
 
 
@@ -374,10 +386,12 @@ def describe_browser_extensions(settings: dict[str, Any] | None) -> dict[str, An
 
 
 def build_browser_launch_config(settings: dict[str, Any] | None) -> dict[str, Any]:
-    extensions = describe_browser_extensions(settings)
+    config = normalize_browser_config(settings)
+    extensions = describe_browser_extensions(config)
     args = list(BASE_BROWSER_ARGS)
     channel: str | None = None
     browser_mode = "chromium"
+    proxy = None
 
     if extensions["active"]:
         joined_paths = ",".join(extensions["active_paths"])
@@ -388,8 +402,19 @@ def build_browser_launch_config(settings: dict[str, Any] | None) -> dict[str, An
             ]
         )
 
+    if config[PROXY_SERVER_KEY]:
+        proxy = {"server": config[PROXY_SERVER_KEY]}
+        for config_key, proxy_key in (
+            (PROXY_BYPASS_KEY, "bypass"),
+            (PROXY_USERNAME_KEY, "username"),
+            (PROXY_PASSWORD_KEY, "password"),
+        ):
+            if config[config_key]:
+                proxy[proxy_key] = config[config_key]
+
     return {
         "args": args,
+        "proxy": proxy,
         "browser_mode": browser_mode,
         "channel": channel,
         "extensions": extensions,

@@ -69,8 +69,8 @@
 
                 <div class="mcp-scan-result" x-show="$store.mcpServersStore.scanResult">
                     <div class="mcp-scan-heading">
-                        <span class="material-symbols-outlined" aria-hidden="true"
-                            x-text="$store.mcpServersStore.scanResult?.risk_level === 'ok' ? 'verified' : ($store.mcpServersStore.scanResult?.risk_level === 'error' ? 'error' : 'warning')"></span>
+                        <x-icon aria-hidden="true"
+                            :name="$store.mcpServersStore.scanResult?.risk_level === 'ok' ? 'verified' : ($store.mcpServersStore.scanResult?.risk_level === 'error' ? 'error' : 'warning')"></x-icon>
                         <span x-text="$store.mcpServersStore.scanRiskLabel"></span>
                     </div>
                     <div class="mcp-scan-warnings">

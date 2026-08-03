@@ -14,10 +14,10 @@
           </span>
           <div class="queue-header-actions">
             <button class="queue-header-btn" @click="$store.messageQueue.sendAll()" title="Send all">
-              <span class="material-symbols-outlined">keyboard_double_arrow_right</span>
+              <x-icon name="keyboard_double_arrow_right"></x-icon>
             </button>
             <button class="queue-header-btn delete" @click="$store.messageQueue.clearQueue()" title="Clear all">
-              <span class="material-symbols-outlined">delete_sweep</span>
+              <x-icon name="delete_sweep"></x-icon>
             </button>
           </div>
         </div>
@@ -47,10 +47,10 @@
               </div>
               <div class="queue-item-actions">
                 <button class="queue-action-btn send" @click="$store.messageQueue.sendItem(item.id)" title="Send now">
-                  <span class="material-symbols-outlined">send</span>
+                  <x-icon name="send"></x-icon>
                 </button>
                 <button class="queue-action-btn delete" @click="$store.messageQueue.removeItem(item.id)" title="Remove">
-                  <span class="material-symbols-outlined">close</span>
+                  <x-icon name="close"></x-icon>
                 </button>
               </div>
             </div>

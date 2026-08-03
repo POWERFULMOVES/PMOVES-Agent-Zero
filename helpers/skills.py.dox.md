@@ -27,6 +27,9 @@
 - `parse_frontmatter(frontmatter_text: str) -> Tuple[Dict[str, Any], List[str]]`: Parse YAML frontmatter with PyYAML when available,
 - `skill_from_markdown(skill_md_path: Path, include_content: bool=..., validate: bool=...) -> Optional[Skill]`
 - `list_skills(agent: Agent | None=..., include_content: bool=..., include_hidden: bool=...) -> List[Skill]`: List skills, optionally filtered by agent scope.
+- `list_slash_commands(agent: Agent | None=...) -> list[dict[str, Any]]`: List picker-visible effective slash commands for the agent project.
+- `find_slash_command(command_name: str, agent: Agent | None=...) -> dict[str, Any] | None`
+- `format_slash_command(command: dict[str, Any]) -> str`
 - `delete_skill(skill_path: str) -> None`: Delete a skill directory.
 - `find_skill(skill_name: str, agent: Agent | None=..., include_content: bool=..., include_hidden: bool=..., validate: bool=...) -> Optional[Skill]`
 - `load_skill_for_agent(skill_name: str, agent: Agent | None=...) -> str`: Load skill and format it as a complete string for agent context.
@@ -60,6 +63,7 @@
 - `build_active_skills_prompt()` returns empty because selected skills are loaded through history, not prompt protocol.
 - `search_skills()` normalizes query words, scores normal terms against skill names, and scores only long terms against tags/triggers; descriptions match only full query phrases so generic prose does not produce irrelevant suggestions.
 - `find_skill(validate=False)` lets validation tooling resolve a skill with incomplete metadata while preserving runtime validation by default.
+- Slash command discovery is delegated to the built-in `_commands` helper through a local import, preserving its project/global/bundled/plugin precedence and avoiding its `split_frontmatter` import cycle. Picker-hidden commands remain hidden from Skills; reading a command returns its definition without executing it.
 - Invalid `SKILL.md` frontmatter emits a once-per-path scan warning with the skipped skill path/name and a line number when the parser can identify one directly.
 - Observed side-effect areas: filesystem reads, filesystem deletion, plugin state, settings/state persistence, context data, secret handling.
 - Imported dependency areas include: `__future__`, `dataclasses`, `helpers`, `os`, `pathlib`, `re`, `typing`.

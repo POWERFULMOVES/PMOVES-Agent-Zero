@@ -1,0 +1,18 @@
+<html>
+<head>
+  <script type="module">
+    import { store } from "/plugins/_pin_to_top/webui/pin-to-top-store.js";
+  </script>
+</head>
+<body>
+  <div x-data x-init="$store.pinToTop.init()">
+    <button type="button" class="dropdown-item" role="menuitem"
+      @click="$store.pinToTop.toggleFromMenu($store.sidebar.rowMenuOpenId, $store.sidebar.rowMenuKind); $store.sidebar.rowMenuClose()">
+      <x-icon
+        :name="$store.pinToTop.isMenuItemPinned($store.sidebar.rowMenuOpenId, $store.sidebar.rowMenuKind) ? 'keep_off' : 'push_pin'"></x-icon>
+      <span
+        x-text="$store.pinToTop.isMenuItemPinned($store.sidebar.rowMenuOpenId, $store.sidebar.rowMenuKind) ? 'Unpin from Top' : 'Pin to Top'"></span>
+    </button>
+  </div>
+</body>
+</html>

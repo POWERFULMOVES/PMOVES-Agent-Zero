@@ -119,6 +119,7 @@ The toolbar menu includes:
 The full settings include:
 
 - **Browser location:** Use the Docker browser or **Bring Your Own Browser** through A0 CLI.
+- **Proxy:** Optionally route the Docker browser through an HTTP or SOCKS proxy, with bypass and authentication settings.
 - **Page content access:** Controls host-browser page text and screenshots.
 - **Starting page:** The default URL for new Browser sessions.
 - **Autofocus active page:** Lets an already-open Browser surface follow the agent's browsing.
@@ -134,6 +135,11 @@ can show in the Canvas.
 
 In normal Docker installs, the needed browser is already included. In local
 development, Agent Zero can install it the first time it is needed.
+
+To use a proxy, enter its server in Browser settings, for example
+`http://proxy.example:3128` or `socks5://proxy.example:1080`. Add an optional
+comma-separated bypass list, username, and password when the proxy requires
+them. Saving proxy changes restarts active Docker Browser sessions.
 
 ## Bring Your Own Browser
 

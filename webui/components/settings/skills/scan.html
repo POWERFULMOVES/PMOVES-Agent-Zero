@@ -26,12 +26,12 @@
                     <div class="skills-scan-actions">
                         <button type="button" class="button" @click="$store.skillsScanStore.openForInstalledSkills()"
                             :disabled="$store.skillsScanStore.sectionLoading">
-                            <span class="material-symbols-outlined" aria-hidden="true">inventory_2</span>
+                            <x-icon aria-hidden="true" name="inventory_2"></x-icon>
                             <span>Installed Skills</span>
                         </button>
                         <button type="button" class="button confirm" @click="$store.skillsScanStore.openForManualTarget()"
                             :disabled="$store.skillsScanStore.sectionLoading">
-                            <span class="material-symbols-outlined" aria-hidden="true">radar</span>
+                            <x-icon aria-hidden="true" name="radar"></x-icon>
                             <span>Open Scanner</span>
                         </button>
                     </div>

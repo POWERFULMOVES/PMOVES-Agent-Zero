@@ -92,11 +92,10 @@
                   </div>
 
                   <div class="self-update-quick-arrow" :class="$store.selfUpdateStore.quickComparisonIconClass" aria-hidden="true">
-                    <span
-                      class="material-symbols-outlined"
+                    <x-icon
                       :class="{ spinning: $store.selfUpdateStore.isCheckingStatus }"
-                      x-text="$store.selfUpdateStore.quickComparisonIcon"
-                    ></span>
+                      :name="$store.selfUpdateStore.quickComparisonIcon"
+                    ></x-icon>
                   </div>
 
                   <div class="self-update-quick-version-card self-update-quick-version-card-accent">
@@ -212,7 +211,7 @@
                   aria-controls="self-update-howto-collapse"
                 >
                   <span>How it works?</span>
-                  <span class="material-symbols-outlined self-update-panel-toggle-icon">expand_more</span>
+                  <x-icon class="self-update-panel-toggle-icon" name="expand_more"></x-icon>
                 </button>
                 <div class="collapse" id="self-update-howto-collapse">
                   <div class="self-update-panel-body self-update-copy">
@@ -261,7 +260,7 @@
                         :class="$store.selfUpdateStore.getLastStatusBadgeClass($store.selfUpdateStore.info?.last_status?.status)"
                         x-text="$store.selfUpdateStore.getLastStatusLabel($store.selfUpdateStore.info?.last_status?.status)"
                       ></span>
-                      <span class="material-symbols-outlined self-update-panel-toggle-icon">expand_more</span>
+                      <x-icon class="self-update-panel-toggle-icon" name="expand_more"></x-icon>
                     </span>
                   </button>
                   <div class="collapse" id="self-update-last-attempt-collapse">

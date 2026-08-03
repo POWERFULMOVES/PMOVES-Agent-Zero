@@ -55,7 +55,7 @@
                         <span class="projects-form-description">Currently there are <strong><span
                                     x-text="$store.projects.selectedProject.instruction_files_count || 0"></span></strong> instruction files.</span>
                         <button class="button icon-button" x-on:click="$store.projects.browseInstructionFiles()">
-                            <span class="icon material-symbols-outlined">folder</span>
+                            <x-icon class="icon" name="folder"></x-icon>
                             <span>Browse</span>
                         </button>
                     </div>

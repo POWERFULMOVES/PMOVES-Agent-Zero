@@ -34,7 +34,7 @@
                 </div>
 
                 <button class="btn btn-ok btn-new-task" @click="$store.schedulerStore.startCreateTask()">
-                    <span class="material-symbols-outlined">add</span>
+                    <x-icon name="add"></x-icon>
                     New Task
                 </button>
             </div>
@@ -43,7 +43,7 @@
             <div class="data-status-bar" x-show="!$store.schedulerStore.isLoading">
                 <div class="status-info">
                     <span class="status-item">
-                        <span class="material-symbols-outlined">schedule</span>
+                        <x-icon name="schedule"></x-icon>
                         Total: <strong x-text="$store.schedulerStore.tasks.length"></strong>
                     </span>
                     <span class="status-separator">•</span>
@@ -56,7 +56,7 @@
                 <div class="status-pagination" x-show="$store.schedulerStore.totalPages > 1">
                     <button class="btn btn-icon" @click="$store.schedulerStore.prevPage()"
                         :disabled="$store.schedulerStore.currentPage === 1" title="Previous Page">
-                        <span class="material-symbols-outlined">chevron_left</span>
+                        <x-icon name="chevron_left"></x-icon>
                     </button>
                     <div class="page-input-group">
                         <label>Page</label>
@@ -71,7 +71,7 @@
                     <button class="btn btn-icon" @click="$store.schedulerStore.nextPage()"
                         :disabled="$store.schedulerStore.currentPage === $store.schedulerStore.totalPages"
                         title="Next Page">
-                        <span class="material-symbols-outlined">chevron_right</span>
+                        <x-icon name="chevron_right"></x-icon>
                     </button>
                 </div>
             </div>
@@ -81,7 +81,7 @@
                  x-show="!$store.schedulerStore.isLoading && $store.schedulerStore.filteredTasks.length === 0">
                 <div>No tasks found</div>
                 <button class="btn btn-ok" @click="$store.schedulerStore.startCreateTask()">
-                    <span class="material-symbols-outlined">add</span>
+                    <x-icon name="add"></x-icon>
                     Create your first task
                 </button>
             </div>
@@ -135,19 +135,19 @@
                                 <div class="actions-wrapper">
                                     <button class="btn btn-action"
                                             @click="$store.schedulerStore.runTask(task.uuid)" title="Run Task">
-                                        <span class="material-symbols-outlined">play_arrow</span>
+                                        <x-icon name="play_arrow"></x-icon>
                                     </button>
                                     <button class="btn btn-action"
                                             @click="$store.schedulerStore.resetTaskState(task.uuid)" title="Reset State">
-                                        <span class="material-symbols-outlined">refresh</span>
+                                        <x-icon name="refresh"></x-icon>
                                     </button>
                                     <button class="btn btn-action"
                                             @click="$store.schedulerStore.startEditTask(task.uuid)" title="Edit Task">
-                                        <span class="material-symbols-outlined">edit</span>
+                                        <x-icon name="edit"></x-icon>
                                     </button>
                                     <button class="btn btn-action delete"
                                             @click="$confirmClick($event, () => $store.schedulerStore.deleteTask(task.uuid))" title="Delete Task">
-                                        <span class="material-symbols-outlined">delete</span>
+                                        <x-icon name="delete"></x-icon>
                                     </button>
                                 </div>
                             </td>
@@ -162,7 +162,7 @@
                  x-show="!$store.schedulerStore.isLoading && $store.schedulerStore.paginatedTasks.length > 5 && $store.schedulerStore.totalPages > 1">
                 <div class="status-info">
                     <span class="status-item">
-                        <span class="material-symbols-outlined">schedule</span>
+                        <x-icon name="schedule"></x-icon>
                         Total: <strong x-text="$store.schedulerStore.tasks.length"></strong>
                     </span>
                     <span class="status-separator">•</span>
@@ -174,7 +174,7 @@
                 <div class="status-pagination">
                     <button class="btn btn-icon" @click="$store.schedulerStore.prevPage()"
                         :disabled="$store.schedulerStore.currentPage === 1" title="Previous Page">
-                        <span class="material-symbols-outlined">chevron_left</span>
+                        <x-icon name="chevron_left"></x-icon>
                     </button>
                     <div class="page-input-group">
                         <label>Page</label>
@@ -189,7 +189,7 @@
                     <button class="btn btn-icon" @click="$store.schedulerStore.nextPage()"
                         :disabled="$store.schedulerStore.currentPage === $store.schedulerStore.totalPages"
                         title="Next Page">
-                        <span class="material-symbols-outlined">chevron_right</span>
+                        <x-icon name="chevron_right"></x-icon>
                     </button>
                 </div>
             </div>

@@ -1,5 +1,3 @@
-@import url("https://fonts.googleapis.com/css2?family=Roboto+Mono:ital,wght@0,100..700;1,100..700&family=Rubik:ital,wght@0,300..900;1,300..900&display=swap");
-
 /* Add box-sizing globally for better cross-browser consistency */
 *,
 *::before,
@@ -311,6 +309,23 @@ img {
   overflow: hidden;
 }
 
+.sidebar-slot {
+  flex: 0 0 250px;
+  min-width: 250px;
+  height: 100%;
+}
+
+.sidebar-slot:has(#left-panel) {
+  display: contents;
+}
+
+@media (max-width: 768px) {
+  .sidebar-slot {
+    flex-basis: 0;
+    min-width: 0;
+  }
+}
+
 .panel {
   display: -webkit-flex;
   display: flex;
@@ -328,8 +343,15 @@ img {
   min-width: 0;
   flex-direction: column;
   flex: 1 1 0;
-  -webkit-transition: margin-left var(--transition-speed) ease-in-out;
-  transition: margin-left var(--transition-speed) ease-in-out;
+  background-color: var(--color-background);
+  -webkit-transition: margin-left var(--transition-speed) ease-in-out,
+    background-color 0.2s ease-out;
+  transition: margin-left var(--transition-speed) ease-in-out,
+    background-color 0.2s ease-out;
+}
+
+#right-panel.chat-active {
+  background-color: var(--color-chat-background);
 }
 
 /* Chat area wrapper – contains chat-history + floating nav buttons */

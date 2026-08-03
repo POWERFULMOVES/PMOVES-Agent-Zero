@@ -8,6 +8,6 @@
         title="Validate this ZIP plugin before installing"
         @click="$store.pluginValidator.openModal({ source: 'zip', zipFile: $store.pluginInstallStore.zipFile, zipFileName: $store.pluginInstallStore.zipFileName })"
         :disabled="$store.pluginInstallStore.loading || !$store.pluginInstallStore.zipFile">
-        <span class="icon material-symbols-outlined">fact_check</span> Validate
+        <x-icon class="icon" name="fact_check"></x-icon> Validate
     </button>
 </span>

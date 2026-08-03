@@ -1,3 +1,24 @@
+/**
+ * Stop delayed or in-flight scrolling previously scheduled for an element.
+ * Virtualized containers call this before replacing their children so an old
+ * auto-scroll cannot override the restored viewport anchor.
+ */
+export function cancelPendingScroll(element) {
+  if (!element) return;
+
+  const timeoutRaw = element.dataset?.scrollerTimeout;
+  const timeoutId = timeoutRaw == null ? null : Number(timeoutRaw);
+  if (Number.isFinite(timeoutId)) clearTimeout(timeoutId);
+
+  if (element.dataset?.scrollingTo != null && element.scrollTo) {
+    element.scrollTo({ top: element.scrollTop, behavior: "instant" });
+  }
+
+  delete element.dataset.scrollerTimeout;
+  delete element.dataset.scrollerReapplySnapshot;
+  delete element.dataset.scrollingTo;
+}
+
 export class Scroller {
   constructor(
     element,

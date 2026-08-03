@@ -16,19 +16,19 @@
                     <li class="nav-item" role="presentation">
                         <button class="nav-link" :class="{ active: $store.pluginInstallStore.activeTab === 'store' }"
                             type="button" role="tab" @click="$store.pluginInstallStore.setTab('store')">
-                            <span class="material-symbols-outlined pi-tab-icon">store</span> Browse
+                            <x-icon class="pi-tab-icon" name="store"></x-icon> Browse
                         </button>
                     </li>
                     <li class="nav-item" role="presentation">
                         <button class="nav-link" :class="{ active: $store.pluginInstallStore.activeTab === 'git' }"
                             type="button" role="tab" @click="$store.pluginInstallStore.setTab('git')">
-                            <span class="material-symbols-outlined pi-tab-icon">terminal</span> Git
+                            <x-icon class="pi-tab-icon" name="terminal"></x-icon> Git
                         </button>
                     </li>
                     <li class="nav-item" role="presentation">
                         <button class="nav-link" :class="{ active: $store.pluginInstallStore.activeTab === 'zip' }"
                             type="button" role="tab" @click="$store.pluginInstallStore.setTab('zip')">
-                            <span class="material-symbols-outlined pi-tab-icon">upload_file</span> ZIP
+                            <x-icon class="pi-tab-icon" name="upload_file"></x-icon> ZIP
                         </button>
                     </li>
                 </ul>

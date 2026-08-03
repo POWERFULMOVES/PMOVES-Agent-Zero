@@ -55,12 +55,12 @@
     </div>
 
     <div x-show="error" class="plugin-settings-error" style="margin-top: 1rem;">
-      <span class="material-symbols-outlined">error</span>
+      <x-icon name="error"></x-icon>
       <span x-text="error"></span>
     </div>
 
     <div x-show="loading" style="text-align:center; padding: 20px;">
-      <span class="material-symbols-outlined spinning">progress_activity</span>
+      <x-icon class="spinning" name="progress_activity"></x-icon>
     </div>
 
     <div x-show="!loading">
@@ -76,14 +76,14 @@
                    autocomplete="off"
                    @input="$store.modelConfig.setApiKeyValue(provider.value, $el.value)"
                    style="padding-right:32px;" />
-            <span class="material-symbols-outlined eye-toggle"
+            <x-icon class="eye-toggle"
                   @click="
                     showKey = !showKey;
                     if (showKey && !$store.modelConfig.apiKeyValues[provider.value] && provider.has_key) {
                       reveal(provider.value);
                     }
                   "
-                  x-text="showKey ? 'visibility' : 'visibility_off'"></span>
+                  :name="showKey ? 'visibility' : 'visibility_off'"></x-icon>
           </div>
         </div>
       </template>

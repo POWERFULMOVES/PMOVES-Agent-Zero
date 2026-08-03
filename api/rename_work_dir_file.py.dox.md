@@ -16,6 +16,7 @@
 - Top-level functions:
 - `async rename_item(file_path: str, new_name: str) -> bool`
 - `async create_folder(parent_path: str, folder_name: str) -> bool`
+- `async move_items(file_paths: list[str], destination_path: str) -> list[str]`
 
 ## Runtime Contracts
 
@@ -28,7 +29,8 @@
 
 ## Key Concepts
 
-- Important called helpers/classes observed in the source: `FileBrowser`, `browser.rename_item`, `browser.create_folder`, `strip`, `runtime.call_development_function`, `posixpath.join`, `file_path.startswith`, `extension.call_extensions_async`, `str.rstrip`, `posixpath.dirname`.
+- Important called helpers/classes observed in the source: `FileBrowser`, `browser.rename_item`, `browser.create_folder`, `browser.move_items`, `strip`, `runtime.call_development_function`, `posixpath.join`, `file_path.startswith`, `extension.call_extensions_async`, `str.rstrip`, `posixpath.dirname`.
+- The `move` action accepts `paths` plus `destinationPath`, emits the standard mutation hook, and returns the refreshed `currentPath` listing used by drag-and-drop clients.
 - Keep request/response, tool, or helper semantics documented here at the same time as source changes.
 
 ## Work Guidance
@@ -40,7 +42,7 @@
 ## Verification
 
 - Run endpoint-specific or API/WebSocket tests for changed behavior; smoke-test browser callers when no focused test exists.
-- No direct test reference was found by name search; choose the nearest behavioral test or perform a focused smoke check.
+- Run `pytest tests/test_file_browser_navigation.py` and smoke-test folder and Up-button drops in the WebUI.
 
 ## Child DOX Index
 

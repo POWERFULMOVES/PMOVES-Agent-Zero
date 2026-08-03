@@ -521,6 +521,7 @@ input[type="range"]::-moz-range-thumb {
 }
 
 .loading {
+  --loading-delay: 500ms;
   width: calc(100% - 4rem);
   max-width: 1200px;
   min-height: 50px;
@@ -530,7 +531,7 @@ input[type="range"]::-moz-range-thumb {
   overflow: hidden;
   margin: 2rem auto;
   opacity: 0;
-  animation: fadeIn 500ms ease-out 500ms forwards;
+  animation: fadeIn 500ms ease-out var(--loading-delay) forwards;
 }
 
 @keyframes fadeIn {
@@ -555,8 +556,10 @@ input[type="range"]::-moz-range-thumb {
     var(--color-border),
     var(--color-background)
   );
-  animation: shimmer 2s infinite;
-  animation-delay: 250ms;
+  opacity: 0;
+  animation:
+    shimmer 2s linear var(--loading-delay) infinite,
+    fadeIn 0s linear var(--loading-delay) forwards;
   background-size: 200% 100%;
 }
 

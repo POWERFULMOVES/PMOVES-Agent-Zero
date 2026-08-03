@@ -85,7 +85,7 @@ def test_nonconsecutive_failure_starts_a_new_recovery_window(monkeypatch):
 
 def test_general_settings_expose_the_default_failure_limit():
     settings = get_default_settings()
-    assert settings["max_consecutive_unusable_responses"] == 2
+    assert settings["max_consecutive_unusable_responses"] == 5
     settings["max_consecutive_unusable_responses"] = 0
     assert normalize_settings(settings)["max_consecutive_unusable_responses"] == 1
 

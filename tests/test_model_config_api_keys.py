@@ -90,16 +90,23 @@ def test_chat_model_configured_requires_identity_and_key(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_missing_api_key_banner_exposes_missing_providers(monkeypatch):
+async def test_missing_api_key_banner_exposes_only_effective_missing_providers(monkeypatch):
     from plugins._model_config.helpers import model_config
 
     fake = [{"model_type": "Chat Model", "provider": "openai"}]
     monkeypatch.setattr(model_config, "get_missing_api_key_providers", lambda: fake)
+    monkeypatch.setattr(
+        model_config,
+        "get_presets",
+        lambda: [{"name": "Efficiency", "chat": {"provider": "openrouter"}}],
+    )
+    monkeypatch.setattr(model_config, "has_provider_api_key", lambda *args, **kwargs: False)
 
     banners = []
     await missing_key_banner.MissingApiKeyCheck(agent=None).execute(
         banners=banners, frontend_context={}
     )
+    assert [banner["id"] for banner in banners] == ["missing-api-key"]
     row = next(b for b in banners if b.get("id") == "missing-api-key")
     assert row.get("missing_providers") == fake
     assert row["cta_text"] == "Start Onboarding"
@@ -308,6 +315,33 @@ def test_ollama_cloud_provider_config_requires_key_and_base_url():
     assert "api_key_mode" not in ollama_cloud
 
 
+def test_cerebras_provider_uses_chat_completions_and_live_model_catalog(monkeypatch):
+    import yaml
+
+    from plugins._model_config.helpers import model_config
+
+    monkeypatch.setattr(models, "get_api_key", lambda provider: "test-key")
+
+    provider_path = PROJECT_ROOT / "conf/model_providers.yaml"
+    provider_config = yaml.safe_load(provider_path.read_text(encoding="utf-8"))
+    cerebras = provider_config["chat"]["cerebras"]
+
+    assert cerebras["name"] == "Cerebras"
+    assert cerebras["litellm_provider"] == "cerebras"
+    assert cerebras["models_list"]["endpoint_url"] == "/models"
+    assert cerebras["kwargs"] == {
+        "a0_api_mode": "chat",
+        "api_base": "https://api.cerebras.ai/v1",
+    }
+    assert model_config.provider_requires_api_key("cerebras") is True
+
+    model = models.get_chat_model("cerebras", "gpt-oss-120b")
+    assert model.model_name == "cerebras/gpt-oss-120b"
+    assert model.kwargs["a0_api_mode"] == "chat"
+    assert model.kwargs["api_base"] == "https://api.cerebras.ai/v1"
+    assert model.kwargs["api_key"] == "test-key"
+
+
 def test_direct_venice_chat_provider_defaults_to_chat_completions(monkeypatch):
     import yaml
 
@@ -322,7 +356,7 @@ def test_direct_venice_chat_provider_defaults_to_chat_completions(monkeypatch):
     assert venice["kwargs"]["venice_parameters"] == {
         "include_venice_system_prompt": False
     }
-    assert "a0_api_mode" not in provider_config["chat"]["a0_venice"]["kwargs"]
+    assert provider_config["chat"]["a0_venice"]["kwargs"]["a0_api_mode"] == "chat"
     assert "a0_api_mode" not in provider_config["embedding"]["venice"]["kwargs"]
 
     model = models.get_chat_model("venice", "llama-3.3-70b")
@@ -451,6 +485,57 @@ def test_local_chat_providers_default_to_chat_completions():
         assert "a0_api_mode" not in provider_config["embedding"][provider]["kwargs"]
 
 
+def test_provider_api_mode_defaults_use_intended_transport():
+    import yaml
+
+    provider_config = yaml.safe_load(
+        (PROJECT_ROOT / "conf" / "model_providers.yaml").read_text(encoding="utf-8")
+    )
+    oauth_provider_config = yaml.safe_load(
+        (
+            PROJECT_ROOT
+            / "plugins"
+            / "_oauth"
+            / "conf"
+            / "model_providers.yaml"
+        ).read_text(encoding="utf-8")
+    )
+
+    chat_providers = (
+        "anthropic",
+        "cometapi",
+        "deepseek",
+        "google",
+        "groq",
+        "huggingface",
+        "mistral",
+        "moonshot",
+        "nebius",
+        "nvidia_nim",
+        "bedrock",
+        "openrouter",
+        "sambanova",
+        "xai",
+        "zai",
+        "zai_coding",
+    )
+    responses_providers = ("azure", "github_copilot", "openai")
+
+    for provider in chat_providers:
+        assert provider_config["chat"][provider]["kwargs"]["a0_api_mode"] == "chat"
+
+    for provider in responses_providers:
+        assert "a0_api_mode" not in provider_config["chat"][provider].get("kwargs", {})
+
+    assert (
+        oauth_provider_config["chat"]["gemini_api_oauth"]["kwargs"]["a0_api_mode"]
+        == "chat"
+    )
+
+    for provider in ("codex_oauth", "github_copilot_oauth", "xai_grok_oauth"):
+        assert "a0_api_mode" not in oauth_provider_config["chat"][provider]["kwargs"]
+
+
 def test_missing_api_key_banner_does_not_include_auto_modal_metadata(monkeypatch):
     from plugins._model_config.helpers import model_config
 
@@ -488,9 +573,6 @@ def test_provider_key_modes_for_local_and_ollama_cloud():
     assert model_config.provider_requires_api_key("vllm") is False
     assert model_config.provider_requires_api_key("other") is False
     assert model_config.provider_requires_api_key("ollama_cloud") is True
-    assert "llama_cpp" in missing_key_banner.MissingApiKeyCheck.LOCAL_PROVIDERS
-    assert "omlx" in missing_key_banner.MissingApiKeyCheck.LOCAL_PROVIDERS
-    assert "vllm" in missing_key_banner.MissingApiKeyCheck.LOCAL_PROVIDERS
 
 
 def test_local_provider_defaults_are_docker_friendly():

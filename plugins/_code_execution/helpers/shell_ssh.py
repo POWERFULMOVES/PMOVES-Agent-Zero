@@ -7,6 +7,10 @@ from helpers.log import Log
 from helpers.print_style import PrintStyle
 # from helpers.strings import calculate_valid_match_lengths
 
+# Paramiko caches this optional import error; its traceback retains our tool-loading stack.
+if paramiko.config.invoke_import_error:
+    paramiko.config.invoke_import_error.__traceback__ = None
+
 
 # Injected into every new SSH shell to keep it safe for non-interactive use.
 # Pagers (more/less) would otherwise block forever waiting for input that
@@ -34,6 +38,15 @@ class SSHInteractiveSession:
         self.last_command = b""
         self.trimmed_command_length = 0  # Initialize trimmed_command_length
         self.cwd = cwd
+        self._exit_code: int | None = None
+
+    def __del__(self):
+        for resource in (getattr(self, "shell", None), getattr(self, "client", None)):
+            try:
+                if resource:
+                    resource.close()
+            except Exception:
+                pass
 
     async def connect(self, keepalive_interval: int = 5):
         """
@@ -67,6 +80,7 @@ class SSHInteractiveSession:
 
                 # invoke interactive shell
                 self.shell = self.client.invoke_shell(width=100, height=50)
+                self._exit_code = None
 
                 # disable systemd/OSC prompt metadata and disable local echo
                 initial_command = f"unset PROMPT_COMMAND PS0; stty -echo; {PAGER_DISABLE_COMMAND}"
@@ -110,6 +124,27 @@ class SSHInteractiveSession:
         self.last_command = command.encode()
         self.trimmed_command_length = 0
         self.shell.send(self.last_command)
+
+    def is_terminated(self) -> bool:
+        if not self.shell:
+            return True
+        try:
+            transport = self.client.get_transport()
+            if not transport or not transport.is_active():
+                return True
+            return self.shell.closed or self.shell.exit_status_ready()
+        except Exception:
+            return True
+
+    def get_exit_code(self) -> int | None:
+        if self._exit_code is not None:
+            return self._exit_code
+        try:
+            if self.shell and self.shell.exit_status_ready():
+                self._exit_code = self.shell.recv_exit_status()
+        except Exception:
+            return None
+        return self._exit_code
         
     async def read_output(
         self, timeout: float = 0, reset_full_output: bool = False

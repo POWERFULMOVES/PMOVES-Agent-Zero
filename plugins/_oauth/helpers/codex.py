@@ -666,6 +666,38 @@ def fetch_models() -> list[str]:
 
 def prepare_responses_body(body: dict[str, Any], *, force_stream: bool) -> dict[str, Any]:
     normalized = dict(body)
+    settings = codex_config()
+    reasoning_effort = normalized.pop("reasoning_effort", None)
+    reasoning = normalized.get("reasoning")
+    if isinstance(reasoning, dict):
+        reasoning = dict(reasoning)
+    elif "reasoning" not in normalized:
+        reasoning = {}
+        effort = reasoning_effort or settings.get("reasoning_effort", "high")
+        if effort != "default":
+            reasoning["effort"] = effort
+    else:
+        reasoning = None
+    if reasoning is not None:
+        summary = settings.get("reasoning_summary", "auto")
+        if summary != "off":
+            reasoning.setdefault("summary", summary)
+        if reasoning:
+            normalized["reasoning"] = reasoning
+        else:
+            normalized.pop("reasoning", None)
+
+    verbosity = normalized.pop("verbosity", None) or settings.get(
+        "text_verbosity", "medium"
+    )
+    text_config = normalized.get("text")
+    if isinstance(text_config, dict):
+        text_config = dict(text_config)
+        if verbosity != "default":
+            text_config.setdefault("verbosity", verbosity)
+        normalized["text"] = text_config
+    elif "text" not in normalized and verbosity != "default":
+        normalized["text"] = {"verbosity": verbosity}
     input_value = normalized.get("input")
     if isinstance(input_value, str):
         normalized["input"] = (

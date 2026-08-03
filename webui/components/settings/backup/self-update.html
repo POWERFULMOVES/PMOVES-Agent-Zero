@@ -21,8 +21,8 @@
         <div class="settings-update-card"
              :class="{'settings-update-card-attention': $store.settings.hasUpdateAttention}">
           <div class="settings-update-card-icon" aria-hidden="true">
-            <span class="material-symbols-outlined"
-                  x-text="$store.settings.hasUpdateAttention ? 'release_alert' : 'system_update_alt'"></span>
+            <x-icon
+                  :name="$store.settings.hasUpdateAttention ? 'release_alert' : 'system_update_alt'"></x-icon>
           </div>
           <div class="settings-update-card-copy">
             <div class="settings-update-card-title" x-text="$store.settings.updateAttentionTitle"></div>

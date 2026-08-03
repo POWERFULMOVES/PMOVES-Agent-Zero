@@ -12,9 +12,11 @@
 
 ## Local Contracts
 
-- Build local function tools from enabled `agent.system.tool.*.md` prompt files.
-- Local prompt-derived function names prefer explicit `"tool_name"` examples, then the first prompt heading, and only fall back to the prompt filename when the prompt declares no callable name.
-- Function parameter schemas are object schemas with an explicit `properties` object so OpenAI-compatible servers that validate chat-style tool payloads accept permissive tools.
+- Build local function tools from enabled `agent.system.tool.*.md` prompt files and include `vision_load` only when the active chat model enables the matching vision prompt.
+- Local prompt-derived function names use existing bullet declarations that pair a backticked name with `arg` or `args` for multi-tool prompt files, otherwise prefer explicit `"tool_name"` examples, then the first prompt heading, and finally the prompt filename.
+- Apply registered tool-prompt render kwargs before deriving native metadata so descriptions never expose unresolved prompt templates.
+- Use an explicitly embedded JSON input schema when present. Infer only an unambiguous single backticked argument on an otherwise empty `args:` line; all other local tools receive an honest permissive object schema instead of prose-guessed types.
+- Native local-tool descriptions use the matching compact multi-tool declaration or the first prose line, not a duplicate copy of the full tool manual or fenced examples.
 - Preserve original Agent Zero tool names through the native Responses name map.
 - Keep MCP tool schemas merged after local prompt-derived tools.
 - Connector remote tools are advertised only when `_a0_connector` runtime metadata says the matching connected CLI capability is currently available.

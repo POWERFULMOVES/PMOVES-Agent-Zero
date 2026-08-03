@@ -11,7 +11,7 @@
                 <div class="commands-slash-menu" x-show="$store.commandsSlash.menuVisible" x-transition.opacity.duration.120ms>
                     <template x-if="$store.commandsSlash.loading">
                         <div class="commands-slash-loading">
-                            <span class="material-symbols-outlined spinning">progress_activity</span>
+                            <x-icon class="spinning" name="progress_activity"></x-icon>
                             <span>Loading slash commands...</span>
                         </div>
                     </template>
@@ -49,7 +49,7 @@
                                     class="commands-slash-create"
                                     @mousedown.prevent
                                     @click.prevent="$store.commandsSlash.openCreateCommand()">
-                                <span class="material-symbols-outlined">add</span>
+                                <x-icon name="add"></x-icon>
                                 <span x-text="$store.commandsSlash.emptyStateLabel"></span>
                             </button>
                         </div>

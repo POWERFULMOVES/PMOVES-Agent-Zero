@@ -19,6 +19,9 @@ DEFAULT_CODEX_SCOPES = [
     "api.connectors.read",
     "api.connectors.invoke",
 ]
+CODEX_REASONING_EFFORTS = {"default", "minimal", "low", "medium", "high", "xhigh"}
+CODEX_REASONING_SUMMARIES = {"off", "auto", "concise", "detailed"}
+CODEX_TEXT_VERBOSITIES = {"default", "low", "medium", "high"}
 DEFAULT_GEMINI_API_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai"
 DEFAULT_GEMINI_API_SCOPES = [
     "openid",
@@ -52,6 +55,15 @@ def codex_config(config: dict[str, Any] | None = None) -> dict[str, Any]:
         "codex_version": _as_str(raw.get("codex_version")),
         "models": _as_str_list(raw.get("models")),
         "request_timeout_seconds": _as_int(raw.get("request_timeout_seconds"), 120),
+        "reasoning_effort": _as_choice(
+            raw.get("reasoning_effort"), CODEX_REASONING_EFFORTS, "high"
+        ),
+        "reasoning_summary": _as_choice(
+            raw.get("reasoning_summary"), CODEX_REASONING_SUMMARIES, "auto"
+        ),
+        "text_verbosity": _as_choice(
+            raw.get("text_verbosity"), CODEX_TEXT_VERBOSITIES, "medium"
+        ),
         "proxy_base_path": _normalize_base_path(raw.get("proxy_base_path"), "/oauth/codex"),
         "callback_path": _normalize_base_path(raw.get("callback_path"), "/auth/callback"),
         "require_proxy_token": _as_bool(raw.get("require_proxy_token"), False),
@@ -102,6 +114,11 @@ def _as_bool(value: Any, default: bool) -> bool:
     if normalized in {"0", "false", "no", "off", "disabled"}:
         return False
     return default
+
+
+def _as_choice(value: Any, choices: set[str], default: str) -> str:
+    normalized = _as_str(value).lower()
+    return normalized if normalized in choices else default
 
 
 def _as_str_list(value: Any) -> list[str]:

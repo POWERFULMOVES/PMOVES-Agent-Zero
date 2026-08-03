@@ -19,7 +19,7 @@ def _iter_prompt_files():
         yield from prompts_dir.rglob("*.md")
 
 
-async def _build_system_text(profile: str = "agent0") -> str:
+async def _build_system_text(profile: str = "agent0", rendered: bool = False) -> str:
     old_args = dict(runtime.args)
     runtime.args.clear()
     runtime.args["dockerized"] = "true"
@@ -34,6 +34,9 @@ async def _build_system_text(profile: str = "agent0") -> str:
         set_current=False,
     )
     try:
+        if rendered:
+            prompt = await ctx.agent0.prepare_prompt(ctx.agent0.loop_data)
+            return str(prompt[0].content)
         system = await ctx.agent0.get_system_prompt(ctx.agent0.loop_data)
         return "\n\n".join(system)
     finally:
@@ -45,6 +48,10 @@ async def _build_system_text(profile: str = "agent0") -> str:
 @pytest.mark.asyncio
 async def test_default_agent0_prompt_budget_and_guardrails():
     system_text = await _build_system_text()
+    rendered_system_text = await _build_system_text(rendered=True)
+    communication_prompt = (
+        PROJECT_ROOT / "prompts" / "agent.system.main.communication.md"
+    ).read_text(encoding="utf-8")
 
     # The default prompt now intentionally includes the compact always-on tool
     # surface plus skill metadata. Keep the guardrail close to the observed
@@ -62,6 +69,10 @@ async def test_default_agent0_prompt_budget_and_guardrails():
     assert '"tool_name": "code_execution_tool"' in system_text
     assert '"tool_name": "memory_load"' in system_text
     assert "informative but tight" in system_text
+    assert "Your actual output starts with `{` and ends with `}`" in system_text
+    assert "~~~json" in communication_prompt
+    assert "~~~json" not in rendered_system_text
+    assert "```json" not in rendered_system_text
     assert "# code_execution_remote tool" not in system_text
     assert "# text_editor_remote tool" not in system_text
     assert "### computer_use_remote" not in system_text
@@ -69,6 +80,40 @@ async def test_default_agent0_prompt_budget_and_guardrails():
     assert '"tool_name": "text_editor_remote"' not in system_text
     assert '"tool_name": "computer_use_remote"' not in system_text
     assert "Computer Use enablement is scoped to the current CLI session" not in system_text
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "profile", ["agent0", "default", "developer", "researcher", "tiny-local"]
+)
+async def test_rendered_profiles_strip_json_fences(profile: str):
+    system_text = await _build_system_text(profile, rendered=True)
+
+    assert "~~~json" not in system_text
+    assert "```json" not in system_text
+
+    if profile == "researcher":
+        assert "~~~python" in system_text
+
+
+def test_remove_code_fences_can_target_json_only():
+    from helpers import files
+
+    prompt = """Before
+~~~json
+{"tool_name":"response","tool_args":{"text":"done"}}
+~~~
+~~~python
+print("keep me fenced")
+~~~
+After
+"""
+
+    rendered = files.remove_code_fences(prompt, language="json")
+
+    assert "~~~json" not in rendered
+    assert '{"tool_name":"response"' in rendered
+    assert '~~~python\nprint("keep me fenced")\n~~~' in rendered
 
 
 @pytest.mark.asyncio

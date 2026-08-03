@@ -17,7 +17,7 @@
                                 @error="$store.pluginInstallStore.detailThumbnailUrl = null">
                         </template>
                         <template x-if="!$store.pluginInstallStore.getDetailThumbnailUrl()">
-                            <span class="material-symbols-outlined pi-hero-placeholder">extension</span>
+                            <x-icon class="pi-hero-placeholder" name="extension"></x-icon>
                         </template>
                     </div>
                     <div class="pi-hero-info">
@@ -27,7 +27,7 @@
                                 <div class="pi-status-badges">
                                     <template x-if="$store.pluginInstallStore.selectedPlugin.suspended">
                                         <span class="pi-card-suspended-pill">
-                                            <span class="material-symbols-outlined">priority_high</span>
+                                            <x-icon name="priority_high"></x-icon>
                                             <span>Suspended</span>
                                         </span>
                                     </template>
@@ -46,7 +46,7 @@
                                         </span>
                                     </template>
                                     <span class="pi-hero-stars">
-                                        <span class="material-symbols-outlined">star</span>
+                                        <x-icon name="star"></x-icon>
                                         <span x-text="($store.pluginInstallStore.selectedPlugin.stars || 0)"></span>
                                         <template x-if="$store.pluginInstallStore.selectedPlugin.github">
                                             <a :href="$store.pluginInstallStore.selectedPlugin.github"
@@ -69,36 +69,36 @@
                                     <template x-if="$store.pluginInstallStore.installedPluginInfo.has_main_screen">
                                         <button type="button" class="button"
                                             @click="$store.pluginInstallStore.handleOpenPlugin()">
-                                            <span class="icon material-symbols-outlined">dashboard</span> Open
+                                            <x-icon class="icon" name="dashboard"></x-icon> Open
                                         </button>
                                     </template>
                                     <template x-if="$store.pluginInstallStore.installedPluginInfo.has_config_screen">
                                         <button type="button" class="button"
                                             @click="$store.pluginInstallStore.handleOpenConfig()">
-                                            <span class="icon material-symbols-outlined">settings</span> Config
+                                            <x-icon class="icon" name="settings"></x-icon> Config
                                         </button>
                                     </template>
                                     <template x-if="$store.pluginInstallStore.installedPluginInfo.has_readme">
                                         <button type="button" class="button"
                                             @click="$store.pluginInstallStore.handleOpenDoc('readme')">
-                                            <span class="icon material-symbols-outlined">description</span> README
+                                            <x-icon class="icon" name="description"></x-icon> README
                                         </button>
                                     </template>
                                     <template x-if="$store.pluginInstallStore.installedPluginInfo.has_license">
                                         <button type="button" class="button"
                                             @click="$store.pluginInstallStore.handleOpenDoc('license')">
-                                            <span class="icon material-symbols-outlined">gavel</span> License
+                                            <x-icon class="icon" name="gavel"></x-icon> License
                                         </button>
                                     </template>
                                     <template x-if="$store.pluginInstallStore.installedPluginInfo.has_execute_script">
                                         <button type="button" class="button"
                                             @click="$store.pluginInstallStore.handleOpenExecute()">
-                                            <span class="icon material-symbols-outlined">terminal</span> Script
+                                            <x-icon class="icon" name="terminal"></x-icon> Script
                                         </button>
                                     </template>
                                     <button type="button" class="button"
                                         @click="$store.pluginInstallStore.handleOpenInfo()">
-                                        <span class="icon material-symbols-outlined">info</span> Info
+                                        <x-icon class="icon" name="info"></x-icon> Info
                                     </button>
                                 </div>
                             </template>
@@ -108,7 +108,7 @@
 
                 <template x-if="$store.pluginInstallStore.selectedPlugin.suspended">
                     <div class="pi-suspension-banner">
-                        <span class="material-symbols-outlined">priority_high</span>
+                        <x-icon name="priority_high"></x-icon>
                         <div class="pi-suspension-banner-copy">
                             <div class="pi-suspension-banner-title">Plugin has been suspended for the following reasons:</div>
                             <div class="pi-suspension-banner-explanation"
@@ -144,7 +144,7 @@
                                 </span>
                             </template>
                             <template x-if="!$store.pluginInstallStore.loading">
-                                <span class="material-symbols-outlined">download</span>
+                                <x-icon name="download"></x-icon>
                             </template>
                             <template x-if="!$store.pluginInstallStore.loading">
                                 <span>Install</span>
@@ -162,7 +162,7 @@
                                 </span>
                             </template>
                             <template x-if="!$store.pluginInstallStore.loading">
-                                <span class="material-symbols-outlined">system_update</span>
+                                <x-icon name="system_update"></x-icon>
                             </template>
                             <template x-if="!$store.pluginInstallStore.loading">
                                 <span>Update</span>
@@ -178,7 +178,7 @@
                                 <span x-text="$store.pluginInstallStore.loadingMessage || 'Uninstalling...'"></span>
                             </span>
                             <span x-show="!$store.pluginInstallStore.loading">
-                                <span class="material-symbols-outlined">delete</span>
+                                <x-icon name="delete"></x-icon>
                             </span>
                             <span x-show="!$store.pluginInstallStore.loading">
                                 <span>Uninstall</span>
@@ -187,7 +187,7 @@
                     </template>
                     <template x-if="$store.pluginInstallStore.selectedPlugin.discussion">
                         <a :href="$store.pluginInstallStore.selectedPlugin.discussion" target="_blank" class="pi-btn-discussion">
-                            <span class="material-symbols-outlined">forum</span>
+                            <x-icon name="forum"></x-icon>
                             <span>Discussion</span>
                         </a>
                     </template>
@@ -252,19 +252,19 @@
                     <div class="pi-developer-links">
                         <template x-if="$store.pluginInstallStore.selectedPlugin.github">
                             <a :href="$store.pluginInstallStore.selectedPlugin.github" target="_blank" class="pi-dev-link">
-                                <span class="material-symbols-outlined">code</span>
+                                <x-icon name="code"></x-icon>
                                 <span>GitHub Repository</span>
                             </a>
                         </template>
                         <template x-if="$store.pluginInstallStore.selectedPlugin.key">
                             <a :href="$store.pluginInstallStore.getIndexUrl($store.pluginInstallStore.selectedPlugin.key)" target="_blank" class="pi-dev-link">
-                                <span class="material-symbols-outlined">inventory_2</span>
+                                <x-icon name="inventory_2"></x-icon>
                                 <span>Plugin Index</span>
                             </a>
                         </template>
                         <template x-if="$store.pluginInstallStore.getReportUrl($store.pluginInstallStore.selectedPlugin)">
                             <a :href="$store.pluginInstallStore.getReportUrl($store.pluginInstallStore.selectedPlugin)" target="_blank" class="pi-dev-link pi-report-link">
-                                <span class="material-symbols-outlined">report</span>
+                                <x-icon name="report"></x-icon>
                                 <span>Report malicious plugin</span>
                             </a>
                         </template>

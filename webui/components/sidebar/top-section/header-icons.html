@@ -34,19 +34,19 @@
       <div class="icons-section" id="hide-button">
         <!-- Sidebar Toggle Button -->
         <button id="toggle-sidebar" class="toggle-sidebar-button" @click="$store.sidebar.toggle()" aria-label="Toggle Sidebar" aria-expanded="false">
-          <span class="material-symbols-outlined" aria-hidden="true">menu</span>
+          <x-icon aria-hidden="true" name="menu"></x-icon>
         </button>
 
         <button class="config-button header-action-button" id="header-dashboard" @click="deselectChat()" title="Dashboard" aria-label="Dashboard" tabindex="-1">
-          <span class="material-symbols-outlined" aria-hidden="true">home</span>
+          <x-icon aria-hidden="true" name="home"></x-icon>
         </button>
 
         <button class="config-button header-action-button" id="header-plugins" @click="openModal('components/plugins/list/plugin-list.html')" title="Plugins" aria-label="Plugins" tabindex="-1">
-          <span class="material-symbols-outlined" aria-hidden="true">extension</span>
+          <x-icon aria-hidden="true" name="extension"></x-icon>
         </button>
 
         <button class="config-button header-action-button" id="header-settings" @click="openModal('settings/settings.html')" title="Settings" aria-label="Settings" tabindex="-1">
-          <span class="material-symbols-outlined" aria-hidden="true">settings</span>
+          <x-icon aria-hidden="true" name="settings"></x-icon>
         </button>
 
         <button
@@ -58,7 +58,7 @@
           aria-label="More options"
           tabindex="-1"
         >
-          <span class="material-symbols-outlined" aria-hidden="true" :class="$store.sidebar.menuOpen ? 'rotated' : ''">expand_more</span>
+          <x-icon aria-hidden="true" :class="$store.sidebar.menuOpen ? 'rotated' : ''" name="expand_more"></x-icon>
         </button>
       </div>
 
@@ -74,37 +74,37 @@
         <div class="dropdown-header">Navigation</div>
 
         <button class="dropdown-item" @click="deselectChat(); $store.sidebar.menuClose()">
-          <span class="material-symbols-outlined">home</span>
+          <x-icon name="home"></x-icon>
           <span>Dashboard</span>
         </button>
 
         <button class="dropdown-item" @click="$store.projects.openProjectsModal(); $store.sidebar.menuClose()">
-          <span class="material-symbols-outlined">snippet_folder</span>
+          <x-icon name="snippet_folder"></x-icon>
           <span>Projects</span>
         </button>
 
         <button id="sidebar-files-dropdown" class="dropdown-item" @click="$store.chatInput.browseFiles(); $store.sidebar.menuClose()">
-          <span class="material-symbols-outlined">folder</span>
+          <x-icon name="folder"></x-icon>
           <span>Files</span>
         </button>
 
         <button class="dropdown-item" @click="ensureModalOpen('settings/tunnel/remote-link.html'); $store.sidebar.menuClose()">
-          <span class="material-symbols-outlined">share</span>
+          <x-icon name="share"></x-icon>
           <span>Remote Control</span>
         </button>
 
         <button class="dropdown-item" @click="open('https://space-agent.ai/', '_blank', 'noopener,noreferrer'); $store.sidebar.menuClose()">
-          <span class="material-symbols-outlined">rocket_launch</span>
+          <x-icon name="rocket_launch"></x-icon>
           <span>Space Agent</span>
         </button>
 
         <button class="dropdown-item" @click="openModal('components/modals/scheduler/scheduler-modal.html'); $store.sidebar.menuClose()">
-          <span class="material-symbols-outlined">schedule</span>
+          <x-icon name="schedule"></x-icon>
           <span>Tasks</span>
         </button>
 
         <button class="dropdown-item" @click="openModal('settings/settings.html'); $store.sidebar.menuClose()">
-          <span class="material-symbols-outlined">settings</span>
+          <x-icon name="settings"></x-icon>
           <span>Settings</span>
         </button>
 
@@ -118,30 +118,30 @@
           @click="$store.sidebar.toggleSection('chatActions')"
         >
           <span class="quick-actions-accordion-label">
-            <span class="material-symbols-outlined">forum</span>
+            <x-icon name="forum"></x-icon>
             <span>Chat Actions</span>
           </span>
-          <span class="material-symbols-outlined quick-actions-accordion-chevron">expand_more</span>
+          <x-icon class="quick-actions-accordion-chevron" name="expand_more"></x-icon>
         </button>
 
         <div class="quick-actions-accordion-panel" x-show="$store.sidebar.isSectionOpen('chatActions')" style="display: none;">
           <button class="dropdown-item" @click="$store.chats.newChat(); $store.sidebar.menuClose()">
-            <span class="material-symbols-outlined">chat_add_on</span>
+            <x-icon name="chat_add_on"></x-icon>
             <span>New Chat</span>
           </button>
 
           <button class="dropdown-item" @click="$store.chats.loadChats(); $store.sidebar.menuClose()">
-            <span class="material-symbols-outlined">folder_open</span>
+            <x-icon name="folder_open"></x-icon>
             <span>Load Chat</span>
           </button>
 
           <button class="dropdown-item" x-show="$store.chats.selected" @click="$store.chats.saveChat(); $store.sidebar.menuClose()">
-            <span class="material-symbols-outlined">save</span>
+            <x-icon name="save"></x-icon>
             <span>Save Chat</span>
           </button>
 
           <button class="dropdown-item" x-show="$store.chats.selected" @click="$confirmClick($event, () => { $store.chats.resetChat(); $store.sidebar.menuClose() })">
-            <span class="material-symbols-outlined">delete_sweep</span>
+            <x-icon name="delete_sweep"></x-icon>
             <span>Clear Chat</span>
           </button>
         </div>
@@ -149,12 +149,12 @@
         <div class="dropdown-separator"></div>
 
         <button class="dropdown-item" x-show="$store.chats.loggedIn" @click="$confirmClick($event, () => { $store.chats.logout(); $store.sidebar.menuClose() })">
-          <span class="material-symbols-outlined">logout</span>
+          <x-icon name="logout"></x-icon>
           <span>Logout</span>
         </button>
 
         <button class="dropdown-item" @click="$confirmClick($event, () => { $store.chats.restart(); $store.sidebar.menuClose() })">
-          <span class="material-symbols-outlined">restart_alt</span>
+          <x-icon name="restart_alt"></x-icon>
           <span>Restart A0</span>
         </button>
 

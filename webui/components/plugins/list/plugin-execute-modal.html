@@ -14,7 +14,7 @@
 
                 <div class="plugin-execute-idle"
                      x-show="!$store.pluginExecuteStore.running && $store.pluginExecuteStore.exitCode === null && !$store.pluginExecuteStore.output">
-                    <span class="material-symbols-outlined idle-icon">terminal</span>
+                    <x-icon class="idle-icon" name="terminal"></x-icon>
                     <div class="idle-text">
                         <span class="idle-headline">Press <strong>Run</strong> to execute <strong x-text="$store.pluginExecuteStore.pluginDisplayName"></strong></span>
                         <span class="idle-sub">This will run the plugin's <code>execute.py</code> script.</span>
@@ -35,15 +35,14 @@
                 </div>
 
                 <div class="plugin-execute-status" x-show="$store.pluginExecuteStore.running">
-                    <span class="material-symbols-outlined spin">progress_activity</span>
+                    <x-icon class="spin" name="progress_activity"></x-icon>
                     <span>Running execute.py...</span>
                 </div>
 
                 <div class="plugin-execute-exit" x-show="!$store.pluginExecuteStore.running && $store.pluginExecuteStore.exitCode !== null">
-                    <span class="material-symbols-outlined"
+                    <x-icon
                           :class="$store.pluginExecuteStore.exitCode === 0 ? 'exit-ok' : 'exit-err'"
-                          x-text="$store.pluginExecuteStore.exitCode === 0 ? 'check_circle' : 'error'">
-                    </span>
+                          :name="$store.pluginExecuteStore.exitCode === 0 ? 'check_circle' : 'error'"></x-icon>
                     <span x-text="$store.pluginExecuteStore.exitCode === 0 ? 'Completed successfully (exit 0)' : 'Exited with code ' + $store.pluginExecuteStore.exitCode"></span>
                 </div>
 
@@ -59,7 +58,7 @@
                 x-data
                 :disabled="$store.pluginExecuteStore?.running"
                 @click="$store.pluginExecuteStore?.run()">
-            <span class="icon material-symbols-outlined">play_arrow</span>
+            <x-icon class="icon" name="play_arrow"></x-icon>
             <span x-text="$store.pluginExecuteStore?.exitCode !== null || $store.pluginExecuteStore?.output ? 'Rerun' : 'Run'">Run</span>
         </button>
         <button class="btn btn-cancel footer-btn" @click="window.closeModal?.()">Close</button>

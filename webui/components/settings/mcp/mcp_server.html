@@ -56,10 +56,10 @@
 
           <div class="mcp-internal-tools">
             <label class="mcp-internal-search">
-              <span class="material-symbols-outlined" aria-hidden="true">search</span>
+              <x-icon aria-hidden="true" name="search"></x-icon>
               <input type="search" x-model.debounce.150ms="internalToolSearch" placeholder="Search internal tools" />
               <button type="button" x-show="internalToolSearch" @click="internalToolSearch = ''" title="Clear search">
-                <span class="material-symbols-outlined" aria-hidden="true">close</span>
+                <x-icon aria-hidden="true" name="close"></x-icon>
               </button>
             </label>
 

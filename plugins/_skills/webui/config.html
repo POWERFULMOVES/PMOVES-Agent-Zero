@@ -17,7 +17,7 @@
 
       <div class="skills-toolbar">
         <label class="skills-search">
-          <span class="material-symbols-outlined">search</span>
+          <x-icon name="search"></x-icon>
           <input
             type="text"
             x-model.trim="search"
@@ -27,7 +27,7 @@
 
         <div class="skills-actions">
           <button type="button" class="button" @click="loadCatalog()" :disabled="loadingCatalog || mutatingChat">
-            <span class="icon material-symbols-outlined">refresh</span>
+            <x-icon class="icon" name="refresh"></x-icon>
             Refresh
           </button>
         </div>
@@ -56,7 +56,7 @@
                   aria-label="Open skill"
                   @click="openSkill(entry)"
                 >
-                  <span class="icon material-symbols-outlined">article</span>
+                  <x-icon class="icon" name="article"></x-icon>
                 </button>
               </div>
             </div>
@@ -71,7 +71,7 @@
         <div class="skills-panel-subtitle" x-text="allSkillsSubtitle()"></div>
 
         <div class="skills-loading" x-show="loadingCatalog">
-          <span class="material-symbols-outlined spinning">progress_activity</span>
+          <x-icon class="spinning" name="progress_activity"></x-icon>
           <span>Loading skills...</span>
         </div>
 
@@ -116,7 +116,7 @@
                   :disabled="isVisibilityDisabled()"
                   @click.prevent.stop="toggleVisibility(skill)"
                 >
-                  <span class="icon material-symbols-outlined" x-text="visibilityButtonIcon(skill)"></span>
+                  <x-icon class="icon" :name="visibilityButtonIcon(skill)"></x-icon>
                 </button>
                 <button
                   type="button"
@@ -125,7 +125,7 @@
                   aria-label="Open skill"
                   @click.prevent.stop="openSkill(skill)"
                 >
-                  <span class="icon material-symbols-outlined">article</span>
+                  <x-icon class="icon" name="article"></x-icon>
                 </button>
               </div>
             </div>

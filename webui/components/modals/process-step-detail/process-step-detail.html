@@ -26,18 +26,18 @@
                         <button class="btn btn-action-header copy-all" 
                                 @click.stop="$store.stepDetail.copyToClipboard($store.stepDetail.formatStepForCopy($store.stepDetail.selectedStepForDetail))"
                                 title="Copy Complete Step with Metadata">
-                            <span class="material-symbols-outlined">copy_all</span> All
+                            <x-icon name="copy_all"></x-icon> All
                         </button>
                         <button class="btn btn-action-header copy-content" 
                                 @click.stop="$store.stepDetail.copyToClipboard($store.stepDetail.getStepPrimaryContent($store.stepDetail.selectedStepForDetail))"
                                 title="Copy Raw LLM Response">
-                            <span class="material-symbols-outlined">content_copy</span> Content
+                            <x-icon name="content_copy"></x-icon> Content
                         </button>
                         <button class="btn btn-action-header toggle-raw" 
                                 @click.stop="showRaw = !showRaw"
                                 :class="{ 'active': showRaw }"
                                 title="Toggle Raw JSON View">
-                            <span class="material-symbols-outlined">data_object</span>
+                            <x-icon name="data_object"></x-icon>
                         </button>
                     </div>
                 </div>

@@ -11,7 +11,7 @@
       <div class="office-shell">
         <div class="office-document-header" x-show="$store.desktop.hasActiveFile()" style="display: none;">
           <div class="office-document-title" :title="$store.desktop.tabLabel($store.desktop.session)">
-            <span class="material-symbols-outlined office-document-icon" aria-hidden="true" x-text="$store.desktop.tabIcon($store.desktop.session)"></span>
+            <x-icon class="office-document-icon" aria-hidden="true" :name="$store.desktop.tabIcon($store.desktop.session)"></x-icon>
             <span class="office-document-name" x-text="$store.desktop.tabTitle($store.desktop.session)"></span>
             <span class="office-document-dirty" x-show="$store.desktop.dirty" aria-hidden="true">*</span>
           </div>
@@ -25,7 +25,7 @@
             :disabled="$store.desktop.saving"
             @click="$store.desktop.save()"
           >
-            <span class="material-symbols-outlined" :class="{ spinning: $store.desktop.saving }" x-text="$store.desktop.saving ? 'progress_activity' : 'save'"></span>
+            <x-icon :class="{ spinning: $store.desktop.saving }" :name="$store.desktop.saving ? 'progress_activity' : 'save'"></x-icon>
           </button>
 
           <div class="office-file-actions" x-data="{ open: false }" @click.outside="open = false" @keydown.escape.window="open = false">
@@ -39,15 +39,15 @@
               :disabled="$store.desktop.saving"
               @click.stop="open = !open"
             >
-              <span class="material-symbols-outlined">more_vert</span>
+              <x-icon name="more_vert"></x-icon>
             </button>
             <div class="office-new-menu office-file-menu" role="menu" x-show="open" @click.stop>
               <button type="button" class="office-new-menu-item" role="menuitem" :disabled="$store.desktop.saving" @click="open = false; $store.desktop.renameActiveFile()">
-                <span class="material-symbols-outlined" aria-hidden="true">edit</span>
+                <x-icon aria-hidden="true" name="edit"></x-icon>
                 <span>Rename</span>
               </button>
               <button type="button" class="office-new-menu-item" role="menuitem" :disabled="$store.desktop.loading" @click="open = false; $store.desktop.closeActiveFile()">
-                <span class="material-symbols-outlined" aria-hidden="true">close</span>
+                <x-icon aria-hidden="true" name="close"></x-icon>
                 <span>Close File</span>
               </button>
             </div>
@@ -55,7 +55,7 @@
         </div>
 
         <div class="office-state-line" x-show="$store.desktop.message || $store.desktop.error || $store.desktop.loading" style="display: none;">
-          <span class="material-symbols-outlined" :class="{ spinning: $store.desktop.loading }" x-text="$store.desktop.loading ? 'progress_activity' : ($store.desktop.error ? 'error' : 'check_circle')"></span>
+          <x-icon :class="{ spinning: $store.desktop.loading }" :name="$store.desktop.loading ? 'progress_activity' : ($store.desktop.error ? 'error' : 'check_circle')"></x-icon>
           <span x-text="$store.desktop.error || $store.desktop.message || 'Working'"></span>
         </div>
 
@@ -74,10 +74,10 @@
           </div>
 
           <div class="office-desktop-empty" x-show="$store.desktop.shouldShowDesktopEmptyState()" style="display: none;">
-            <span class="material-symbols-outlined" aria-hidden="true">power_settings_new</span>
+            <x-icon aria-hidden="true" name="power_settings_new"></x-icon>
             <span class="office-desktop-empty-title">Desktop is shut down</span>
             <button type="button" class="office-icon-button office-command-button" @click="$store.desktop.restartDesktopSession()">
-              <span class="material-symbols-outlined" aria-hidden="true">restart_alt</span>
+              <x-icon aria-hidden="true" name="restart_alt"></x-icon>
               <span class="office-button-label">Restart Desktop</span>
             </button>
           </div>

@@ -23,7 +23,7 @@
                   :title="$store.editor.tabLabel(tab)"
                   @click="$store.editor.selectTab(tab.tab_id)"
                 >
-                  <span class="material-symbols-outlined editor-tab-icon" aria-hidden="true" x-text="$store.editor.tabIcon(tab)"></span>
+                  <x-icon class="editor-tab-icon" aria-hidden="true" :name="$store.editor.tabIcon(tab)"></x-icon>
                   <span class="editor-tab-title" x-text="$store.editor.tabTitle(tab)"></span>
                 </button>
                 <button
@@ -34,7 +34,7 @@
                   @pointerdown.stop
                   @click.stop="$store.editor.closeTab(tab.tab_id)"
                 >
-                  <span class="material-symbols-outlined" aria-hidden="true">close</span>
+                  <x-icon aria-hidden="true" name="close"></x-icon>
                 </button>
               </div>
             </template>
@@ -46,12 +46,12 @@
               :disabled="$store.editor.loading || $store.editor.saving"
               @click="$store.editor.runNewMenuAction('markdown')"
             >
-              <span class="material-symbols-outlined" aria-hidden="true">add</span>
+              <x-icon aria-hidden="true" name="add"></x-icon>
             </button>
           </div>
 
           <div class="editor-close-confirm" x-show="$store.editor.hasPendingClose()" style="display: none;" role="status">
-            <span class="material-symbols-outlined editor-close-confirm-icon" aria-hidden="true">warning</span>
+            <x-icon class="editor-close-confirm-icon" aria-hidden="true" name="warning"></x-icon>
             <div class="editor-close-confirm-copy">
               <span class="editor-close-confirm-title" x-text="$store.editor.pendingCloseTitle()"></span>
               <span class="editor-close-confirm-message" x-text="$store.editor.pendingCloseMessage()"></span>
@@ -88,47 +88,47 @@
                 :aria-label="$store.editor.viewModeTitle()"
                 @click="$store.editor.toggleViewMode()"
               >
-                <span class="material-symbols-outlined" aria-hidden="true" x-text="$store.editor.viewModeIcon()"></span>
+                <x-icon aria-hidden="true" :name="$store.editor.viewModeIcon()"></x-icon>
               </button>
 
               <div class="editor-tool-group editor-history-tools" x-show="$store.editor.isTextDocument()" style="display: none;">
                 <button type="button" class="editor-icon-button" title="Undo" aria-label="Undo" :disabled="$store.editor.previewEditing || !$store.editor.canUndo()" @click="$store.editor.undo()">
-                  <span class="material-symbols-outlined">undo</span>
+                  <x-icon name="undo"></x-icon>
                 </button>
                 <button type="button" class="editor-icon-button" title="Redo" aria-label="Redo" :disabled="$store.editor.previewEditing || !$store.editor.canRedo()" @click="$store.editor.redo()">
-                  <span class="material-symbols-outlined">redo</span>
+                  <x-icon name="redo"></x-icon>
                 </button>
               </div>
 
               <div class="editor-tool-group editor-source-tools" x-show="$store.editor.isTextDocument() && $store.editor.isSourceMode()" style="display: none;">
                 <button type="button" class="editor-icon-button" title="Bold" aria-label="Bold" @click="$store.editor.format('bold')">
-                  <span class="material-symbols-outlined">format_bold</span>
+                  <x-icon name="format_bold"></x-icon>
                 </button>
                 <button type="button" class="editor-icon-button" title="Italic" aria-label="Italic" @click="$store.editor.format('italic')">
-                  <span class="material-symbols-outlined">format_italic</span>
+                  <x-icon name="format_italic"></x-icon>
                 </button>
                 <button type="button" class="editor-icon-button" title="List" aria-label="List" @click="$store.editor.format('list')">
-                  <span class="material-symbols-outlined">format_list_bulleted</span>
+                  <x-icon name="format_list_bulleted"></x-icon>
                 </button>
                 <button type="button" class="editor-icon-button" title="Numbered list" aria-label="Numbered list" @click="$store.editor.format('numbered')">
-                  <span class="material-symbols-outlined">format_list_numbered</span>
+                  <x-icon name="format_list_numbered"></x-icon>
                 </button>
                 <button type="button" class="editor-icon-button" title="Table" aria-label="Table" @click="$store.editor.format('table')">
-                  <span class="material-symbols-outlined">table</span>
+                  <x-icon name="table"></x-icon>
                 </button>
               </div>
               <div class="editor-tool-group editor-preview-tools" x-show="$store.editor.isTextDocument() && $store.editor.isPreviewMode()" style="display: none;">
                 <button type="button" class="editor-icon-button" title="Edit document" aria-label="Edit document" x-show="!$store.editor.previewEditing" @click="$store.editor.startPreviewEdit()">
-                  <span class="material-symbols-outlined">edit_note</span>
+                  <x-icon name="edit_note"></x-icon>
                 </button>
                 <button type="button" class="editor-icon-button is-primary" title="Apply document edit" aria-label="Apply document edit" x-show="$store.editor.previewEditing" @click="$store.editor.applyPreviewEdit()">
-                  <span class="material-symbols-outlined">check</span>
+                  <x-icon name="check"></x-icon>
                 </button>
                 <button type="button" class="editor-icon-button" title="Cancel document edit" aria-label="Cancel document edit" x-show="$store.editor.previewEditing" @click="$store.editor.cancelPreviewEdit()">
-                  <span class="material-symbols-outlined">close</span>
+                  <x-icon name="close"></x-icon>
                 </button>
                 <button type="button" class="editor-icon-button" title="Search" aria-label="Search" :disabled="$store.editor.previewEditing" @click="$store.editor.openSearch()">
-                  <span class="material-symbols-outlined">search</span>
+                  <x-icon name="search"></x-icon>
                 </button>
               </div>
               <span class="editor-toolbar-spacer"></span>
@@ -142,7 +142,7 @@
                 :disabled="$store.editor.saving"
                 @click="$store.editor.save()"
               >
-                <span class="material-symbols-outlined" :class="{ spinning: $store.editor.saving }" x-text="$store.editor.saving ? 'progress_activity' : 'save'"></span>
+                <x-icon :class="{ spinning: $store.editor.saving }" :name="$store.editor.saving ? 'progress_activity' : 'save'"></x-icon>
               </button>
 
               <button
@@ -153,7 +153,7 @@
                 :disabled="$store.editor.saving"
                 @click="$store.editor.saveAs()"
               >
-                <span class="material-symbols-outlined">save_as</span>
+                <x-icon name="save_as"></x-icon>
               </button>
 
               <div class="editor-file-actions" x-data="{ open: false }" @click.outside="open = false" @keydown.escape.window="open = false">
@@ -167,23 +167,23 @@
                   :disabled="$store.editor.saving"
                   @click.stop="open = !open"
                 >
-                  <span class="material-symbols-outlined">more_vert</span>
+                  <x-icon name="more_vert"></x-icon>
                 </button>
                 <div class="editor-new-menu editor-file-menu" role="menu" x-show="open" @click.stop>
                   <button type="button" class="editor-new-menu-item" role="menuitem" :disabled="$store.editor.saving" @click="open = false; $store.editor.downloadActiveFile()">
-                    <span class="material-symbols-outlined" aria-hidden="true">download</span>
+                    <x-icon aria-hidden="true" name="download"></x-icon>
                     <span>Download</span>
                   </button>
                   <button type="button" class="editor-new-menu-item" role="menuitem" :disabled="$store.editor.saving" @click="open = false; $store.editor.renameActiveFile()">
-                    <span class="material-symbols-outlined" aria-hidden="true">edit</span>
+                    <x-icon aria-hidden="true" name="edit"></x-icon>
                     <span>Rename</span>
                   </button>
                   <button type="button" class="editor-new-menu-item" role="menuitem" :disabled="$store.editor.loading" @click="open = false; $store.editor.closeActiveFile()">
-                    <span class="material-symbols-outlined" aria-hidden="true">close</span>
+                    <x-icon aria-hidden="true" name="close"></x-icon>
                     <span>Close File</span>
                   </button>
                   <button type="button" class="editor-new-menu-item" role="menuitem" :disabled="$store.editor.loading || $store.editor.visibleTabs().length === 0" @click="open = false; $store.editor.closeAllFiles()">
-                    <span class="material-symbols-outlined" aria-hidden="true">close</span>
+                    <x-icon aria-hidden="true" name="close"></x-icon>
                     <span>Close All</span>
                   </button>
                 </div>
@@ -192,7 +192,7 @@
           </div>
 
           <div class="editor-search-bar" x-show="$store.editor.searchOpen" style="display: none;">
-            <span class="material-symbols-outlined" aria-hidden="true">search</span>
+            <x-icon aria-hidden="true" name="search"></x-icon>
             <input
               type="search"
               data-editor-search
@@ -204,18 +204,18 @@
             />
             <span class="editor-search-count" x-text="$store.editor.searchCountLabel()"></span>
             <button type="button" class="editor-icon-button" title="Previous match" aria-label="Previous match" :disabled="$store.editor.searchMatches.length === 0" @click="$store.editor.previousSearchMatch()">
-              <span class="material-symbols-outlined">keyboard_arrow_up</span>
+              <x-icon name="keyboard_arrow_up"></x-icon>
             </button>
             <button type="button" class="editor-icon-button" title="Next match" aria-label="Next match" :disabled="$store.editor.searchMatches.length === 0" @click="$store.editor.nextSearchMatch()">
-              <span class="material-symbols-outlined">keyboard_arrow_down</span>
+              <x-icon name="keyboard_arrow_down"></x-icon>
             </button>
             <button type="button" class="editor-icon-button" title="Close search" aria-label="Close search" @click="$store.editor.closeSearch()">
-              <span class="material-symbols-outlined">close</span>
+              <x-icon name="close"></x-icon>
             </button>
           </div>
 
           <div class="editor-state-line" x-show="$store.editor.message || $store.editor.error || $store.editor.loading" style="display: none;">
-            <span class="material-symbols-outlined" :class="{ spinning: $store.editor.loading }" x-text="$store.editor.loading ? 'progress_activity' : ($store.editor.error ? 'error' : 'check_circle')"></span>
+            <x-icon :class="{ spinning: $store.editor.loading }" :name="$store.editor.loading ? 'progress_activity' : ($store.editor.error ? 'error' : 'check_circle')"></x-icon>
             <span x-text="$store.editor.error || $store.editor.message || 'Working'"></span>
           </div>
 
@@ -267,15 +267,15 @@
             <div class="editor-empty" x-show="!$store.editor.session && !$store.editor.loading" style="display: none;">
               <div class="editor-empty-actions">
                 <button type="button" class="editor-icon-button editor-command-button" @click="$store.editor.runNewMenuAction('open')">
-                  <span class="material-symbols-outlined" aria-hidden="true">folder_open</span>
+                  <x-icon aria-hidden="true" name="folder_open"></x-icon>
                   <span class="editor-button-label">Open</span>
                 </button>
                 <button type="button" class="editor-icon-button editor-command-button" @click="$store.editor.runNewMenuAction('markdown')">
-                  <span class="material-symbols-outlined" aria-hidden="true">article</span>
+                  <x-icon aria-hidden="true" name="article"></x-icon>
                   <span class="editor-button-label">Markdown</span>
                 </button>
                 <button type="button" class="editor-icon-button editor-command-button" @click="$store.editor.runNewMenuAction('text')">
-                  <span class="material-symbols-outlined" aria-hidden="true">description</span>
+                  <x-icon aria-hidden="true" name="description"></x-icon>
                   <span class="editor-button-label">Text</span>
                 </button>
               </div>

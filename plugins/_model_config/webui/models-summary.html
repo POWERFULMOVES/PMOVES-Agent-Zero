@@ -19,7 +19,7 @@
              x-data="$store.modelConfig.createGlobalPresetSelector()"
              x-init="await init($store.chats?.selected || '')">
           <div x-show="loading" class="settings-model-loading">
-            <span class="material-symbols-outlined spinning">progress_activity</span>
+            <x-icon class="spinning" name="progress_activity"></x-icon>
             Loading model preset...
           </div>
           <div x-show="!loading">

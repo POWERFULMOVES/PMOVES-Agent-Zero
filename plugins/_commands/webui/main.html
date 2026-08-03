@@ -30,15 +30,15 @@
 
                         <div class="commands-toolbar-actions">
                             <button type="button" class="button secondary" @click="$store.commandsManager.refresh()">
-                                <span class="material-symbols-outlined">refresh</span>
+                                <x-icon name="refresh"></x-icon>
                                 <span>Refresh</span>
                             </button>
                             <button type="button" class="button secondary" @click="$store.commandsManager.browseScopeFolder()">
-                                <span class="material-symbols-outlined">folder_open</span>
+                                <x-icon name="folder_open"></x-icon>
                                 <span>Browse Scope Folder</span>
                             </button>
                             <button type="button" class="button primary" @click="$store.commandsManager.openCreateCommand()">
-                                <span class="material-symbols-outlined">add</span>
+                                <x-icon name="add"></x-icon>
                                 <span>Create Command</span>
                             </button>
                         </div>
@@ -46,7 +46,7 @@
                 </div>
 
                 <div class="commands-loading" x-show="$store.commandsManager.loading">
-                    <span class="material-symbols-outlined spinning">progress_activity</span>
+                    <x-icon class="spinning" name="progress_activity"></x-icon>
                     <span>Loading commands...</span>
                 </div>
 
@@ -70,13 +70,13 @@
 
                                         <div class="commands-card-actions">
                                             <button type="button" class="button icon" title="Edit command" @click="$store.commandsManager.openEditCommand(command)">
-                                                <span class="material-symbols-outlined">edit</span>
+                                                <x-icon name="edit"></x-icon>
                                             </button>
                                             <button type="button" class="button icon" title="Duplicate command" @click="$store.commandsManager.duplicateCommand(command)">
-                                                <span class="material-symbols-outlined">content_copy</span>
+                                                <x-icon name="content_copy"></x-icon>
                                             </button>
                                             <button type="button" class="button icon danger" title="Delete command" @click.stop="$confirmClick($event, () => $store.commandsManager.deleteCommand(command))">
-                                                <span class="material-symbols-outlined">delete</span>
+                                                <x-icon name="delete"></x-icon>
                                             </button>
                                         </div>
                                     </div>
@@ -94,7 +94,7 @@
                                 Create YAML-configured slash commands here and they will appear from <code>/</code> in chat.
                             </div>
                             <button type="button" class="button primary" @click="$store.commandsManager.openCreateCommand()">
-                                <span class="material-symbols-outlined">add</span>
+                                <x-icon name="add"></x-icon>
                                 <span>Create Slash Command</span>
                             </button>
                         </div>
@@ -125,7 +125,7 @@
                                                     :title="$store.commandsManager.scopedOverride(command) ? 'Edit override' : 'Create editable override'"
                                                     :aria-label="$store.commandsManager.scopedOverride(command) ? `Edit /${command.name} override` : `Create editable /${command.name} override`"
                                                     @click="$store.commandsManager.editBuiltinCommand(command)">
-                                                <span class="material-symbols-outlined">edit</span>
+                                                <x-icon name="edit"></x-icon>
                                             </button>
                                         </div>
 

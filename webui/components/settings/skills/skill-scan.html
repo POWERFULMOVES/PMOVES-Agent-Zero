@@ -46,7 +46,7 @@
 
                 <div class="scan-actions">
                     <button type="button" class="button" @click="$store.skillsScanStore.copyScanPrompt()">
-                        <span class="material-symbols-outlined" aria-hidden="true">content_copy</span>
+                        <x-icon aria-hidden="true" name="content_copy"></x-icon>
                         <span>Copy Prompt</span>
                     </button>
                     <button type="button" class="button confirm" :disabled="$store.skillsScanStore.agentScanning" @click="$store.skillsScanStore.runAgentScan()">
@@ -54,7 +54,7 @@
                         <span x-show="!$store.skillsScanStore.agentScanning">Run Scan</span>
                     </button>
                     <button type="button" class="button" x-show="$store.skillsScanStore.scanCtxId" @click="$store.skillsScanStore.openScanChatInNewWindow()">
-                        <span class="material-symbols-outlined" aria-hidden="true">open_in_new</span>
+                        <x-icon aria-hidden="true" name="open_in_new"></x-icon>
                         <span>Open in Chat</span>
                     </button>
                 </div>

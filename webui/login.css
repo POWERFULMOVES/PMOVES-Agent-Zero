@@ -1,5 +1,3 @@
-@import url("https://fonts.googleapis.com/css2?family=Rubik:ital,wght@0,300..900;1,300..900&display=swap");
-
 body {
     background-color: #131313;
     color: #d4d4d4;
@@ -34,13 +32,8 @@ input {
 }
 
 .logo {
-    width: 80px;
-    height: 80px;
-    border-radius: 0.3125rem; /* Match the main page logo style */
-    margin-bottom: 1rem;
-}
-
-h2 {
+    width: min(57.75vw, 14.85rem);
+    height: auto;
     margin-bottom: 2rem;
 }
 

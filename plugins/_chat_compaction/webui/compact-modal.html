@@ -9,7 +9,7 @@
         <div class="modal-header">
           <h3>Compact Chat History</h3>
           <button class="modal-close" @click="$store.compactStore?.closeModal()">
-            <span class="material-symbols-outlined">close</span>
+            <x-icon name="close"></x-icon>
           </button>
         </div>
         
@@ -63,13 +63,13 @@
               
               <template x-if="!$store.compactStore?.canCompact">
                 <div class="stats-info">
-                  <span class="material-symbols-outlined">info</span>
+                  <x-icon name="info"></x-icon>
                   <span>Conversation is too short to compact (minimum 1,000 tokens).</span>
                 </div>
               </template>
 
               <div class="stats-warning">
-                <span class="material-symbols-outlined">warning</span>
+                <x-icon name="warning"></x-icon>
                 <span>This action cannot be undone. The original conversation will be replaced with a summary.</span>
               </div>
             </div>

@@ -88,27 +88,27 @@
                         </label>
 
                         <button type="button" class="button plugin-settings-toolbar-button" title="Show existing configurations" @click="context.openConfigListModal()">
-                            <span class="icon material-symbols-outlined">list</span>
+                            <x-icon class="icon" name="list"></x-icon>
                         </button>
 
                     </div>
                 </div>
 
                 <div x-show="context.scopeMismatchMessage" class="plugin-settings-scope-info">
-                    <span class="material-symbols-outlined">info</span>
+                    <x-icon name="info"></x-icon>
                     <span x-text="context.scopeMismatchMessage"></span>
                 </div>
                 </div>
 
                 <!-- Error -->
                 <div x-show="context.error" class="plugin-settings-error">
-                    <span class="material-symbols-outlined">error</span>
+                    <x-icon name="error"></x-icon>
                     <span x-text="context.error"></span>
                 </div>
 
                 <!-- Loading -->
                 <div x-show="context.isLoading" class="plugin-settings-loading">
-                    <span class="material-symbols-outlined spinning">progress_activity</span>
+                    <x-icon class="spinning" name="progress_activity"></x-icon>
                     <span>Loading settings...</span>
                 </div>
 

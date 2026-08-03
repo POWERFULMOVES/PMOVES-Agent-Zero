@@ -83,7 +83,7 @@
                         aria-expanded="false"
                         aria-controls="plugin-info-readme-collapse">
                         <span>README</span>
-                        <span class="material-symbols-outlined plugin-info-readme-toggle-icon">expand_more</span>
+                        <x-icon class="plugin-info-readme-toggle-icon" name="expand_more"></x-icon>
                     </button>
                     <div class="collapse" id="plugin-info-readme-collapse">
                         <div class="plugin-info-readme-body">
@@ -110,14 +110,14 @@
                             class="button"
                             title="Open plugin files"
                             @click="$store.pluginListStore.openPluginFolder($store.pluginListStore.selectedPlugin)">
-                            <span class="icon material-symbols-outlined">folder_open</span> Files
+                            <x-icon class="icon" name="folder_open"></x-icon> Files
                         </button>
                         <template x-if="$store.pluginListStore.selectedPlugin.pluginHub?.key">
                             <button type="button"
                                 class="button"
                                 title="Open in Plugin Hub"
                                 @click="$store.pluginListStore.openPluginHub($store.pluginListStore.selectedPlugin)">
-                                <span class="icon material-symbols-outlined">storefront</span> Hub
+                                <x-icon class="icon" name="storefront"></x-icon> Hub
                             </button>
                         </template>
                     </div>

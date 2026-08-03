@@ -9,7 +9,7 @@
      x-destroy="$store.goalBar.cleanup()">
   <template x-if="$store.goalBar && $store.goalBar.visible">
     <div class="goal-strip" :class="`is-${$store.goalBar.goal?.status || 'active'}`">
-      <span class="material-symbols-outlined goal-strip-icon" x-text="$store.goalBar.statusIcon" aria-hidden="true"></span>
+      <x-icon class="goal-strip-icon" :name="$store.goalBar.statusIcon" aria-hidden="true"></x-icon>
 
       <template x-if="!$store.goalBar.editing">
         <div class="goal-strip-copy">
@@ -28,26 +28,26 @@
                  @keydown.escape.prevent="$store.goalBar.cancelEdit()"
                  aria-label="Goal objective" />
           <button type="button" class="goal-strip-action" title="Save goal" @click="$store.goalBar.saveEdit()" :disabled="$store.goalBar.saving">
-            <span class="material-symbols-outlined" aria-hidden="true">check</span>
+            <x-icon aria-hidden="true" name="check"></x-icon>
           </button>
           <button type="button" class="goal-strip-action" title="Cancel" @click="$store.goalBar.cancelEdit()" :disabled="$store.goalBar.saving">
-            <span class="material-symbols-outlined" aria-hidden="true">close</span>
+            <x-icon aria-hidden="true" name="close"></x-icon>
           </button>
         </div>
       </template>
 
       <div class="goal-strip-actions" x-show="!$store.goalBar.editing">
         <button type="button" class="goal-strip-action" title="Edit goal" @click="$store.goalBar.startEdit()" :disabled="$store.goalBar.saving">
-          <span class="material-symbols-outlined" aria-hidden="true">edit</span>
+          <x-icon aria-hidden="true" name="edit"></x-icon>
         </button>
         <button type="button" class="goal-strip-action"
                 :title="$store.goalBar.goal?.status === 'active' ? 'Pause goal' : 'Resume goal'"
                 @click="$store.goalBar.pauseOrResume()"
                 :disabled="$store.goalBar.saving">
-          <span class="material-symbols-outlined" aria-hidden="true" x-text="$store.goalBar.goal?.status === 'active' ? 'pause_circle' : 'play_circle'"></span>
+          <x-icon aria-hidden="true" :name="$store.goalBar.goal?.status === 'active' ? 'pause_circle' : 'play_circle'"></x-icon>
         </button>
         <button type="button" class="goal-strip-action" title="Delete goal" @click="$confirmClick($event, () => $store.goalBar.deleteGoal())" :disabled="$store.goalBar.saving">
-          <span class="material-symbols-outlined" aria-hidden="true">delete</span>
+          <x-icon aria-hidden="true" name="delete"></x-icon>
         </button>
       </div>
     </div>

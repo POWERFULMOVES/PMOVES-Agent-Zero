@@ -37,8 +37,8 @@ function convertIconMarkersToHtml(value) {
     html += escapeHTML(text.slice(lastIndex, offset));
     const tooltip = unescapeIconTooltip(tooltipBlock) || iconName;
     html += (
-      `<span class="icon material-symbols-outlined chat-input-progress-icon" ` +
-      `title="${escapeHTML(tooltip)}">${escapeHTML(iconName)}</span>`
+      `<x-icon class="icon chat-input-progress-icon" ` +
+      `title="${escapeHTML(tooltip)}" name="${escapeHTML(iconName)}"></x-icon>`
     );
     lastIndex = offset + match.length;
     return match;
@@ -83,6 +83,7 @@ const model = {
     const hasQueue = !!messageQueueStore?.hasQueue;
     const running = !!chatsStore.selectedContext?.running;
 
+    if (running && !hasInput) return "stop";
     if (hasQueue && !hasInput) return "all";
     if ((running || hasQueue) && hasInput) return "queue";
     return "normal";
@@ -91,15 +92,19 @@ const model = {
   get inputPlaceholder() {
     if (!chatsStore.selected) return "Ask anything to start a new chat";
     const state = this._getSendState();
-    if (state === "all") return "Press Enter to send queued messages";
+    if ((state === "all" || state === "stop") && messageQueueStore?.hasQueue) {
+      return "Press Enter to send queued messages";
+    }
     if (this.showProgressPlaceholder) return "";
     return "Type your message here...";
   },
 
   get showProgressPlaceholder() {
+    const state = this._getSendState();
     return (
       !!chatsStore.selected &&
-      this._getSendState() !== "all" &&
+      state !== "all" &&
+      !(state === "stop" && messageQueueStore?.hasQueue) &&
       !!this.progressText &&
       !this.message
     );
@@ -112,6 +117,7 @@ const model = {
   // Computed: send button icon type
   get sendButtonIcon() {
     const state = this._getSendState();
+    if (state === "stop") return "stop";
     if (state === "all") return "send_and_archive";
     if (state === "queue") return "schedule_send";
     return "arrow_forward";
@@ -120,6 +126,7 @@ const model = {
   // Computed: send button CSS class
   get sendButtonClass() {
     const state = this._getSendState();
+    if (state === "stop") return "stop";
     if (state === "all") return "send-queue send-all";
     if (state === "queue") return "send-queue queue";
     return "";
@@ -128,6 +135,7 @@ const model = {
   // Computed: send button title
   get sendButtonTitle() {
     const state = this._getSendState();
+    if (state === "stop") return "Stop agent";
     if (state === "all") return "Send all queued messages";
     if (state === "queue") return "Add to queue";
     return "Send message";
@@ -153,6 +161,15 @@ const model = {
     if (globalThis.sendMessage) {
       await globalThis.sendMessage();
     }
+  },
+
+  async activateSendButton() {
+    this._syncMessageFromEditor();
+    if (this._getSendState() === "stop") {
+      await this.stopAgent();
+      return;
+    }
+    await this.sendMessage();
   },
 
   mountEditor(editor) {
@@ -412,6 +429,18 @@ const model = {
       this.paused = prev;
       if (globalThis.toastFetchError) {
         globalThis.toastFetchError("Error pausing agent", e);
+      }
+    }
+  },
+
+  async stopAgent() {
+    try {
+      const context = globalThis.getContext?.();
+      if (!context || !globalThis.sendJsonData) return;
+      await globalThis.sendJsonData("/stop", { context });
+    } catch (e) {
+      if (globalThis.toastFetchError) {
+        globalThis.toastFetchError("Error stopping agent", e);
       }
     }
   },

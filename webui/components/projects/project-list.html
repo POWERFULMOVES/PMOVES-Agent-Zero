@@ -23,15 +23,15 @@
                             <strong x-text="$store.chats.selectedContext?.project?.name"></strong>
                         </span>
                         <button type="button" class="button cancel icon-button" title="Deactivate" @click="$store.projects.deactivateProject()">
-                            <span class="icon material-symbols-outlined">close</span>
+                            <x-icon class="icon" name="close"></x-icon>
                         </button>
                         <button type="button" class="button icon-button" title="Edit" @click="$store.projects.openEditModal($store.chats.selectedContext?.project?.name)">
-                            <span class="icon material-symbols-outlined">edit</span>
+                            <x-icon class="icon" name="edit"></x-icon>
                         </button>
                     </div>
                     <button @click="$store.projects.openCreateModal()" type="button"
                         class="button projects-create-btn-top">
-                        <span class="icon material-symbols-outlined">add</span> Create project
+                        <x-icon class="icon" name="add"></x-icon> Create project
                     </button>
                 </div>
 
@@ -48,21 +48,21 @@
                             <div class="projects-project-card-actions">
                                 <template x-if="$store.chats.selectedContext && project.name === $store.chats.selectedContext?.project?.name">
                                     <button type="button" class="button cancel projects-project-card-state-action" title="Deactivate" @click="$store.projects.deactivateProject()">
-                                        <span class="icon material-symbols-outlined">close</span>
+                                        <x-icon class="icon" name="close"></x-icon>
                                         <span class="projects-project-card-action-text">Deactivate</span>
                                     </button>
                                 </template>
                                 <template x-if="$store.chats.selectedContext && project.name !== $store.chats.selectedContext?.project?.name">
                                     <button type="button" class="button confirm projects-project-card-state-action" title="Activate" @click="$store.projects.activateProject(project.name)">
-                                        <span class="icon material-symbols-outlined">play_arrow</span>
+                                        <x-icon class="icon" name="play_arrow"></x-icon>
                                         <span class="projects-project-card-action-text">Activate</span>
                                     </button>
                                 </template>
                                 <button type="button" class="button icon-button" title="Edit" @click="$store.projects.openEditModal(project.name)">
-                                    <span class="icon material-symbols-outlined">edit</span>
+                                    <x-icon class="icon" name="edit"></x-icon>
                                 </button>
                                 <button type="button" class="button cancel icon-button" title="Delete" @click="$confirmClick($event, () => $store.projects.deleteProject(project.name))">
-                                    <span class="icon material-symbols-outlined">delete</span>
+                                    <x-icon class="icon" name="delete"></x-icon>
                                 </button>
                             </div>
                         </div>
@@ -75,7 +75,7 @@
                         <div class="projects-project-card-title">There are no projects yet</div>
                         <div class="projects-no-projects-actions">
                             <button @click="$store.projects.openCreateModal()" type="button"
-                                class="button"><span class="icon material-symbols-outlined">add</span>Create project</button>
+                                class="button"><x-icon class="icon" name="add"></x-icon>Create project</button>
                         </div>
                     </div>
                 </template>

@@ -47,6 +47,18 @@ def add_commit(repo_dir: Path, content: str) -> None:
     run_git(repo_dir, "commit", "-m", "update")
 
 
+def test_git_timestamp_is_utc_without_a_timezone_suffix():
+    assert git._format_git_timestamp(0) == "1970-01-01 00:00:00"
+
+
+def test_sidebar_version_timestamp_stays_on_one_line():
+    sidebar_bottom = (
+        PROJECT_ROOT / "webui/components/sidebar/bottom/sidebar-bottom.html"
+    ).read_text(encoding="utf-8")
+
+    assert "white-space: nowrap;" in sidebar_bottom
+
+
 def test_git_version_label_shows_commit_distance_on_development(tmp_path):
     init_repo_with_tag(tmp_path, "development")
     add_commit(tmp_path, "two\n")

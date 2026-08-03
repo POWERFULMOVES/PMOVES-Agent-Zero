@@ -1,5 +1,6 @@
 import { createStore } from "/js/AlpineStore.js";
 import { callJsonApi } from "/js/api.js";
+import { showConfirmDialog } from "/js/confirmDialog.js";
 
 const BROWSER_EXTENSIONS_API = "/plugins/_browser/extensions";
 const BROWSER_STATUS_API = "/plugins/_browser/status";
@@ -36,6 +37,10 @@ function ensureConfig(config) {
   config.browser_tab_scope = normalizeChoice(config.browser_tab_scope, BROWSER_TAB_SCOPES, "per_context");
   config.max_open_tabs = normalizeInt(config.max_open_tabs, DEFAULT_MAX_OPEN_TABS, MIN_MAX_OPEN_TABS, HARD_MAX_OPEN_TABS);
   config.runtime_backend = normalizeRuntimeBackend(config.runtime_backend);
+  config.proxy_server = String(config.proxy_server || "").trim();
+  config.proxy_bypass = String(config.proxy_bypass || "").trim();
+  config.proxy_username = String(config.proxy_username || "");
+  config.proxy_password = String(config.proxy_password || "");
   config.host_browser_privacy_policy = normalizeChoice(
     config.host_browser_privacy_policy,
     HOST_PRIVACY_POLICIES,
@@ -449,9 +454,14 @@ export const store = createStore("browserConfig", {
       return;
     }
     const name = String(extension?.name || "this extension").trim();
-    if (globalThis.confirm && !globalThis.confirm(`Delete ${name}? This removes the extension folder from Browser.`)) {
-      return;
-    }
+    const safeName = name.replace(/[&<>"']/g, (character) => `&#${character.charCodeAt(0)};`);
+    const confirmed = await showConfirmDialog({
+      title: "Delete extension",
+      message: `Delete ${safeName}? This removes the extension folder from Browser.`,
+      confirmText: "Delete",
+      type: "danger",
+    });
+    if (!confirmed) return;
 
     this.extensionDeleteLoadingPath = path;
     try {

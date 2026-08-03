@@ -17,7 +17,7 @@
         >
           <header class="remote-link-hero">
             <div class="remote-link-hero-icon" aria-hidden="true">
-              <span class="material-symbols-outlined">share</span>
+              <x-icon name="share"></x-icon>
             </div>
             <div>
               <div class="section-title">Remote Control</div>
@@ -28,7 +28,7 @@
           </header>
 
           <div class="remote-link-safety-note">
-            <span class="material-symbols-outlined" aria-hidden="true">lock</span>
+            <x-icon aria-hidden="true" name="lock"></x-icon>
             <span>Use sign-in before sharing remote control access. The URL can reach your instance while access is active.</span>
           </div>
 
@@ -54,20 +54,20 @@
           </div>
 
           <div class="remote-link-loading" x-show="$store.tunnelStore.isLoading" style="display: none;">
-            <span class="material-symbols-outlined spin" aria-hidden="true">progress_activity</span>
+            <x-icon class="spin" aria-hidden="true" name="progress_activity"></x-icon>
             <span x-text="$store.tunnelStore.loadingText || 'Preparing remote control...'"></span>
           </div>
 
           <div class="microsoft-login-box" x-show="$store.tunnelStore.loginActionVisible" x-transition style="display: none;">
             <div class="microsoft-login-header">
-              <span class="material-symbols-outlined" aria-hidden="true">key</span>
+              <x-icon aria-hidden="true" name="key"></x-icon>
               <div>
                 <div class="microsoft-login-title" x-text="$store.tunnelStore.loginActionTitle"></div>
                 <div class="microsoft-login-copy" x-text="$store.tunnelStore.loginActionCopy"></div>
               </div>
             </div>
             <a class="microsoft-login-link" x-show="$store.tunnelStore.microsoftLoginUrl" :href="$store.tunnelStore.microsoftLoginUrl" target="_blank" rel="noopener noreferrer">
-              <span class="material-symbols-outlined" aria-hidden="true">open_in_new</span>
+              <x-icon aria-hidden="true" name="open_in_new"></x-icon>
               <span x-text="$store.tunnelStore.microsoftLoginUrl"></span>
             </a>
             <div class="microsoft-login-code-row" x-show="$store.tunnelStore.microsoftLoginCode">
@@ -78,7 +78,7 @@
                 @click="$store.tunnelStore.copyLoginCode()"
                 :class="$store.tunnelStore.codeCopied ? 'copied' : ''"
               >
-                <span class="material-symbols-outlined" aria-hidden="true" x-text="$store.tunnelStore.codeCopied ? 'check' : 'content_copy'"></span>
+                <x-icon aria-hidden="true" :name="$store.tunnelStore.codeCopied ? 'check' : 'content_copy'"></x-icon>
                 <span x-text="$store.tunnelStore.codeCopied ? 'Copied' : 'Copy code'"></span>
               </button>
             </div>
@@ -103,7 +103,7 @@
                     'copy-error': $store.tunnelStore.copyState === 'error'
                   }"
                 >
-                  <span class="material-symbols-outlined" aria-hidden="true" x-text="$store.tunnelStore.copyLinkIcon"></span>
+                  <x-icon aria-hidden="true" :name="$store.tunnelStore.copyLinkIcon"></x-icon>
                   <span x-text="$store.tunnelStore.copyLinkLabel"></span>
                 </button>
                 <button
@@ -112,7 +112,7 @@
                   @click="$store.tunnelStore.refreshLink()"
                   :disabled="$store.tunnelStore.isLoading"
                 >
-                  <span class="material-symbols-outlined" aria-hidden="true">refresh</span>
+                  <x-icon aria-hidden="true" name="refresh"></x-icon>
                   <span>New URL</span>
                 </button>
               </div>
@@ -126,7 +126,7 @@
                   </div>
                 </div>
                 <div class="remote-link-status-panel">
-                  <span class="material-symbols-outlined" aria-hidden="true">verified</span>
+                  <x-icon aria-hidden="true" name="verified"></x-icon>
                   <div>
                     <div class="remote-link-status-title">Remote Control is active</div>
                     <div class="remote-link-status-copy">
@@ -143,14 +143,14 @@
                   @click="$store.tunnelStore.stopTunnel()"
                   :disabled="$store.tunnelStore.isLoading"
                 >
-                  <span class="material-symbols-outlined" aria-hidden="true">stop_circle</span>
+                  <x-icon aria-hidden="true" name="stop_circle"></x-icon>
                   <span>Stop Remote Control</span>
                 </button>
               </div>
             </div>
 
             <div class="remote-link-empty" x-show="!$store.tunnelStore.linkGenerated">
-              <span class="material-symbols-outlined" aria-hidden="true">link</span>
+              <x-icon aria-hidden="true" name="link"></x-icon>
               <strong>No Remote Control yet</strong>
               <span>Create one when you want to reach Agent Zero from another device or share access temporarily.</span>
               <button
@@ -159,7 +159,7 @@
                 @click="$store.tunnelStore.generateLink()"
                 :disabled="$store.tunnelStore.isLoading"
               >
-                <span class="material-symbols-outlined" aria-hidden="true">share</span>
+                <x-icon aria-hidden="true" name="share"></x-icon>
                 <span>Start Remote Control</span>
               </button>
             </div>

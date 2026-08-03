@@ -22,10 +22,10 @@ function sanitizeCommandName(rawName) {
     .replace(/^[-_]+|[-_]+$/g, "");
 }
 
-function parseSlashInput(message) {
+function parseSlashInput(message, allowPostfix = true) {
   const text = String(message || "");
   const prefixMatch = text.match(/^\s*\/([^\s]*)(?:\s+([\s\S]*))?$/);
-  const postfixMatch = prefixMatch
+  const postfixMatch = prefixMatch || !allowPostfix
     ? null
     : text.match(/^([\s\S]*\S)\s+\/([^\s]*)\s*$/);
   if (!prefixMatch && !postfixMatch) {
@@ -238,7 +238,7 @@ const model = {
     this.dismissed = false;
 
     const message = this.getInputMessage(event);
-    const parsed = parseSlashInput(message);
+    const parsed = parseSlashInput(message, false);
 
     this.active = parsed.active;
     this.query = parsed.query;

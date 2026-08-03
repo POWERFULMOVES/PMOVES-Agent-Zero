@@ -138,6 +138,62 @@ class FileBrowser:
             PrintStyle.error(f"Error renaming {file_path}: {e}")
             raise
 
+    def move_items(self, file_paths: List[str], destination_path: str) -> List[str]:
+        if not file_paths:
+            raise ValueError("No items selected")
+
+        base_dir = self.base_dir.resolve()
+        destination = (self.base_dir / destination_path).resolve()
+        if not destination.is_relative_to(base_dir):
+            raise ValueError("Invalid destination path")
+        if not destination.is_dir():
+            raise NotADirectoryError("Destination folder not found")
+
+        moves: List[Tuple[Path, Path]] = []
+        targets: set[Path] = set()
+        for file_path in dict.fromkeys(file_paths):
+            requested = self.base_dir / file_path
+            source = requested.parent.resolve() / requested.name
+            if not source.is_relative_to(base_dir) or source == base_dir:
+                raise ValueError("Invalid source path")
+            if not source.exists() and not source.is_symlink():
+                raise FileNotFoundError(f"Item not found: {source.name}")
+            if source == destination:
+                raise ValueError("A folder cannot be moved into itself")
+            if (
+                source.is_dir()
+                and not source.is_symlink()
+                and destination.is_relative_to(source)
+            ):
+                raise ValueError("A folder cannot be moved into itself")
+
+            target = destination / source.name
+            if target == source:
+                raise ValueError(f"{source.name} is already in this folder")
+            if target.exists() or target.is_symlink():
+                raise FileExistsError(
+                    f'An item named "{source.name}" already exists'
+                )
+            if target in targets:
+                raise FileExistsError(f'Multiple items are named "{source.name}"')
+            targets.add(target)
+            moves.append((source, target))
+
+        moved: List[Tuple[Path, Path]] = []
+        try:
+            for source, target in moves:
+                os.rename(source, target)
+                moved.append((source, target))
+        except Exception:
+            for source, target in reversed(moved):
+                try:
+                    os.rename(target, source)
+                except Exception as rollback_error:
+                    PrintStyle.error(f"Error restoring {source}: {rollback_error}")
+            raise
+
+        return [str(target) for _, target in moved]
+
     def create_folder(self, parent_path: str, folder_name: str) -> bool:
         try:
             if not folder_name or folder_name in {".", ".."}:

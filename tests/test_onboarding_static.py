@@ -105,6 +105,9 @@ def test_onboarding_provider_grid_names_are_present_in_metadata():
     assert 'default_api_base: "http://host.docker.internal:8000/v1"' in provider_ui
     assert 'logo: "/plugins/_onboarding/webui/assets/provider-logos/vllm.svg"' in provider_ui
     assert 'docs_url: "https://docs.vllm.ai/en/stable/serving/online_serving/"' in provider_ui
+    assert 'logo: "/plugins/_onboarding/webui/assets/provider-logos/cerebras.svg"' in provider_ui
+    assert 'docs_url: "https://inference-docs.cerebras.ai/quickstart"' in provider_ui
+    assert 'default_chat_model: "gpt-oss-120b"' in provider_ui
     assert 'docs_url: ""' in provider_ui
     assert "api_key_mode: none" in model_metadata
     assert "api_key_mode: optional" in model_metadata
@@ -138,7 +141,7 @@ def test_onboarding_provider_grid_names_are_present_in_metadata():
     ]:
         assert name in provider_yaml + provider_ui
 
-    for name in ["Ollama Cloud", "AWS Bedrock", "Groq"]:
+    for name in ["Ollama Cloud", "AWS Bedrock", "Groq", "Cerebras"]:
         assert name in provider_yaml + provider_ui
 
     for forbidden in [
@@ -163,6 +166,7 @@ def test_onboarding_provider_grid_names_are_present_in_metadata():
         "groq.svg",
         "sambanova.png",
         "cometapi.ico",
+        "cerebras.svg",
         "github-copilot.svg",
         "llama-cpp.svg",
         "zai-logo.svg",
@@ -172,6 +176,7 @@ def test_onboarding_provider_grid_names_are_present_in_metadata():
         assert logo in provider_ui
 
     assert (PROJECT_ROOT / "plugins/_onboarding/webui/assets/provider-logos/llama-cpp.svg").exists()
+    assert (PROJECT_ROOT / "plugins/_onboarding/webui/assets/provider-logos/cerebras.svg").exists()
     assert (PROJECT_ROOT / "plugins/_onboarding/webui/assets/provider-logos/omlx.svg").exists()
     assert (PROJECT_ROOT / "plugins/_onboarding/webui/assets/provider-logos/vllm.svg").exists()
 

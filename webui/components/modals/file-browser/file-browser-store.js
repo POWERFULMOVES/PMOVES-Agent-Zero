@@ -92,6 +92,8 @@ const model = {
   dropdownStyle: {},
   searchQuery: "",
   isBulkBusy: false,
+  draggedPaths: [],
+  dragOverPath: "",
   pickerMode: PICKER_MODE_NONE,
   pickerConfirmLabel: "",
   pickerFilename: "",
@@ -210,6 +212,7 @@ const model = {
     this.openDropdownPath = null;
     this.searchQuery = "";
     this.isBulkBusy = false;
+    this.clearDragState();
     this.pathInput = "";
     this.pathError = "";
     this.isPathSubmitting = false;
@@ -260,6 +263,7 @@ const model = {
     this.history = [];
     this.searchQuery = "";
     this.isBulkBusy = false;
+    this.clearDragState();
     this.pathError = "";
     this.isPathSubmitting = false;
     this.configurePicker(options);
@@ -948,6 +952,90 @@ const model = {
     if (this.browser.parentPath) {
       this.history.push(this.browser.currentPath);
       await this.fetchFiles(this.browser.parentPath);
+    }
+  },
+
+  // --- Drag and drop ------------------------------------------------------
+  startDrag(file = {}, event) {
+    if (this.isPickerMode() || this.isBulkBusy || !file?.path || !event?.dataTransfer) {
+      event?.preventDefault();
+      return;
+    }
+    this.draggedPaths = file.selected
+      ? this.selectedFiles.map((entry) => entry.path)
+      : [file.path];
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("application/x-agent-zero-files", JSON.stringify(this.draggedPaths));
+    event.dataTransfer.setData("text/plain", this.draggedPaths.join("\n"));
+    this.closeDropdown();
+  },
+
+  isDraggingPath(path = "") {
+    return this.draggedPaths.includes(path);
+  },
+
+  canDropAt(destinationPath = "") {
+    const destination = this.normalizePath(destinationPath).replace(/\/+$/, "") || "/";
+    return Boolean(this.draggedPaths.length && this.draggedPaths.every((path) => {
+      const source = this.normalizePath(path).replace(/\/+$/, "") || "/";
+      return destination !== source && !destination.startsWith(`${source}/`);
+    }));
+  },
+
+  setDropTarget(destinationPath, event) {
+    if (!this.canDropAt(destinationPath)) {
+      if (event?.dataTransfer) event.dataTransfer.dropEffect = "none";
+      return;
+    }
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
+    this.dragOverPath = destinationPath;
+  },
+
+  clearDropTarget(destinationPath, event) {
+    if (event?.currentTarget?.contains(event.relatedTarget)) return;
+    if (this.dragOverPath === destinationPath) this.dragOverPath = "";
+  },
+
+  clearDragState() {
+    this.draggedPaths = [];
+    this.dragOverPath = "";
+  },
+
+  async dropItems(destinationPath, destinationName, event) {
+    if (!this.canDropAt(destinationPath)) return;
+    event.preventDefault();
+    const paths = [...this.draggedPaths];
+    const selectedPaths = new Set(this.selectedFiles.map((file) => file.path));
+    this.clearDragState();
+    this.isBulkBusy = true;
+
+    try {
+      const resp = await fetchApi("/rename_work_dir_file", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "move",
+          paths,
+          destinationPath,
+          currentPath: this.browser.currentPath,
+        }),
+      });
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok || data.error) throw new Error(data.error || "Move failed");
+
+      this.browser.entries = this.decorateEntries(data.data?.entries || [], selectedPaths);
+      this.browser.currentPath = data.data?.current_path || this.browser.currentPath;
+      this.browser.parentPath = data.data?.parent_path || this.browser.parentPath;
+      const count = paths.length;
+      window.toastFrontendSuccess(
+        `Moved ${count} ${count === 1 ? "item" : "items"} to ${destinationName}`,
+        "Files Moved"
+      );
+    } catch (error) {
+      window.toastFrontendError(error?.message || "Move failed", "Move Error");
+    } finally {
+      this.isBulkBusy = false;
     }
   },
 

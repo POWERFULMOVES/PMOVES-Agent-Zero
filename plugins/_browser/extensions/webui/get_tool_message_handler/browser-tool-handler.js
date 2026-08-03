@@ -349,7 +349,7 @@ function renderBrowserScreenshotKvp(kvpsTable, resolveBrowserPayload, label, sta
   button.innerHTML = `
     <img class="browser-screenshot-kvp-image" alt="" draggable="false">
     <span class="browser-screenshot-kvp-placeholder" aria-hidden="true">
-      <span class="material-symbols-outlined">image_search</span>
+      <x-icon name="image_search"></x-icon>
     </span>
   `;
   button.addEventListener("click", async (event) => {
@@ -525,8 +525,8 @@ function drawBrowserTool({
           buildDetailPayload(args, { headerLabels }),
         ),
       ),
-      createActionButton("speak", "", () => ttsService.speak(contentText)),
       createActionButton("copy", "", () => copyToClipboard(contentText)),
+      createActionButton("speak", "", () => ttsService.speak(contentText)),
     );
   }
 

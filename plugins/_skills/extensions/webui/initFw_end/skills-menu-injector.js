@@ -11,7 +11,7 @@ function buildButton() {
   button.className = "chat-bottom-menu-item";
   button.id = BUTTON_ID;
   button.innerHTML = `
-    <span class="material-symbols-outlined" aria-hidden="true">menu_book</span>
+    <x-icon aria-hidden="true" name="menu_book"></x-icon>
     <span>Skills</span>
   `;
 

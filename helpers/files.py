@@ -433,7 +433,14 @@ def find_existing_paths_by_pattern(pattern: str):
     return matches
 
 
-def remove_code_fences(text):
+def remove_code_fences(text, language: str | None = None):
+    if language:
+        pattern = (
+            rf"(?ims)^[ \t]*(```|~~~)[ \t]*{re.escape(language)}[ \t]*\r?\n"
+            r"(.*?)^[ \t]*\1[ \t]*\r?$"
+        )
+        return re.sub(pattern, lambda match: match.group(2), text)
+
     # Pattern to match code fences with optional language specifier
     pattern = r"(```|~~~)(.*?\n)(.*?)(\1)"
 

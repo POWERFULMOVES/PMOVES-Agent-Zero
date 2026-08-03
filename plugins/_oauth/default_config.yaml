@@ -25,6 +25,11 @@ codex:
   models: []
   request_timeout_seconds: 120
 
+  # Defaults for Codex Responses requests. Explicit model/request values win.
+  reasoning_effort: "high"
+  reasoning_summary: "auto"
+  text_verbosity: "medium"
+
   # The OpenAI-compatible wrapper is mounted at /oauth/codex/v1.
   # It is loopback-only by default and does not emit CORS headers.
   proxy_base_path: "/oauth/codex"

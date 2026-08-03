@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Login - Agent Zero</title>
+    <link rel="stylesheet" href="/vendor/fonts/fonts.css">
     <link rel="stylesheet" href="/login.css">
     <link rel="icon" type="image/svg+xml" href="/public/favicon.svg">
 </head>
@@ -13,8 +14,7 @@
             {% if next %}
                 <input type="hidden" name="next" value="{{ next }}">
             {% endif %}
-            <img src="/public/splash.jpg" alt="Agent Zero Logo" class="logo">
-            <h2>Agent Zero</h2>
+            <img src="/public/dark.svg" alt="Agent Zero" class="logo">
             <div class="input-group">
                 <label for="username">Username</label>
                 <input type="text" id="username" name="username" required>

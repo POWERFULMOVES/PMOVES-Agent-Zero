@@ -22,9 +22,10 @@
              x-effect="(() => { const c = bootstrap.Collapse.getOrCreateInstance($el, { toggle: false }); $store.sidebar.isSectionOpen('tasks') ? c.show() : c.hide(); })()">
           <div class="tasks-list-body">
           <div class="tasks-list-container" x-data>
-            <ul class="config-list tasks-config-list no-scrollbar" x-show="$store.tasks.tasks.length > 0">
-              <template x-for="task in $store.tasks.tasks" :key="task.id">
-                <li>
+            <ul class="config-list tasks-config-list no-scrollbar" x-show="$store.tasks.visibleTasks().length > 0">
+              <template x-for="(task, taskIndex) in $store.tasks.visibleTasks()" :key="task.id">
+                <li class="task-list-item"
+                  :class="{ 'sidebar-list-divider': $store.sidebar.hasRowDividerBefore('task', task, taskIndex, $store.tasks.visibleTasks()) }">
                   <div class="task-container" :class="{'task-selected': task.id === $store.tasks.selected}">
                     <div class="chat-list-button" @click="$store.tasks.selectTask(task.id)">
                       <div class="task-container-vertical">
@@ -42,14 +43,20 @@
                           <button class="btn-icon-action"
                                   @click.stop="$store.tasks.openDetail(task.id)"
                                   title="View task details">
-                            <span class="material-symbols-outlined">Info</span>
+                            <x-icon name="info"></x-icon>
                           </button>
                           <button class="btn-icon-action" title="Clear task chat"
                                   @click.stop="$confirmClick($event, () => $store.tasks.reset(task.id))">
-                            <span class="material-symbols-outlined">delete_sweep</span>
+                            <x-icon name="delete_sweep"></x-icon>
                           </button>
                           <button class="btn-icon-action" title="Delete task" @click.stop="$confirmClick($event, () => $store.tasks.deleteTask(task.id))">
-                            <span class="material-symbols-outlined">close</span>
+                            <x-icon name="close"></x-icon>
+                          </button>
+                          <button type="button" class="btn-icon-action" title="More task actions"
+                            aria-label="More task actions" aria-haspopup="menu"
+                            :aria-expanded="($store.sidebar.rowMenuOpenId === `task:${task.id}`).toString()"
+                            @click.stop="$store.sidebar.rowMenuToggle(`task:${task.id}`, 'task', $event.currentTarget)">
+                            <x-icon name="more_vert"></x-icon>
                           </button>
                         </div>
                       </div>
@@ -59,7 +66,7 @@
                 </li>
               </template>
             </ul>
-            <div class="empty-list-message" x-show="$store.tasks.tasks.length === 0">
+            <div class="empty-list-message" x-show="$store.tasks.visibleTasks().length === 0">
               <p><i>No tasks to list.</i></p>
             </div>
           </div>
@@ -101,7 +108,7 @@
       overflow: hidden;
       position: relative;
     }
-    
+
     /* Scrollable tasks config list */
     .tasks-config-list {
       flex: 1;

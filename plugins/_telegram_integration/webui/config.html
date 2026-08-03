@@ -37,10 +37,10 @@
                   x-text="$store.telegramConfig.botStatusLabel(bot)"></span>
                 <button class="btn btn-action delete"
                   @click.stop="$confirmClick($event, () => $store.telegramConfig.removeBot(idx))" title="Remove bot">
-                  <span class="material-symbols-outlined">delete</span>
+                  <x-icon name="delete"></x-icon>
                 </button>
-                <span class="material-symbols-outlined tg-card-chevron"
-                  :class="{ 'is-open': $store.telegramConfig.editing === idx }">expand_more</span>
+                <x-icon class="tg-card-chevron"
+                  :class="{ 'is-open': $store.telegramConfig.editing === idx }" name="expand_more"></x-icon>
               </div>
             </div>
 
@@ -264,8 +264,8 @@
                   <details class="tg-advanced">
                     <summary>
                       <span>Advanced</span>
-                      <span class="material-symbols-outlined tg-advanced-chevron"
-                        aria-hidden="true">keyboard_arrow_down</span>
+                      <x-icon class="tg-advanced-chevron"
+                        aria-hidden="true" name="keyboard_arrow_down"></x-icon>
                     </summary>
                     <div class="tg-advanced-body">
                       <div class="field" x-show="bot.mode === 'webhook'">

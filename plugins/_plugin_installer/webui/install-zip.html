@@ -13,7 +13,7 @@
                 <div class="pi-upload-section">
                     <label for="plugin-zip-file" class="pi-upload-btn button confirm"
                         :class="{ 'pi-has-file': $store.pluginInstallStore.zipFile }">
-                        <span class="icon material-symbols-outlined">upload_file</span>
+                        <x-icon class="icon" name="upload_file"></x-icon>
                         <span x-text="$store.pluginInstallStore.zipFileName || 'Select Plugin ZIP File'"></span>
                     </label>
                     <input type="file" id="plugin-zip-file" accept=".zip" style="display:none"
@@ -27,7 +27,7 @@
                     <button class="button confirm"
                         @click="$store.pluginInstallStore.installZip()"
                         :disabled="$store.pluginInstallStore.loading">
-                        <span class="icon material-symbols-outlined">download</span> Install Plugin
+                        <x-icon class="icon" name="download"></x-icon> Install Plugin
                     </button>
                     <x-extension id="install-zip-actions"></x-extension>
                 </div>
@@ -38,7 +38,7 @@
 
                 <div x-show="$store.pluginInstallStore.result" class="pi-result">
                     <div class="pi-result-icon">
-                        <span class="material-symbols-outlined">check_circle</span>
+                        <x-icon name="check_circle"></x-icon>
                     </div>
                     <div class="pi-result-text">
                         <strong x-text="'Plugin installed: ' + ($store.pluginInstallStore.result?.title || $store.pluginInstallStore.result?.plugin_name || '')"></strong>

@@ -21,10 +21,10 @@
             <button class="btn-icon-action model-switcher-btn"
                     :class="{ 'has-override': !!$store.modelConfig.switcherOverride }"
                     @click="showDropdown = !showDropdown; showProfileDropdown = false">
-              <span class="material-symbols-outlined" style="font-size: 16px;">neurology</span>
+              <x-icon style="font-size: 16px;" name="neurology"></x-icon>
               <span class="model-switcher-label" x-text="$store.modelConfig.getSwitcherLabel()"></span>
-              <span class="material-symbols-outlined" style="font-size: 0.7rem;"
-                    x-text="showDropdown ? 'expand_less' : 'expand_more'"></span>
+              <x-icon style="font-size: 0.7rem;"
+                    :name="showDropdown ? 'expand_less' : 'expand_more'"></x-icon>
             </button>
             <!-- Dropdown (opens upward) -->
             <div class="model-switcher-dropdown" x-show="showDropdown" x-transition.opacity style="display: none;">
@@ -34,7 +34,7 @@
                   $store.modelConfig.clearOverrideSwitch($store.chats?.selected || '');
                   showDropdown = false;
                 ">
-                  <span class="material-symbols-outlined" style="font-size: 15px;">undo</span>
+                  <x-icon style="font-size: 15px;" name="undo"></x-icon>
                   <span>Use scoped preset</span>
                 </div>
               </template>
@@ -98,7 +98,7 @@
                 );
                 showDropdown = false;
               ">
-                <span class="material-symbols-outlined" style="font-size: 14px;">tune</span>
+                <x-icon style="font-size: 14px;" name="tune"></x-icon>
                 <span>Edit Presets</span>
               </div>
             </div>
@@ -110,11 +110,11 @@
             <button class="btn-icon-action agent-profile-btn"
                     title="Active agent profile"
                     @click="showProfileDropdown = !showProfileDropdown; showDropdown = false">
-              <span class="material-symbols-outlined" style="font-size: 15px;">assignment_ind</span>
+              <x-icon style="font-size: 15px;" name="assignment_ind"></x-icon>
               <span class="agent-profile-label"
                     x-text="$store.chats.selectedContext.agent_profile_label || $store.chats.selectedContext.agent_profile"></span>
-              <span class="material-symbols-outlined" style="font-size: 0.7rem;"
-                    x-text="showProfileDropdown ? 'expand_less' : 'expand_more'"></span>
+              <x-icon style="font-size: 0.7rem;"
+                    :name="showProfileDropdown ? 'expand_less' : 'expand_more'"></x-icon>
             </button>
 
             <div class="agent-profile-dropdown" x-show="showProfileDropdown" x-transition.opacity style="display: none;">
@@ -122,7 +122,7 @@
                 $store.modelConfig.createAgentProfileChat($store.chats?.selected || '')
                   .then(ok => { if (ok) showProfileDropdown = false; });
               ">
-                <span class="material-symbols-outlined" style="font-size: 15px;">add</span>
+                <x-icon style="font-size: 15px;" name="add"></x-icon>
                 <span>Create new Agent Profile</span>
               </button>
 
@@ -155,7 +155,7 @@
                 openModal('settings/settings.html');
                 showProfileDropdown = false;
               ">
-                <span class="material-symbols-outlined" style="font-size: 14px;">settings</span>
+                <x-icon style="font-size: 14px;" name="settings"></x-icon>
                 <span>Agent Config</span>
               </button>
             </div>

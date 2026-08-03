@@ -41,10 +41,10 @@
                                 <button class="btn btn-action delete"
                                     @click.stop="$confirmClick($event, () => $store.emailConfig.removeHandler(idx))"
                                     title="Remove inbox">
-                                    <span class="material-symbols-outlined">delete</span>
+                                    <x-icon name="delete"></x-icon>
                                 </button>
-                                <span class="material-symbols-outlined email-card-chevron"
-                                    :class="{ 'is-open': $store.emailConfig.editing === idx }">expand_more</span>
+                                <x-icon class="email-card-chevron"
+                                    :class="{ 'is-open': $store.emailConfig.editing === idx }" name="expand_more"></x-icon>
                             </div>
                         </div>
 
@@ -96,8 +96,8 @@
                                                     </template>
                                                     <template
                                                         x-if="provider.logo !== 'microsoft365' && (provider.logo === 'icloud' || provider.logo === 'custom-imap')">
-                                                        <span class="material-symbols-outlined"
-                                                            x-text="provider.logoText"></span>
+                                                        <x-icon
+                                                            :name="provider.logoText"></x-icon>
                                                     </template>
                                                     <template
                                                         x-if="provider.logo !== 'microsoft365' && provider.logo !== 'icloud' && provider.logo !== 'custom-imap'">
@@ -289,8 +289,8 @@
                                 <details class="email-advanced" x-show="$store.emailConfig.hasProvider(handler)">
                                     <summary>
                                         <span>Advanced</span>
-                                        <span class="material-symbols-outlined email-advanced-chevron"
-                                            aria-hidden="true">keyboard_arrow_down</span>
+                                        <x-icon class="email-advanced-chevron"
+                                            aria-hidden="true" name="keyboard_arrow_down"></x-icon>
                                     </summary>
                                     <div class="email-advanced-body">
                                         <div class="field">

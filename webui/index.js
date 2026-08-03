@@ -17,6 +17,7 @@ import { store as syncStore } from "/components/sync/sync-store.js"
 import { store as welcomeStore } from "/components/welcome/welcome-store.js";
 import { store as modelGateStore } from "/components/chat/model-gate-store.js";
 import { getUserHour12, getUserTimezone } from "/js/time-utils.js";
+import { createThreeBubbleLoader } from "/js/loading-indicators.js";
 
 globalThis.fetchApi = api.fetchApi; // TODO - backward compatibility for non-modular scripts, remove once refactored to alpine
 
@@ -25,7 +26,6 @@ let leftPanel,
   rightPanel,
   container,
   chatInput,
-  chatHistory,
   sendButton,
   inputSection,
   statusSection,
@@ -35,8 +35,52 @@ let leftPanel,
 
 let autoScroll = true;
 let context = null;
+let loadingContext = null;
+let chatLoadingSplashVisible = false;
+let chatLoadingSplashTimer = null;
 globalThis.resetCounter = 0; // Used by stores and getChatBasedId
 let skipOneSpeech = false;
+const CHAT_LOADING_SPLASH_DELAY_MS = 300;
+
+function syncChatLoadingSplash() {
+  const splash = document.getElementById("chat-loading-splash");
+  if (!splash) return;
+  if (!splash.querySelector(":scope > .three-bubble-loader")) {
+    splash.prepend(createThreeBubbleLoader({ active: true }));
+  }
+  splash.hidden = !chatLoadingSplashVisible;
+}
+
+function beginChatLoading(id) {
+  if (chatLoadingSplashTimer) {
+    clearTimeout(chatLoadingSplashTimer);
+    chatLoadingSplashTimer = null;
+  }
+  loadingContext = id || null;
+  chatLoadingSplashVisible = false;
+  syncChatLoadingSplash();
+
+  if (loadingContext !== null) {
+    const expectedContext = loadingContext;
+    chatLoadingSplashTimer = setTimeout(() => {
+      chatLoadingSplashTimer = null;
+      if (loadingContext !== expectedContext) return;
+      chatLoadingSplashVisible = true;
+      syncChatLoadingSplash();
+    }, CHAT_LOADING_SPLASH_DELAY_MS);
+  }
+}
+
+function finishChatLoading(id) {
+  if (loadingContext === null || id !== loadingContext) return;
+  if (chatLoadingSplashTimer) {
+    clearTimeout(chatLoadingSplashTimer);
+    chatLoadingSplashTimer = null;
+  }
+  loadingContext = null;
+  chatLoadingSplashVisible = false;
+  syncChatLoadingSplash();
+}
 
 // Sidebar toggle logic is now handled by sidebar-store.js
 
@@ -163,14 +207,8 @@ export async function sendMessage(options = {}) {
 }
 globalThis.sendMessage = sendMessage;
 
-function getChatHistoryEl() {
-  return document.getElementById("chat-history");
-}
-
 function forceScrollChatToBottom() {
-  const chatHistoryEl = getChatHistoryEl();
-  if (!chatHistoryEl) return;
-  chatHistoryEl.scrollTop = chatHistoryEl.scrollHeight;
+  return msgs.scrollMessageWindowToEdge("end");
 }
 globalThis.forceScrollChatToBottom = forceScrollChatToBottom;
 
@@ -357,8 +395,7 @@ export async function applySnapshot(snapshot, options = {}) {
   // so the mismatch is expected and should not trigger a second state_request/poll.
   if (lastLogGuid != snapshot.log_guid) {
     if (lastLogGuid) {
-      const chatHistoryEl = document.getElementById("chat-history");
-      if (chatHistoryEl) chatHistoryEl.innerHTML = "";
+      msgs.resetMessageRenderState();
       lastLogVersion = 0;
       lastLogGuid = snapshot.log_guid;
       if (typeof onLogGuidReset === "function") {
@@ -374,8 +411,7 @@ export async function applySnapshot(snapshot, options = {}) {
   if (lastLogVersion != snapshot.log_version) {
     updated = true;
     if (snapshot.logs?.[0]?.no === 0) {
-      const chatHistoryEl = document.getElementById("chat-history");
-      if (chatHistoryEl) chatHistoryEl.innerHTML = "";
+      msgs.resetMessageRenderState();
     }
     await setMessages(modelGateStore.mergeSyntheticMessages(snapshot.logs, context));
     afterMessagesUpdate(snapshot.logs);
@@ -436,6 +472,10 @@ export async function applySnapshot(snapshot, options = {}) {
 
     // update message queue
     messageQueueStore.updateFromPoll();
+
+    // A context switch is visually complete only after its matching snapshot
+    // has rendered and the surrounding chat state has been synchronized.
+    finishChatLoading(snapshot.context);
 
     return { updated };
   }
@@ -569,6 +609,8 @@ globalThis.newContext = newContext;
 export const setContext = function (id) {
   if (id == context) return;
   context = id;
+  if (id) beginChatLoading(id);
+  else beginChatLoading(null);
   // Always reset the log tracking variables when switching contexts
   // This ensures we get fresh data from the backend
   lastLogGuid = "";
@@ -579,8 +621,7 @@ export const setContext = function (id) {
   ttsService.stop();
 
   // Clear the chat history immediately to avoid showing stale content
-  const chatHistoryEl = document.getElementById("chat-history");
-  if (chatHistoryEl) chatHistoryEl.innerHTML = "";
+  msgs.resetMessageRenderState();
 
   // Update both selected states using stores
   chatsStore.setSelected(id);
@@ -618,7 +659,7 @@ export const deselectChat = function () {
   sessionStorage.removeItem("lastSelectedTask");
 
   // Clear the chat history
-  if (chatHistory) chatHistory.innerHTML = "";
+  msgs.resetMessageRenderState();
 };
 globalThis.deselectChat = deselectChat;
 
@@ -793,13 +834,13 @@ document.addEventListener("DOMContentLoaded", function () {
   rightPanel = document.getElementById("right-panel");
   container = document.querySelector(".container");
   chatInput = document.getElementById("chat-input");
-  chatHistory = document.getElementById("chat-history");
   sendButton = document.getElementById("send-button");
   inputSection = document.getElementById("input-section");
   statusSection = document.getElementById("status-section");
   progressBar = document.getElementById("progress-bar");
   autoScrollSwitch = document.getElementById("auto-scroll-switch");
   timeDate = document.getElementById("time-date-container");
+  syncChatLoadingSplash();
 
 
   // Start polling for updates

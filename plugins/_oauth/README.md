@@ -18,6 +18,7 @@ OAuth-backed model providers do not require users to enter API keys. Agent Zero 
 - Writes Codex-compatible credentials to an Agent Zero-owned `auth.json` file.
 - Refreshes local tokens when needed.
 - Exposes the local OpenAI-compatible wrapper at `/oauth/codex/v1`.
+- Lets users choose default reasoning effort, visible reasoning summaries, and answer verbosity while preserving explicit per-request settings.
 
 ### GitHub Copilot (`github_copilot_oauth`)
 

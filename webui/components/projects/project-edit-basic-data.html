@@ -21,7 +21,7 @@
                         <div class="projects-input-with-button-wrapper">
                             <input class="projects-form-input projects-disabled" type="text" x-model="$store.projects.selectedProject.name" disabled>
                             <button class="button icon-button" @click="$store.projects.browseSelected()">
-                                <span class="icon material-symbols-outlined">folder</span>
+                                <x-icon class="icon" name="folder"></x-icon>
                                 <span>Browse</span>
                             </button>
                         </div>
@@ -63,7 +63,7 @@
                 <template x-if="!$store.projects.selectedProject._meta.creating && $store.projects.selectedProject.git_status?.is_git_repo">
                     <div class="projects-form-group git-status-section">
                         <label class="projects-form-label">
-                            <span class="material-symbols-outlined git-icon">commit</span>
+                            <x-icon class="git-icon" name="commit"></x-icon>
                             Git Status
                         </label>
                         <div class="git-status-card">
@@ -71,13 +71,13 @@
                             <template x-if="$store.projects.selectedProject.git_status.remote_url">
                                 <div class="git-status-row">
                                     <span class="git-status-label">
-                                        <span class="material-symbols-outlined">link</span>
+                                        <x-icon name="link"></x-icon>
                                         Repository
                                     </span>
                                     <div class="git-status-value-with-action">
                                         <span class="git-status-value git-url" x-text="$store.projects.selectedProject.git_status.remote_url"></span>
                                         <a class="git-action-link" :href="$store.projects.selectedProject.git_status.remote_url" target="_blank" rel="noopener noreferrer" title="Open in browser">
-                                            <span class="material-symbols-outlined">open_in_new</span>
+                                            <x-icon name="open_in_new"></x-icon>
                                         </a>
                                     </div>
                                 </div>
@@ -86,7 +86,7 @@
                             <!-- Branch -->
                             <div class="git-status-row">
                                 <span class="git-status-label">
-                                    <span class="material-symbols-outlined">fork_right</span>
+                                    <x-icon name="fork_right"></x-icon>
                                     Branch
                                 </span>
                                 <span class="git-status-value git-branch" x-text="$store.projects.selectedProject.git_status.current_branch"></span>
@@ -95,7 +95,7 @@
                             <!-- Status -->
                             <div class="git-status-row">
                                 <span class="git-status-label">
-                                    <span class="material-symbols-outlined">info</span>
+                                    <x-icon name="info"></x-icon>
                                     Status
                                 </span>
                                 <span class="git-status-value" 
@@ -118,7 +118,7 @@
                             <template x-if="$store.projects.selectedProject.git_status.last_commit">
                                 <div class="git-status-row">
                                     <span class="git-status-label">
-                                        <span class="material-symbols-outlined">history</span>
+                                        <x-icon name="history"></x-icon>
                                         Last Commit
                                     </span>
                                     <div class="git-commit-info">

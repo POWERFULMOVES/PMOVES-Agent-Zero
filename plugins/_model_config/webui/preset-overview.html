@@ -18,7 +18,7 @@
     <div class="model-preset-rows" aria-live="polite">
       <template x-for="model in modelRows" :key="model.title">
         <div class="model-preset-row">
-          <span class="material-symbols-outlined model-preset-icon" x-text="model.icon"></span>
+          <x-icon class="model-preset-icon" :name="model.icon"></x-icon>
           <span class="model-preset-role" x-text="model.title"></span>
           <span class="model-preset-identity">
             <span class="model-preset-provider" x-text="model.provider"></span>
@@ -31,15 +31,15 @@
 
     <div class="model-preset-actions">
       <button type="button" class="button" @click="editPresets()">
-        <span class="icon material-symbols-outlined">tune</span>
+        <x-icon class="icon" name="tune"></x-icon>
         Edit Presets
       </button>
       <button type="button" class="button" @click="apiKeys()">
-        <span class="icon material-symbols-outlined">key</span>
+        <x-icon class="icon" name="key"></x-icon>
         API Keys
       </button>
       <button type="button" class="button" x-show="showScopedSettings" @click="scopedSettings()">
-        <span class="icon material-symbols-outlined">account_tree</span>
+        <x-icon class="icon" name="account_tree"></x-icon>
         Per-project / agent
       </button>
     </div>

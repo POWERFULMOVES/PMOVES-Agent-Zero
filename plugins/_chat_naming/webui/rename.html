@@ -1,0 +1,91 @@
+<html>
+<head>
+  <title>Rename</title>
+  <script type="module">
+    import { store } from "/plugins/_chat_naming/webui/chat-naming-store.js";
+  </script>
+</head>
+<body>
+  <div x-data>
+    <template x-if="$store.chatNaming">
+      <div class="chat-naming-modal"
+        x-init="await $store.chatNaming.onOpen(); $nextTick(() => $refs.nameInput?.focus())">
+        <label class="chat-naming-label" for="chat-naming-input">Name</label>
+        <input id="chat-naming-input" type="text" x-ref="nameInput"
+          x-model="$store.chatNaming.name"
+          @keydown.enter.prevent="$store.chatNaming.save()"
+          :disabled="$store.chatNaming.loading || $store.chatNaming.saving"
+          maxlength="200" autocomplete="off">
+      </div>
+    </template>
+  </div>
+
+  <template x-if="$store.chatNaming">
+    <div class="modal-footer" data-modal-footer>
+      <div class="chat-naming-secondary-actions">
+        <button type="button" class="btn"
+          @click="$store.chatNaming.generate()"
+          :disabled="$store.chatNaming.loading || $store.chatNaming.generating
+            || $store.chatNaming.saving">
+          <x-icon
+            :name="$store.chatNaming.generating ? 'progress_activity' : 'auto_awesome'"></x-icon>
+          <span x-text="$store.chatNaming.generating ? 'Generating...' : 'Generate'"></span>
+        </button>
+        <button type="button" class="btn"
+          @click="$store.chatNaming.openSettings()"
+          :disabled="$store.chatNaming.loading || $store.chatNaming.saving">
+          <x-icon name="settings"></x-icon>
+          <span>Settings</span>
+        </button>
+      </div>
+      <button type="button" class="btn btn-ok"
+        @click="$store.chatNaming.save()"
+        :disabled="$store.chatNaming.loading || $store.chatNaming.saving
+          || !$store.chatNaming.name.trim()">
+        Save
+      </button>
+      <button type="button" class="btn btn-cancel"
+        @click="$store.chatNaming.close()" :disabled="$store.chatNaming.saving">
+        Cancel
+      </button>
+    </div>
+  </template>
+
+  <style>
+    .chat-naming-modal {
+      display: flex;
+      flex-direction: column;
+      gap: var(--spacing-sm);
+      padding: 1rem;
+    }
+
+    .chat-naming-label {
+      color: var(--color-text);
+      font-weight: 600;
+    }
+
+    .chat-naming-modal input {
+      width: 100%;
+    }
+
+    .chat-naming-secondary-actions {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.75rem;
+      margin-right: auto;
+    }
+
+    .chat-naming-secondary-actions .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+    }
+
+    .chat-naming-secondary-actions .material-symbols-outlined {
+      font-size: 1.1rem;
+      line-height: 1;
+    }
+  </style>
+</body>
+</html>

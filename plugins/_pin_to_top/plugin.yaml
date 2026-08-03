@@ -1,0 +1,8 @@
+name: _pin_to_top
+title: Pin to Top
+description: Pin chats and scheduled tasks to the top of their sidebar lists.
+version: 1.0.0
+settings_sections: []
+per_project_config: false
+per_agent_config: false
+always_enabled: true

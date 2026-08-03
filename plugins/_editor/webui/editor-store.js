@@ -1738,21 +1738,21 @@ const model = {
     root.className = "editor-header-actions surface-modal-new-action";
     root.innerHTML = `
       <button type="button" class="editor-header-new-button surface-modal-new-button" aria-haspopup="menu" aria-expanded="false">
-        <span class="material-symbols-outlined" aria-hidden="true">add</span>
+        <x-icon aria-hidden="true" name="add"></x-icon>
         <span>New</span>
-        <span class="material-symbols-outlined editor-new-chevron" aria-hidden="true">expand_more</span>
+        <x-icon class="editor-new-chevron" aria-hidden="true" name="expand_more"></x-icon>
       </button>
       <div class="editor-new-menu" role="menu" hidden>
         <button type="button" class="editor-new-menu-item" role="menuitem" data-editor-new-action="open">
-          <span class="material-symbols-outlined" aria-hidden="true">folder_open</span>
+          <x-icon aria-hidden="true" name="folder_open"></x-icon>
           <span>Open</span>
         </button>
         <button type="button" class="editor-new-menu-item" role="menuitem" data-editor-new-action="markdown">
-          <span class="material-symbols-outlined" aria-hidden="true">article</span>
+          <x-icon aria-hidden="true" name="article"></x-icon>
           <span>Markdown</span>
         </button>
         <button type="button" class="editor-new-menu-item" role="menuitem" data-editor-new-action="text">
-          <span class="material-symbols-outlined" aria-hidden="true">description</span>
+          <x-icon aria-hidden="true" name="description"></x-icon>
           <span>Text</span>
         </button>
       </div>

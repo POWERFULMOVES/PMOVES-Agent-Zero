@@ -20,11 +20,12 @@
 - `async call_extensions_async(extension_point: str, agent: 'Agent|None'=..., **kwargs)`
 - `call_extensions_sync(extension_point: str, agent: 'Agent|None'=..., **kwargs)`
 - `get_webui_extensions(agent: 'Agent | None', extension_point: str, filters: list[str] | None=...)`
+- `get_webui_extension_manifest(agent: 'Agent | None') -> dict[str, dict[str, list[str]]]`
 - `_get_extension_classes(extension_point: str, agent: 'Agent|None'=..., **kwargs) -> list[Type[Extension]]`
 - `_get_file_from_module(module_name: str) -> str`
 - `_get_extensions(folder: str)`
 - `register_extensions_watchdogs()`
-- Notable constants/configuration names: `DEFAULT_EXTENSIONS_FOLDER`, `USER_EXTENSIONS_FOLDER`, `_EXTENSIONS_CACHE_AREA`, `_CLASSES_CACHE_AREA`, `_UNSET`, `_EXTENSIONS_LOG_COUNTS`.
+- Notable constants/configuration names: `DEFAULT_EXTENSIONS_FOLDER`, `USER_EXTENSIONS_FOLDER`, `_EXTENSIONS_CACHE_AREA`, `_CLASSES_CACHE_AREA`, `_WEBUI_MANIFEST_CACHE_AREA`, `_WEBUI_MANIFEST_SUFFIXES`, `_UNSET`, `_EXTENSIONS_LOG_COUNTS`.
 
 ## Runtime Contracts
 
@@ -37,6 +38,7 @@
 ## Key Concepts
 
 - Important called helpers/classes observed in the source: `_Unset`, `inspect.iscoroutinefunction`, `wraps`, `_log_extension_call`, `_get_extension_classes`, `subagents.get_paths`, `cache.determine_cache_key`, `cache.add`, `files.get_abs_path`, `modules.load_classes_from_folder`, `watchdog.add_watchdog`, `os.path.join`, `_get_agent`, `_prepare_inputs`, `_process_result`, `call_extensions_sync`, `cls.execute`, `files.deabsolute_path`, `_get_file_from_module`, `module_name.split`.
+- `get_webui_extension_manifest()` scans enabled WebUI extension roots once, preserves root/filter ordering, groups URLs into `html` and `js` maps by extension point, and caches under extension/plugin invalidation scopes for injection into the rendered index.
 - Keep request/response, tool, or helper semantics documented here at the same time as source changes.
 
 ## Work Guidance

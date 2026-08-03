@@ -22,7 +22,7 @@
               <p>Each account can be connected independently.</p>
             </div>
             <button class="oauth-icon-button" type="button" @click="$store.oauthConfig.loadStatus()" title="Refresh status" aria-label="Refresh status">
-              <span class="material-symbols-outlined">refresh</span>
+              <x-icon name="refresh"></x-icon>
             </button>
           </div>
 
@@ -34,7 +34,7 @@
                 @click="$store.oauthConfig.selectProvider(card.provider_id)"
               >
                 <span class="oauth-mark" :class="{ connected: card.connected }">
-                  <span class="material-symbols-outlined" x-text="card.connected ? 'check' : card.mark"></span>
+                  <x-icon :name="card.connected ? 'check' : card.mark"></x-icon>
                 </span>
                 <div class="oauth-provider-row-copy">
                   <strong x-text="card.display_name"></strong>
@@ -49,7 +49,7 @@
                     :disabled="$store.oauthConfig.providerPrimaryDisabled(card.provider_id)"
                     x-show="!card.connected"
                   >
-                    <span class="material-symbols-outlined" x-text="$store.oauthConfig.connectingProvider === card.provider_id ? 'progress_activity' : ($store.oauthConfig.providerSetupReady(card.provider_id) ? 'login' : 'tune')"></span>
+                    <x-icon :name="$store.oauthConfig.connectingProvider === card.provider_id ? 'progress_activity' : ($store.oauthConfig.providerSetupReady(card.provider_id) ? 'login' : 'tune')"></x-icon>
                     <span x-text="$store.oauthConfig.providerPrimaryLabel(card.provider_id)"></span>
                   </button>
                   <button
@@ -59,7 +59,7 @@
                     :disabled="$store.oauthConfig.disconnectingProvider === card.provider_id"
                     x-show="card.connected"
                   >
-                    <span class="material-symbols-outlined" x-text="$store.oauthConfig.disconnectingProvider === card.provider_id ? 'progress_activity' : 'link_off'"></span>
+                    <x-icon :name="$store.oauthConfig.disconnectingProvider === card.provider_id ? 'progress_activity' : 'link_off'"></x-icon>
                     <span x-text="$store.oauthConfig.disconnectingProvider === card.provider_id ? 'Disconnecting' : 'Disconnect'"></span>
                   </button>
                 </div>
@@ -124,11 +124,48 @@
                       </label>
                     </div>
 
+                    <div class="oauth-response-defaults" x-show="card.provider_id === 'codex_oauth'">
+                      <div class="oauth-response-defaults-head">
+                        <strong>Codex response defaults</strong>
+                        <span>Applied when an individual model request does not override them.</span>
+                      </div>
+                      <label class="oauth-provider-input">
+                        <span>Reasoning effort</span>
+                        <select x-model="$store.oauthConfig.codex().reasoning_effort" name="codex_reasoning_effort">
+                          <option value="default">Model default</option>
+                          <option value="minimal">Minimal</option>
+                          <option value="low">Low</option>
+                          <option value="medium">Medium</option>
+                          <option value="high">High</option>
+                          <option value="xhigh">Extra high</option>
+                        </select>
+                      </label>
+                      <label class="oauth-provider-input">
+                        <span>Reasoning summary</span>
+                        <select x-model="$store.oauthConfig.codex().reasoning_summary" name="codex_reasoning_summary">
+                          <option value="auto">Auto</option>
+                          <option value="concise">Concise</option>
+                          <option value="detailed">Detailed</option>
+                          <option value="off">Off</option>
+                        </select>
+                      </label>
+                      <label class="oauth-provider-input">
+                        <span>Answer verbosity</span>
+                        <select x-model="$store.oauthConfig.codex().text_verbosity" name="codex_text_verbosity">
+                          <option value="default">Model default</option>
+                          <option value="low">Low</option>
+                          <option value="medium">Medium</option>
+                          <option value="high">High</option>
+                        </select>
+                      </label>
+                      <p class="oauth-provider-note">Effort controls reasoning depth, summaries appear while the agent works, and verbosity shapes the final answer.</p>
+                    </div>
+
                     <div class="oauth-device" x-show="$store.oauthConfig.providerDevice(card.provider_id)?.user_code">
                       <span>Enter this code</span>
                       <strong x-text="$store.oauthConfig.providerDevice(card.provider_id)?.user_code"></strong>
                       <button class="text-button" type="button" @click="$store.oauthConfig.cancelConnect(card.provider_id)">
-                        <span class="material-symbols-outlined">close</span>
+                        <x-icon name="close"></x-icon>
                         <span>Cancel</span>
                       </button>
                     </div>
@@ -140,11 +177,11 @@
                         placeholder="Paste callback URL, query string, or code"
                       />
                       <button type="button" class="oauth-connect secondary" @click="$store.oauthConfig.submitManualCallback(card.provider_id)">
-                        <span class="material-symbols-outlined">check</span>
+                        <x-icon name="check"></x-icon>
                         <span>Submit</span>
                       </button>
                       <button type="button" class="oauth-connect secondary" @click="$store.oauthConfig.cancelConnect(card.provider_id)">
-                        <span class="material-symbols-outlined">close</span>
+                        <x-icon name="close"></x-icon>
                         <span>Cancel</span>
                       </button>
                     </div>
@@ -152,7 +189,7 @@
                     <div class="oauth-auth-attempt" x-show="$store.oauthConfig.providerDevice(card.provider_id) && !$store.oauthConfig.providerDevice(card.provider_id)?.user_code && !card.supports_manual_callback">
                       <span>Sign-in started</span>
                       <button class="text-button" type="button" @click="$store.oauthConfig.cancelConnect(card.provider_id)">
-                        <span class="material-symbols-outlined">close</span>
+                        <x-icon name="close"></x-icon>
                         <span>Cancel</span>
                       </button>
                     </div>
@@ -182,7 +219,7 @@
               <template x-for="slot in $store.oauthConfig.modelSlots" :key="slot.key">
                 <div class="oauth-model-card">
                   <div class="oauth-model-head">
-                    <span class="oauth-model-icon material-symbols-outlined" x-text="slot.icon"></span>
+                    <x-icon class="oauth-model-icon" :name="slot.icon"></x-icon>
                     <div class="oauth-model-title">
                       <strong x-text="slot.title"></strong>
                       <span x-show="$store.oauthConfig.slotStatusLabel(slot.key)" x-text="$store.oauthConfig.slotStatusLabel(slot.key)"></span>
@@ -196,7 +233,7 @@
                         x-show="slot.key === 'utility_model' && $store.oauthConfig.slotUsesOauth('chat_model')"
                         @click="$store.oauthConfig.copyMainToUtility()"
                       >
-                        <span class="material-symbols-outlined">content_copy</span>
+                        <x-icon name="content_copy"></x-icon>
                       </button>
                     </div>
                   </div>
@@ -233,7 +270,7 @@
                         @click="$store.oauthConfig.openModelDropdown(slot.key, $el)"
                         :disabled="!$store.oauthConfig.slotCanUseModels(slot.key) || $store.oauthConfig.loadingModelsProvider === $store.oauthConfig.modelSlot(slot.key).provider"
                       >
-                        <span class="material-symbols-outlined" x-text="$store.oauthConfig.loadingModelsProvider === $store.oauthConfig.modelSlot(slot.key).provider ? 'progress_activity' : 'search'"></span>
+                        <x-icon :name="$store.oauthConfig.loadingModelsProvider === $store.oauthConfig.modelSlot(slot.key).provider ? 'progress_activity' : 'search'"></x-icon>
                       </button>
                     </div>
 
@@ -588,6 +625,35 @@
       gap: 8px;
     }
 
+    .oauth-response-defaults {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+      padding: 12px;
+      border: 1px solid color-mix(in srgb, var(--color-border) 74%, transparent);
+      border-radius: 8px;
+      background: color-mix(in srgb, var(--color-panel) 82%, transparent);
+    }
+
+    .oauth-response-defaults-head,
+    .oauth-response-defaults .oauth-provider-note {
+      grid-column: 1 / -1;
+    }
+
+    .oauth-response-defaults-head {
+      display: grid;
+      gap: 2px;
+    }
+
+    .oauth-response-defaults-head strong {
+      font-size: 0.84rem;
+    }
+
+    .oauth-response-defaults-head span {
+      color: var(--color-text-secondary);
+      font-size: 0.76rem;
+    }
+
     .oauth-manual-callback {
       grid-template-columns: minmax(0, 1fr) auto auto;
       align-items: center;
@@ -611,6 +677,7 @@
     }
 
     .oauth-provider-input input,
+    .oauth-provider-input select,
     .oauth-manual-callback input {
       width: 100%;
       min-width: 0;
@@ -1162,6 +1229,7 @@
 
     @media (max-width: 720px) {
       .oauth-device,
+      .oauth-response-defaults,
       .oauth-provider-row-detail,
       .oauth-provider-usage,
       .oauth-status-row,

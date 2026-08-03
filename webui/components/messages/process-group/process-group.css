@@ -11,6 +11,14 @@
   flex-shrink: 0;
 }
 
+.process-group.utility-only {
+  display: none !important;
+}
+
+.show-utility-messages .process-group.utility-only {
+  display: flex !important;
+}
+
 /* Embedded Process Group inside Response */
 .process-group.embedded {
   display: flex;
@@ -377,6 +385,28 @@
   overflow: hidden;
 }
 
+.process-group-show-more {
+  align-self: flex-start;
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  border: 0;
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  font-family: var(--font-family-main);
+  font-size: var(--font-size-xs);
+  padding: var(--spacing-xs) 0;
+  opacity: 0.7;
+  text-decoration: none;
+  transition: opacity 0.15s ease;
+}
+
+.process-group-show-more:hover,
+.process-group-show-more:focus-visible {
+  opacity: 1;
+}
+
 /* Individual Process Step */
 .process-step {
   display: flex;
@@ -385,6 +415,14 @@
   transition: background-color 0.15s ease;
   max-width: 100%;
   overflow: hidden;
+}
+
+.process-step.message-util {
+  display: none;
+}
+
+.show-utility-messages .process-step.message-util {
+  display: flex;
 }
 
 /* Utility/Info/Hint steps have subtle background tint */
@@ -874,5 +912,3 @@
 .process-step:not(.expanded) > .process-step-detail > .step-detail-actions {
   display: none;
 }
-
-

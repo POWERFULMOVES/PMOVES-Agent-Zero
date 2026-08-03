@@ -283,6 +283,14 @@ def test_computer_use_remote_prompt_requires_visual_verification_after_actions()
         / "host-computer-use"
         / "SKILL.md"
     ).read_text(encoding="utf-8")
+    linux_skill = (
+        PROJECT_ROOT
+        / "plugins"
+        / "_a0_connector"
+        / "skills"
+        / "host-computer-use-linux"
+        / "SKILL.md"
+    ).read_text(encoding="utf-8")
 
     assert "Treat key presses, clicks, scrolling, and typing" in prompt
     assert "attempts, not success" in prompt
@@ -294,8 +302,13 @@ def test_computer_use_remote_prompt_requires_visual_verification_after_actions()
     assert "minimize" not in prompt.lower()
     assert "window-manager" not in prompt
     assert "cannot actually see the image" in skill
-    assert "A `type` tool result only confirms keystrokes were sent" in skill
+    assert "A `type` tool result confirms the destination only when" in skill
     assert "visibly confirms" in skill
+    assert "target-verified-keyboard-input" in prompt
+    assert "focus_verified=true" in prompt
+    assert "do not repeat the same action with identical arguments" in prompt
+    assert "Pass the same verified active `window_id` to `type`" in linux_skill
+    assert "never use it on an application/frame/window" in linux_skill
     assert "hide window" not in skill
     assert "minimize window" not in skill
     assert "hide/minimize" not in skill

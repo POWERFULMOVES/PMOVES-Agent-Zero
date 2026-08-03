@@ -61,6 +61,10 @@ def test_oauth_settings_exposes_provider_specific_controls_and_generic_copy():
     assert "supports_quota_project" in config_html + store_js
     assert "OAuth client ID" in config_html
     assert "quota_project_id" in config_html + store_js
+    assert "Codex response defaults" in config_html
+    assert "$store.oauthConfig.codex().reasoning_effort" in config_html
+    assert "$store.oauthConfig.codex().reasoning_summary" in config_html
+    assert "$store.oauthConfig.codex().text_verbosity" in config_html
     assert "providerDetailOpen(card.provider_id)" in config_html + store_js
     assert "providerDevice(card.provider_id)?.user_code" in config_html
     assert "submitManualCallback(card.provider_id)" in config_html

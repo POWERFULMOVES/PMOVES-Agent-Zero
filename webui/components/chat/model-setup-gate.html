@@ -10,7 +10,7 @@
       <section class="model-gate" x-create="$store.modelGate.onCardCreate()">
         <template x-if="$store.modelGate.connected">
           <div class="model-gate-chip">
-            <span class="material-symbols-outlined" aria-hidden="true">check_circle</span>
+            <x-icon aria-hidden="true" name="check_circle"></x-icon>
             <span x-text="$store.modelGate.introText"></span>
           </div>
         </template>
@@ -25,7 +25,7 @@
                         class="model-gate-option"
                         @click="$store.modelGate.openAdvancedModelConfiguration()">
                   <span class="model-gate-option-title">
-                    <span class="material-symbols-outlined" aria-hidden="true">tune</span>
+                    <x-icon aria-hidden="true" name="tune"></x-icon>
                     <span>Choose models</span>
                   </span>
                   <span class="model-gate-option-sub">Select Main and Utility models</span>
@@ -38,7 +38,7 @@
                         :class="{ selected: $store.modelGate.choice === 'cloud' }"
                         @click="$store.modelGate.openOnboarding('cloud')">
                   <span class="model-gate-option-title">
-                    <span class="material-symbols-outlined" aria-hidden="true">cloud</span>
+                    <x-icon aria-hidden="true" name="cloud"></x-icon>
                     <span>Cloud provider</span>
                   </span>
                   <span class="model-gate-option-sub">Connect with an API key</span>
@@ -48,7 +48,7 @@
                         :class="{ selected: $store.modelGate.choice === 'account' }"
                         @click="$store.modelGate.openOnboarding('account')">
                   <span class="model-gate-option-title">
-                    <span class="material-symbols-outlined" aria-hidden="true">account_circle</span>
+                    <x-icon aria-hidden="true" name="account_circle"></x-icon>
                     <span>AI account</span>
                   </span>
                   <span class="model-gate-option-sub">Codex, Copilot, Gemini, Grok</span>
@@ -58,7 +58,7 @@
                         :class="{ selected: $store.modelGate.choice === 'local' }"
                         @click="$store.modelGate.openOnboarding('local')">
                   <span class="model-gate-option-title">
-                    <span class="material-symbols-outlined" aria-hidden="true">memory</span>
+                    <x-icon aria-hidden="true" name="memory"></x-icon>
                     <span>Local model</span>
                   </span>
                   <span class="model-gate-option-sub">Runs on your machine</span>

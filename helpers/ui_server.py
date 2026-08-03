@@ -1,6 +1,7 @@
 from dataclasses import dataclass, field
 from datetime import timedelta
 import asyncio
+import gzip
 import json
 import logging
 import os
@@ -21,6 +22,7 @@ from flask import (
 )
 from socketio import ASGIApp
 from starlette.applications import Starlette
+from starlette.middleware.gzip import GZipMiddleware
 from starlette.routing import Mount
 from uvicorn.middleware.wsgi import WSGIMiddleware
 from werkzeug.wrappers.request import Request as WerkzeugRequest
@@ -28,10 +30,14 @@ import socketio  # type: ignore[import-untyped]
 
 from helpers import dotenv, fasta2a_server, files, git, login, mcp_server, runtime
 from helpers.api import get_safe_next_url, register_api_route, requires_auth
-from helpers.extension import extensible
+from helpers.extension import extensible, get_webui_extension_manifest
 from helpers.files import get_abs_path
 from helpers.print_style import PrintStyle
 from helpers.server_startup import StartupMonitor
+from helpers.ui_bundler import (
+    get_ui_asset_bundle,
+    serialize_ui_asset_bundle,
+)
 from helpers import settings as settings_helper
 from helpers.ws import register_ws_namespace, validate_ws_origin
 from helpers.ws_manager import WsManager, set_shared_ws_manager
@@ -40,6 +46,9 @@ from helpers.ws_manager import WsManager, set_shared_ws_manager
 UPLOAD_LIMIT_BYTES = 5 * 1024 * 1024 * 1024
 SOCKETIO_PING_INTERVAL_SECONDS = 45
 SOCKETIO_PING_TIMEOUT_SECONDS = 120
+GZIP_MINIMUM_RESPONSE_BYTES = 1024
+GZIP_COMPRESSION_LEVEL = 6
+UI_INDEX_ASSET_URL = "/index.html"
 
 
 def _positive_int_env(name: str, default: int) -> int:
@@ -151,7 +160,31 @@ class UiServerRuntime:
         self.webapp.add_url_rule(
             "/",
             "serve_index",
+            handlers.serve_splash,
+            methods=["GET"],
+        )
+        self.webapp.add_url_rule(
+            "/index.html",
+            "serve_app_index",
             handlers.serve_index,
+            methods=["GET"],
+        )
+        self.webapp.add_url_rule(
+            "/ui/index",
+            "serve_bootstrap_index",
+            handlers.serve_index,
+            methods=["GET"],
+        )
+        self.webapp.add_url_rule(
+            "/safe",
+            "serve_safe",
+            handlers.serve_safe,
+            methods=["GET"],
+        )
+        self.webapp.add_url_rule(
+            "/ui/asset-bundle",
+            "serve_ui_asset_bundle",
+            handlers.serve_ui_asset_bundle,
             methods=["GET"],
         )
         self.webapp.add_url_rule(
@@ -205,9 +238,14 @@ class UiServerRuntime:
                 ],
                 lifespan=startup_monitor.lifespan(),
             )
+            compressed_http_app = GZipMiddleware(
+                starlette_app,
+                minimum_size=GZIP_MINIMUM_RESPONSE_BYTES,
+                compresslevel=GZIP_COMPRESSION_LEVEL,
+            )
 
         with startup_monitor.stage("socketio.asgi.create"):
-            return ASGIApp(self.socketio_server, other_asgi_app=starlette_app)
+            return ASGIApp(self.socketio_server, other_asgi_app=compressed_http_app)
 
     def access_log_enabled(self) -> bool:
         return self.settings_snapshot.get("uvicorn_access_logs_enabled", False)
@@ -246,6 +284,24 @@ class UiRouteHandlers:
         return redirect(url_for("login_handler"))
 
     @requires_auth
+    async def serve_splash(self):
+        return Response(
+            files.read_file("webui/splash.html"),
+            content_type="text/html; charset=utf-8",
+            headers={"Cache-Control": "no-store"},
+        )
+
+    @requires_auth
+    async def serve_safe(self):
+        if request.args.get("__direct") == "1":
+            return await self.serve_index()
+        return Response(
+            files.read_file("webui/safe.html"),
+            content_type="text/html; charset=utf-8",
+            headers={"Cache-Control": "no-store"},
+        )
+
+    @requires_auth
     @extensible
     async def serve_index(self):
         try:
@@ -270,6 +326,18 @@ class UiRouteHandlers:
             )
         except Exception:
             user_ui_control_visibility = json.dumps(settings_helper.UI_CONTROL_VISIBILITY_DEFAULTS)
+        try:
+            webui_extension_manifest = json.dumps(
+                get_webui_extension_manifest(agent=None),
+                separators=(",", ":"),
+            )
+            webui_extension_manifest = (
+                webui_extension_manifest.replace("&", "\\u0026")
+                .replace("<", "\\u003c")
+                .replace(">", "\\u003e")
+            )
+        except Exception:
+            webui_extension_manifest = "null"
 
         index = files.read_file("webui/index.html")
         return files.replace_placeholders_text(
@@ -282,7 +350,48 @@ class UiRouteHandlers:
             user_timezone_setting=user_timezone_setting,
             user_time_format_setting=user_time_format_setting,
             user_ui_control_visibility=user_ui_control_visibility,
+            webui_extension_manifest=webui_extension_manifest,
         )
+
+    @requires_auth
+    async def serve_ui_asset_bundle(self):
+        try:
+            bundle = get_ui_asset_bundle([UI_INDEX_ASSET_URL], agent=None)
+            return self._serve_ui_asset_payload(bundle)
+        except Exception as error:
+            PrintStyle.warning(f"Unable to build WebUI asset bundle: {error}")
+            return Response(
+                '{"error":"WebUI asset bundle unavailable"}',
+                status=503,
+                content_type="application/json; charset=utf-8",
+                headers={"Cache-Control": "no-store"},
+            )
+
+    def _serve_ui_asset_payload(self, asset_payload: dict):
+        version = str(asset_payload.get("version") or "")
+        if not version:
+            raise ValueError("WebUI asset payload has no version")
+        if request.if_none_match.contains_weak(version):
+            response = Response(status=304)
+            response.headers["Vary"] = "Accept-Encoding"
+            response.set_etag(version, weak=True)
+            response.cache_control.private = True
+            response.cache_control.no_cache = True
+            return response
+
+        payload = serialize_ui_asset_bundle(asset_payload).encode("utf-8")
+        use_gzip = request.accept_encodings["gzip"] > 0
+        response = Response(
+            gzip.compress(payload) if use_gzip else payload,
+            content_type="application/json; charset=utf-8",
+        )
+        if use_gzip:
+            response.headers["Content-Encoding"] = "gzip"
+        response.headers["Vary"] = "Accept-Encoding"
+        response.set_etag(version, weak=True)
+        response.cache_control.private = True
+        response.cache_control.no_cache = True
+        return response
 
     @requires_auth
     async def serve_builtin_plugin_asset(self, plugin_name, asset_path):

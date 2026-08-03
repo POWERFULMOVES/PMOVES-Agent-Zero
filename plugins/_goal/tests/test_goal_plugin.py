@@ -5,21 +5,22 @@ from types import SimpleNamespace
 
 import pytest
 
-from helpers import files
-from plugins._goal.api.goal import Goal
+from agent import Agent, LoopData
+from helpers import extension, files, mcp_handler
+from helpers.llm_result import LLMResult
+from helpers.log import Log
+from plugins._goal.api.goal import Goal as GoalApi
 from plugins._goal.commands import goal_command
-from plugins._goal.helpers import goals
-from plugins._goal.tools.create_goal import CreateGoal
-from plugins._goal.tools.get_goal import GetGoal
+from plugins._goal.tools import goal
+from plugins._goal.tools.goal import GoalTool
 from plugins._goal.tools.response import ResponseTool
-from plugins._goal.tools.update_goal import UpdateGoal
 
 
 @pytest.fixture()
 def context_id():
     context_id = f"goal-test-{uuid.uuid4().hex}"
     yield context_id
-    goals.delete_goal(context_id)
+    goal.delete_goal(context_id)
 
 
 def _payload(context_id: str, command_text: str) -> dict:
@@ -32,47 +33,47 @@ def _payload(context_id: str, command_text: str) -> dict:
 
 
 def test_goal_storage_round_trip(context_id: str):
-    goal = goals.create_goal(context_id, "Ship the goal plugin", token_budget=1200)
+    current_goal = goal.create_goal(context_id, "Ship the goal plugin", token_budget=1200)
 
-    loaded = goals.get_goal(context_id)
-    assert loaded == goal
+    loaded = goal.get_goal(context_id)
+    assert loaded == current_goal
     assert loaded["status"] == "active"
     assert loaded["token_budget"] == 1200
     assert loaded["active_since"]
     assert loaded["elapsed_seconds"] == 0
 
-    updated = goals.update_goal(context_id, status="paused", objective="Polish the goal strip")
+    updated = goal.update_goal(context_id, status="paused", objective="Polish the goal strip")
     assert updated["status"] == "paused"
     assert updated["objective"] == "Polish the goal strip"
     assert updated["active_since"] == ""
     paused_seconds = updated["elapsed_seconds"]
 
-    resumed = goals.update_goal(context_id, status="active")
+    resumed = goal.update_goal(context_id, status="active")
     assert resumed["status"] == "active"
     assert resumed["active_since"]
     assert resumed["elapsed_seconds"] == paused_seconds
 
-    goals.delete_goal(context_id)
-    assert goals.get_goal(context_id) is None
+    goal.delete_goal(context_id)
+    assert goal.get_goal(context_id) is None
 
 
 def test_goal_command_sets_pauses_resumes_and_deletes(context_id: str):
     created = goal_command.run(_payload(context_id, "/goal Add current goal support"))
     assert created["effects"][0]["message"] == "Goal set."
     assert created["effects"][2] == {"type": "send_message", "text": "Add current goal support"}
-    assert goals.get_goal(context_id)["objective"] == "Add current goal support"
+    assert goal.get_goal(context_id)["objective"] == "Add current goal support"
 
     paused = goal_command.run(_payload(context_id, "/goal pause"))
     assert paused["effects"][0]["message"] == "Goal paused."
-    assert goals.get_goal(context_id)["status"] == "paused"
+    assert goal.get_goal(context_id)["status"] == "paused"
 
     resumed = goal_command.run(_payload(context_id, "/goal resume"))
     assert resumed["effects"][0]["message"] == "Goal resumed."
-    assert goals.get_goal(context_id)["status"] == "active"
+    assert goal.get_goal(context_id)["status"] == "active"
 
     deleted = goal_command.run(_payload(context_id, "/goal delete"))
     assert deleted["effects"][0]["message"] == "Goal deleted."
-    assert goals.get_goal(context_id) is None
+    assert goal.get_goal(context_id) is None
 
 
 def test_goal_auto_fills_prompt(context_id: str):
@@ -84,12 +85,12 @@ def test_goal_auto_fills_prompt(context_id: str):
 
 
 def test_goal_files_stay_under_user_plugin_state(context_id: str):
-    goals.create_goal(context_id, "Keep state in usr")
+    goal.create_goal(context_id, "Keep state in usr")
     goal_path = files.get_abs_path(
         files.USER_DIR,
         files.PLUGINS_DIR,
-        goals.PLUGIN_NAME,
-        goals.GOALS_DIR,
+        goal.PLUGIN_NAME,
+        goal.GOALS_DIR,
         f"{context_id}.json",
     )
 
@@ -98,7 +99,7 @@ def test_goal_files_stay_under_user_plugin_state(context_id: str):
 
 @pytest.mark.asyncio
 async def test_goal_api_and_agent_tools(context_id: str):
-    handler = object.__new__(Goal)
+    handler = object.__new__(GoalApi)
     created = await handler.process(
         {
             "action": "set",
@@ -111,18 +112,18 @@ async def test_goal_api_and_agent_tools(context_id: str):
     assert created["goal"]["objective"] == "Exercise API path"
 
     fake_agent = SimpleNamespace(context=SimpleNamespace(id=context_id))
-    get_tool = GetGoal(fake_agent, "get_goal", None, {}, "", None)
+    get_tool = GoalTool(fake_agent, "goal", None, {}, "", None)
     get_response = await get_tool.execute()
     assert "Exercise API path" in get_response.message
 
-    update_tool = UpdateGoal(fake_agent, "update_goal", None, {}, "", None)
-    update_response = await update_tool.execute(status="complete")
+    update_tool = GoalTool(fake_agent, "goal", None, {}, "", None)
+    update_response = await update_tool.execute(action="update", status="complete")
     assert "Status: complete" in update_response.message
 
-    create_tool = CreateGoal(fake_agent, "create_goal", None, {}, "", None)
-    create_response = await create_tool.execute(objective="Exercise tool path")
+    create_tool = GoalTool(fake_agent, "goal", None, {}, "", None)
+    create_response = await create_tool.execute(action="create", objective="Exercise tool path")
     assert "Goal created: Exercise tool path" == create_response.message
-    assert goals.get_goal(context_id)["created_by"] == "model"
+    assert goal.get_goal(context_id)["created_by"] == "model"
 
 
 @pytest.mark.parametrize("terminal_status", ["blocked", "complete"])
@@ -131,10 +132,10 @@ async def test_editing_terminal_goal_requests_agent_reactivation(
     context_id: str,
     terminal_status: str,
 ):
-    goals.create_goal(context_id, "Initial goal")
-    goals.update_goal(context_id, status=terminal_status)
+    goal.create_goal(context_id, "Initial goal")
+    goal.update_goal(context_id, status=terminal_status)
 
-    response = await object.__new__(Goal).process(
+    response = await object.__new__(GoalApi).process(
         {
             "action": "update",
             "context_id": context_id,
@@ -151,7 +152,7 @@ async def test_editing_terminal_goal_requests_agent_reactivation(
 
 @pytest.mark.asyncio
 async def test_active_goal_keeps_response_tool_running(context_id: str):
-    goals.create_goal(context_id, "Keep going")
+    goal.create_goal(context_id, "Keep going")
     recorded = []
     fake_agent = SimpleNamespace(
         context=SimpleNamespace(id=context_id),
@@ -178,7 +179,56 @@ async def test_active_goal_keeps_response_tool_running(context_id: str):
         )
     ]
 
-    goals.update_goal(context_id, status="complete")
+    goal.update_goal(context_id, status="complete")
     response = await tool.execute()
     assert response.break_loop is True
     assert response.message == "Can you decide?"
+
+
+@pytest.mark.asyncio
+async def test_native_responses_text_uses_active_goal_response_override(
+    context_id: str,
+    monkeypatch,
+):
+    goal.create_goal(context_id, "Keep going")
+    recorded = []
+
+    async def no_op(*args, **kwargs):
+        return None
+
+    class NoMcpTools:
+        def get_tool(self, agent, tool_name):
+            return None
+
+    agent = object.__new__(Agent)
+    agent.context = SimpleNamespace(id=context_id, log=Log())
+    agent.loop_data = LoopData()
+    agent.data = {}
+    agent.handle_intervention = no_op
+    agent._log_response_builtin_items = no_op
+    agent.hist_add_tool_result = lambda *args, **kwargs: recorded.append((args, kwargs))
+
+    def get_tool(name, method, args, message, loop_data, **kwargs):
+        return ResponseTool(agent, name, method, args, message, loop_data)
+
+    agent.get_tool = get_tool
+    monkeypatch.setattr(extension, "call_extensions_async", no_op)
+    monkeypatch.setattr(mcp_handler.MCPConfig, "get_instance", lambda: NoMcpTools())
+
+    result = await Agent.process_llm_result_tools(
+        agent,
+        LLMResult(response="Checkpoint for the user."),
+    )
+
+    assert result is None
+    assert recorded[0][0][0] == "response"
+    assert recorded[0][0][1].startswith("Goal still active.")
+    assert recorded[0][1] == {}
+
+    goal.update_goal(context_id, status="complete")
+    result = await Agent.process_llm_result_tools(
+        agent,
+        LLMResult(response="Finished."),
+    )
+
+    assert result == "Finished."

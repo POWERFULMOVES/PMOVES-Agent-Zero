@@ -20,6 +20,7 @@
 - Update this file whenever request payloads, authentication or CSRF requirements, response shapes, route side effects, or WebSocket event contracts change.
 - `LoadWebuiExtensions` is an `ApiHandler`.
 - `LoadWebuiExtensions` defines `process(...)`.
+- The rendered main index normally supplies the complete enabled extension manifest, so this endpoint is a compatibility fallback for callers that do not have `runtimeInfo.webuiExtensions`; its single-extension-point request and response shape remains stable.
 - Imported dependency areas include: `helpers`, `helpers.api`.
 
 ## Key Concepts

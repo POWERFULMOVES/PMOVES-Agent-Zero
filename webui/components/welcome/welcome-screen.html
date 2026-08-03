@@ -31,7 +31,7 @@
                             <template x-for="banner in $store.welcomeStore.sortedBanners" :key="banner.id">
                                 <article class="welcome-banner" :class="$store.welcomeStore.getBannerClass(banner.type)">
                                     <div class="welcome-banner-icon">
-                                        <span class="material-symbols-outlined" x-text="$store.welcomeStore.getBannerIcon(banner.type)"></span>
+                                        <x-icon :name="$store.welcomeStore.getBannerIcon(banner.type)"></x-icon>
                                     </div>
                                     <div class="welcome-banner-content">
                                         <div class="welcome-banner-title" x-text="banner.title"></div>
@@ -45,7 +45,7 @@
                                             @click.stop="$store.welcomeStore.executeBannerAction(banner.cta_action)"
                                             :aria-label="banner.cta_text">
                                         <span x-text="banner.cta_text"></span>
-                                        <span class="material-symbols-outlined" aria-hidden="true">arrow_forward</span>
+                                        <x-icon aria-hidden="true" name="arrow_forward"></x-icon>
                                     </button>
                                     <button class="welcome-banner-dismiss"
                                             type="button"
@@ -53,7 +53,7 @@
                                             @click.stop="$store.welcomeStore.dismissBanner(banner.id)"
                                             title="Dismiss"
                                             aria-label="Dismiss">
-                                        <span class="material-symbols-outlined">close</span>
+                                        <x-icon name="close"></x-icon>
                                     </button>
                                 </article>
                             </template>
@@ -65,7 +65,7 @@
                                 x-show="$store.welcomeStore.hasDismissedBanners"
                                 :disabled="$store.welcomeStore.bannersLoading"
                                 @click="$store.welcomeStore.undismissBanners()">
-                            <span class="material-symbols-outlined">undo</span>
+                            <x-icon name="undo"></x-icon>
                             <span>Show dismissed notices</span>
                         </button>
                     </section>
@@ -75,60 +75,60 @@
                         <div class="welcome-actions">
                             <x-extension id="welcome-actions-start"></x-extension>
                             <button type="button" class="welcome-action-card" @click="$store.welcomeStore.executeAction('projects')">
-                                <span class="material-symbols-outlined welcome-action-icon">folder</span>
+                                <x-icon class="welcome-action-icon" name="folder"></x-icon>
                                 <span class="welcome-action-copy">
                                     <span class="welcome-action-title">Projects</span>
                                     <span class="welcome-action-description">Organize and track your work.</span>
                                 </span>
-                                <span class="material-symbols-outlined welcome-action-arrow">chevron_right</span>
+                                <x-icon class="welcome-action-arrow" name="chevron_right"></x-icon>
                             </button>
                             <button type="button" class="welcome-action-card" @click="$store.welcomeStore.executeAction('memory')">
-                                <span class="material-symbols-outlined welcome-action-icon">memory</span>
+                                <x-icon class="welcome-action-icon" name="memory"></x-icon>
                                 <span class="welcome-action-copy">
                                     <span class="welcome-action-title">Memory</span>
                                     <span class="welcome-action-description">Access saved context and knowledge.</span>
                                 </span>
-                                <span class="material-symbols-outlined welcome-action-arrow">chevron_right</span>
+                                <x-icon class="welcome-action-arrow" name="chevron_right"></x-icon>
                             </button>
                             <button type="button" class="welcome-action-card" @click="$store.welcomeStore.executeAction('scheduler')">
-                                <span class="material-symbols-outlined welcome-action-icon">schedule</span>
+                                <x-icon class="welcome-action-icon" name="schedule"></x-icon>
                                 <span class="welcome-action-copy">
                                     <span class="welcome-action-title">Tasks</span>
                                     <span class="welcome-action-description">View and manage your tasks.</span>
                                 </span>
-                                <span class="material-symbols-outlined welcome-action-arrow">chevron_right</span>
+                                <x-icon class="welcome-action-arrow" name="chevron_right"></x-icon>
                             </button>
                             <button type="button" class="welcome-action-card" @click="$store.welcomeStore.executeAction('files')">
-                                <span class="material-symbols-outlined welcome-action-icon">folder_open</span>
+                                <x-icon class="welcome-action-icon" name="folder_open"></x-icon>
                                 <span class="welcome-action-copy">
                                     <span class="welcome-action-title">Files</span>
                                     <span class="welcome-action-description">Search and manage your files.</span>
                                 </span>
-                                <span class="material-symbols-outlined welcome-action-arrow">chevron_right</span>
+                                <x-icon class="welcome-action-arrow" name="chevron_right"></x-icon>
                             </button>
                             <button type="button" class="welcome-action-card" @click="$store.welcomeStore.executeAction('settings')">
-                                <span class="material-symbols-outlined welcome-action-icon">settings</span>
+                                <x-icon class="welcome-action-icon" name="settings"></x-icon>
                                 <span class="welcome-action-copy">
                                     <span class="welcome-action-title">Settings</span>
                                     <span class="welcome-action-description">Configure Agent Zero to your preferences.</span>
                                 </span>
-                                <span class="material-symbols-outlined welcome-action-arrow">chevron_right</span>
+                                <x-icon class="welcome-action-arrow" name="chevron_right"></x-icon>
                             </button>
                             <button type="button" class="welcome-action-card" @click="$store.welcomeStore.executeAction('plugins')">
-                                <span class="material-symbols-outlined welcome-action-icon">extension</span>
+                                <x-icon class="welcome-action-icon" name="extension"></x-icon>
                                 <span class="welcome-action-copy">
                                     <span class="welcome-action-title">Plugins</span>
                                     <span class="welcome-action-description">Extend Agent Zero with integrations.</span>
                                 </span>
-                                <span class="material-symbols-outlined welcome-action-arrow">chevron_right</span>
+                                <x-icon class="welcome-action-arrow" name="chevron_right"></x-icon>
                             </button>
                             <button type="button" class="welcome-action-card is-wide" @click="$store.welcomeStore.executeAction('website')">
-                                <span class="material-symbols-outlined welcome-action-icon">language</span>
+                                <x-icon class="welcome-action-icon" name="language"></x-icon>
                                 <span class="welcome-action-copy">
                                     <span class="welcome-action-title">Visit Website</span>
                                     <span class="welcome-action-description">Explore Agent Zero online and resources.</span>
                                 </span>
-                                <span class="material-symbols-outlined welcome-action-arrow">open_in_new</span>
+                                <x-icon class="welcome-action-arrow" name="open_in_new"></x-icon>
                             </button>
                         </div>
                     </section>
@@ -148,7 +148,7 @@
                                             @click.stop="$store.welcomeStore.refreshBanners(true)"
                                             title="Refresh"
                                             aria-label="Refresh System Resources">
-                                        <span class="material-symbols-outlined">refresh</span>
+                                        <x-icon name="refresh"></x-icon>
                                     </button>
                                     <button class="welcome-panel-icon-button"
                                             type="button"
@@ -156,7 +156,7 @@
                                             @click.stop="$store.welcomeStore.dismissBanner($store.welcomeStore.systemResourceBanner?.id || 'system-resources')"
                                             title="Dismiss"
                                             aria-label="Dismiss System Resources">
-                                        <span class="material-symbols-outlined">close</span>
+                                        <x-icon name="close"></x-icon>
                                     </button>
                                 </div>
                             </header>
@@ -177,7 +177,6 @@
             min-height: 100vh;
             overflow: hidden;
             padding: clamp(4.8rem, 8vh, 6.4rem) clamp(1.25rem, 5.4vw, 6.5rem) 3.5rem;
-            background: var(--color-background);
             color: var(--color-text);
             font-family: var(--font-family-main, "Rubik", Arial, Helvetica, sans-serif);
         }
@@ -237,6 +236,7 @@
 
         .welcome-composer {
             width: 100%;
+            min-height: 4.9rem;
         }
 
         .welcome-composer > x-component,

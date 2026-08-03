@@ -242,7 +242,7 @@
             :disabled="$store.orchestratorStore.loading"
             @click="$store.orchestratorStore.refresh()"
           >
-            <span class="material-symbols-outlined" aria-hidden="true" x-text="$store.orchestratorStore.loading ? 'progress_activity' : 'refresh'"></span>
+            <x-icon aria-hidden="true" :name="$store.orchestratorStore.loading ? 'progress_activity' : 'refresh'"></x-icon>
           </button>
         </div>
 
@@ -263,7 +263,7 @@
                   x-show="agent.installed && !agent.auth?.connected && agent.supports_device_login && (!$store.orchestratorStore.login || $store.orchestratorStore.login.agentId !== agent.id)"
                   @click.stop="$store.orchestratorStore.startLogin(agent.id)"
                 >
-                  <span class="material-symbols-outlined" aria-hidden="true">login</span>
+                  <x-icon aria-hidden="true" name="login"></x-icon>
                   <span>Connect</span>
                 </button>
                 <button
@@ -273,10 +273,10 @@
                   :disabled="$store.orchestratorStore.disconnectingAgent === agent.id"
                   @click.stop="$store.orchestratorStore.disconnect(agent.id)"
                 >
-                  <span class="material-symbols-outlined" aria-hidden="true" x-text="$store.orchestratorStore.disconnectingAgent === agent.id ? 'progress_activity' : 'link_off'"></span>
+                  <x-icon aria-hidden="true" :name="$store.orchestratorStore.disconnectingAgent === agent.id ? 'progress_activity' : 'link_off'"></x-icon>
                   <span x-text="$store.orchestratorStore.disconnectingAgent === agent.id ? 'Disconnecting' : 'Disconnect'"></span>
                 </button>
-                <span class="material-symbols-outlined ta-expand" aria-hidden="true">expand_more</span>
+                <x-icon class="ta-expand" aria-hidden="true" name="expand_more"></x-icon>
               </div>
             </summary>
 

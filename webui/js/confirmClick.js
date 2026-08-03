@@ -1,6 +1,8 @@
 // Inline button two-click confirmation for destructive actions.
 // First click arms, second click confirms, timeout resets.
 
+import { ICON_SELECTOR, getIconName, setIconName } from "./icons.js";
+
 const CONFIRM_TIMEOUT = 2000;
 const CONFIRM_CLASS = 'confirming';
 const CONFIRM_ICON = 'check';
@@ -21,13 +23,13 @@ export function confirmClick(event, action) {
     buttonStates.delete(button);
     action();
   } else {
-    const iconEl = button.querySelector('.material-symbols-outlined, .material-icons-outlined');
+    const iconEl = button.querySelector(ICON_SELECTOR);
     const isIconButton = iconEl && button.textContent.trim() === iconEl.textContent.trim();
     
     const newState = {
       confirming: true,
       isIconButton,
-      originalIcon: iconEl?.textContent?.trim(),
+      originalIcon: getIconName(iconEl),
       originalHTML: isIconButton ? null : button.innerHTML,
       timeoutId: setTimeout(() => {
         resetButton(button, newState);
@@ -40,13 +42,13 @@ export function confirmClick(event, action) {
     
     if (isIconButton && iconEl) {
       // Icon-only button: just swap icon
-      iconEl.textContent = CONFIRM_ICON;
+      setIconName(iconEl, CONFIRM_ICON);
     } else {
       // Text button: show icon + optional "Confirm" text
       const originalText = button.textContent.trim();
       const confirmContent = originalText.length >= 4
-        ? `<span class="material-symbols-outlined">${CONFIRM_ICON}</span>${CONFIRM_TEXT}`
-        : `<span class="material-symbols-outlined">${CONFIRM_ICON}</span>`;
+        ? `<x-icon name="${CONFIRM_ICON}"></x-icon>${CONFIRM_TEXT}`
+        : `<x-icon name="${CONFIRM_ICON}"></x-icon>`;
       button.innerHTML = confirmContent;
     }
   }
@@ -56,9 +58,9 @@ export function confirmClick(event, action) {
 function resetButton(button, state) {
   button.classList.remove(CONFIRM_CLASS);
   if (state.isIconButton) {
-    const iconEl = button.querySelector('.material-symbols-outlined, .material-icons-outlined');
+    const iconEl = button.querySelector(ICON_SELECTOR);
     if (iconEl && state.originalIcon) {
-      iconEl.textContent = state.originalIcon;
+      setIconName(iconEl, state.originalIcon);
     }
   } else if (state.originalHTML) {
     button.innerHTML = state.originalHTML;
@@ -71,4 +73,3 @@ export function registerAlpineMagic() {
     globalThis.Alpine.magic('confirmClick', () => confirmClick);
   }
 }
-

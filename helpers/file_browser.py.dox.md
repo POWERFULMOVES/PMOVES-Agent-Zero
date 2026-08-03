@@ -16,6 +16,7 @@
   - `save_files(self, files: List, current_path: str=...) -> Tuple[List[str], List[str]]`
   - `delete_file(self, file_path: str) -> bool`
   - `rename_item(self, file_path: str, new_name: str) -> bool`
+  - `move_items(self, file_paths: List[str], destination_path: str) -> List[str]`
   - `create_folder(self, parent_path: str, folder_name: str) -> bool`
   - `save_text_file(self, file_path: str, content: str) -> bool`
   - `get_files(self, current_path: str=...) -> Dict`
@@ -31,6 +32,7 @@
 ## Key Concepts
 
 - Important called helpers/classes observed in the source: `Path`, `files.get_abs_path`, `self._get_file_extension`, `file.seek`, `file.tell`, `resolve`, `os.makedirs`, `os.path.exists`, `full_path.with_name`, `new_path.exists`, `os.rename`, `target_dir.exists`, `filename.rsplit.lower`, `subprocess.run`, `result.stdout.strip.split`, `self._get_files_via_ls`, `files.exists`, `ValueError`, `str.startswith`, `file.write`.
+- Multi-item moves validate every source and target before renaming, reject collisions and directory self-nesting, preserve symlink objects, and best-effort roll back earlier renames if a later rename fails.
 - Keep request/response, tool, or helper semantics documented here at the same time as source changes.
 
 ## Work Guidance
@@ -45,6 +47,7 @@
 - Related tests observed by source search:
   - `tests/test_download_toast_regressions.py`
   - `tests/test_office_document_store.py`
+  - `tests/test_file_browser_navigation.py`
 
 ## Child DOX Index
 

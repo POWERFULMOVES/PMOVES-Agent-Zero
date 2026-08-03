@@ -18,6 +18,11 @@ USER_EXTENSIONS_FOLDER = "usr/extensions"
 
 _EXTENSIONS_CACHE_AREA = "extension_folder_classes(extensions)"
 _CLASSES_CACHE_AREA = "extension_classes(extensions)"
+_WEBUI_MANIFEST_CACHE_AREA = "webui_extension_manifest(extensions)(plugins)"
+_WEBUI_MANIFEST_SUFFIXES = {
+    "html": (".html", ".htm", ".xhtml"),
+    "js": (".js", ".mjs"),
+}
 # cache.toggle_area(_EXTENSIONS_CACHE_AREA, False)
 # cache.toggle_area(_CLASSES_CACHE_AREA, False)
 
@@ -277,6 +282,45 @@ def get_webui_extensions(
         entries.append(rel_path)
 
     return entries
+
+
+def get_webui_extension_manifest(
+    agent: "Agent | None",
+) -> dict[str, dict[str, list[str]]]:
+    """Return every WebUI extension URL grouped by asset type and extension point."""
+    from helpers import subagents
+
+    cache_key = cache.determine_cache_key(agent)
+    cached = cache.get(_WEBUI_MANIFEST_CACHE_AREA, cache_key)
+    if cached is not None:
+        return cached
+
+    manifest: dict[str, dict[str, list[str]]] = {
+        asset_type: {} for asset_type in _WEBUI_MANIFEST_SUFFIXES
+    }
+    roots = subagents.get_paths(agent, "extensions/webui")
+    for root in roots:
+        relative_files = sorted(files.list_files_in_dir_recursively(root))
+        for asset_type, suffixes in _WEBUI_MANIFEST_SUFFIXES.items():
+            for suffix in suffixes:
+                for relative_file in relative_files:
+                    if not relative_file.lower().endswith(suffix):
+                        continue
+                    extension_point = os.path.dirname(relative_file).replace(
+                        os.sep, "/"
+                    )
+                    if not extension_point or extension_point == ".":
+                        continue
+                    absolute_path = files.get_abs_path(root, relative_file)
+                    relative_path = files.deabsolute_path(absolute_path).replace(
+                        os.sep, "/"
+                    )
+                    manifest[asset_type].setdefault(extension_point, []).append(
+                        "/" + relative_path.lstrip("/")
+                    )
+
+    cache.add(_WEBUI_MANIFEST_CACHE_AREA, cache_key, manifest)
+    return manifest
 
 
 def _get_extension_classes(

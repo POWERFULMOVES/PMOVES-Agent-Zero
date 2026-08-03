@@ -16,7 +16,7 @@
             <template x-for="control in $store.settings.uiControls" :key="control.id">
               <div class="ui-visibility-row">
                 <div class="ui-visibility-control">
-                  <span class="material-symbols-outlined" aria-hidden="true" x-text="control.icon"></span>
+                  <x-icon aria-hidden="true" :name="control.icon"></x-icon>
                   <div>
                     <div class="field-title" x-text="control.label"></div>
                     <div class="ui-visibility-state" x-text="$store.settings.uiControlVisibilityLabel(control.id)"></div>
@@ -33,7 +33,7 @@
                     :title="$store.settings.isUiControlVisible(control.id, 'mobile') ? 'Shown on mobile' : 'Hidden on mobile'"
                     @click="$store.settings.toggleUiControl(control.id, 'mobile')"
                   >
-                    <span class="material-symbols-outlined" aria-hidden="true">smartphone</span>
+                    <x-icon aria-hidden="true" name="smartphone"></x-icon>
                     <span>Mobile</span>
                   </button>
                   <button
@@ -45,7 +45,7 @@
                     :title="$store.settings.isUiControlVisible(control.id, 'desktop') ? 'Shown on desktop' : 'Hidden on desktop'"
                     @click="$store.settings.toggleUiControl(control.id, 'desktop')"
                   >
-                    <span class="material-symbols-outlined" aria-hidden="true">desktop_windows</span>
+                    <x-icon aria-hidden="true" name="desktop_windows"></x-icon>
                     <span>Desktop</span>
                   </button>
                 </div>

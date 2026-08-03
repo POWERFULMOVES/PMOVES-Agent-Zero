@@ -1,5 +1,4 @@
 import { createStore } from "/js/AlpineStore.js";
-import * as css from "/js/css.js";
 import { ttsService } from "/js/tts-service.js";
 import { applyModeSteps } from "/components/messages/process-group/process-group-dom.js";
 
@@ -204,10 +203,9 @@ const model = {
 
   _applyShowUtils(value) {
     localStorage.setItem("showUtils", value);
-    css.toggleCssProperty(
-      ".process-step.message-util",
-      "display",
-      value ? undefined : "none"
+    document.documentElement.classList.toggle(
+      "show-utility-messages",
+      Boolean(value),
     );
   },
 
@@ -222,10 +220,16 @@ const model = {
     }
   },
 
+  applyCurrentDetailMode(chatHistory = undefined) {
+    return applyModeSteps(this._detailMode, this._showUtils, chatHistory);
+  },
+
   _applyDetailMode(value) {
     localStorage.setItem("detailMode", value);
     // Apply mode to all existing DOM elements
-    applyModeSteps(this._detailMode, this._showUtils);
+    void this.applyCurrentDetailMode().catch((error) => {
+      console.error("Failed to apply process detail mode", error);
+    });
   },
 };
 

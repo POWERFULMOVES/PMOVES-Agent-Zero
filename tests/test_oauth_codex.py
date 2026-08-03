@@ -204,7 +204,85 @@ def test_prepare_responses_body_adds_codex_client_metadata(monkeypatch):
     }
     assert body["input"] == [{"role": "user", "content": "hello"}]
     assert body["stream"] is True
+    assert body["reasoning"] == {"effort": "medium", "summary": "auto"}
     assert body["include"] == ["output_text", "reasoning.encrypted_content"]
+
+
+@pytest.mark.parametrize(
+    ("request_reasoning", "expected"),
+    [
+        ({"reasoning_effort": "xhigh"}, {"effort": "xhigh", "summary": "auto"}),
+        (
+            {"reasoning": {"effort": "medium"}, "reasoning_effort": "xhigh"},
+            {"effort": "medium", "summary": "auto"},
+        ),
+        (
+            {"reasoning": {"effort": "medium", "summary": "detailed"}},
+            {"effort": "medium", "summary": "detailed"},
+        ),
+    ],
+)
+def test_prepare_responses_body_normalizes_reasoning_effort(
+    monkeypatch, request_reasoning, expected
+):
+    monkeypatch.setattr(codex, "build_client_metadata", lambda: {})
+
+    body = codex.prepare_responses_body(
+        {"model": "gpt-5.5", "input": "hello", **request_reasoning},
+        force_stream=True,
+    )
+
+    assert body["reasoning"] == expected
+    assert "reasoning_effort" not in body
+
+
+def test_prepare_responses_body_applies_codex_response_defaults(monkeypatch):
+    monkeypatch.setattr(codex, "build_client_metadata", lambda: {})
+    monkeypatch.setattr(
+        codex,
+        "codex_config",
+        lambda: {
+            "reasoning_effort": "high",
+            "reasoning_summary": "concise",
+            "text_verbosity": "low",
+        },
+    )
+
+    defaults = codex.prepare_responses_body(
+        {"model": "gpt-5.5", "input": "hello"}, force_stream=True
+    )
+    overrides = codex.prepare_responses_body(
+        {
+            "model": "gpt-5.5",
+            "input": "hello",
+            "reasoning": {"effort": "low", "summary": "detailed"},
+            "text": {"verbosity": "high"},
+        },
+        force_stream=True,
+    )
+
+    assert defaults["reasoning"] == {"effort": "high", "summary": "concise"}
+    assert defaults["text"] == {"verbosity": "low"}
+    assert overrides["reasoning"] == {"effort": "low", "summary": "detailed"}
+    assert overrides["text"] == {"verbosity": "high"}
+
+
+def test_codex_config_validates_response_defaults():
+    from plugins._oauth.helpers.config import codex_config
+
+    config = codex_config(
+        {
+            "codex": {
+                "reasoning_effort": "invalid",
+                "reasoning_summary": "DETAILED",
+                "text_verbosity": "low",
+            }
+        }
+    )
+
+    assert config["reasoning_effort"] == "high"
+    assert config["reasoning_summary"] == "detailed"
+    assert config["text_verbosity"] == "low"
 
 
 def test_prepare_responses_body_sends_empty_continuation_input_as_list(monkeypatch):

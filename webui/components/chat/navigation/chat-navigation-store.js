@@ -1,4 +1,9 @@
 import { createStore } from "/js/AlpineStore.js";
+import {
+    getMessageWindowState,
+    loadAdjacentMessageWindow,
+    scrollMessageWindowToEdge,
+} from "/js/messages.js";
 
 const model = {
     // Configuration
@@ -10,27 +15,21 @@ const model = {
         // Any initialization if needed
     },
 
-    scrollToTop() {
-        const scroller = this._getChatHistoryEl();
-        if (scroller) scroller.scrollTo({ top: 0, behavior: "instant" });
+    async scrollToTop() {
+        await scrollMessageWindowToEdge("start");
     },
 
-    scrollToBottom() {
-        if (globalThis.forceScrollChatToBottom) {
-            globalThis.forceScrollChatToBottom();
-        } else {
-             const scroller = this._getChatHistoryEl();
-             if (scroller) scroller.scrollTop = scroller.scrollHeight;
-        }
+    async scrollToBottom() {
+        await scrollMessageWindowToEdge("end");
     },
 
-    scrollToPrevUserMessage() {
+    async scrollToPrevUserMessage() {
         const scroller = this._getChatHistoryEl();
         if (!scroller) return;
 
         const positions = this._getUserMessagePositions(scroller);
         const scrollerRect = scroller.getBoundingClientRect();
-        
+
         const prevThreshold = this.scrollMargin - this.prevTolerance; // 25px
 
         const currentIndex = positions.findIndex((p) => {
@@ -42,21 +41,28 @@ const model = {
             // Go to previous message
             positions[currentIndex - 1].el.scrollIntoView({ block: "start", behavior: "smooth" });
         } else if (currentIndex === 0) {
-            // At the first message, scroll to top
-            scroller.scrollTo({ top: 0, behavior: "instant" });
+            if (getMessageWindowState().hasOlder) {
+                await loadAdjacentMessageWindow("older");
+                this._scrollToLastUserAboveThreshold(scroller, prevThreshold);
+            } else {
+                scroller.scrollTo({ top: 0, behavior: "instant" });
+            }
         } else if (currentIndex === -1 && positions.length > 0) {
             // All messages are above the threshold (scrolled past), scroll to bottom
             positions[positions.length - 1].el.scrollIntoView({ block: "start", behavior: "smooth" });
+        } else if (positions.length === 0 && getMessageWindowState().hasOlder) {
+            await loadAdjacentMessageWindow("older");
+            this._scrollToLastUserAboveThreshold(scroller, prevThreshold);
         }
     },
 
-    scrollToNextUserMessage() {
+    async scrollToNextUserMessage() {
         const scroller = this._getChatHistoryEl();
         if (!scroller) return;
 
         const positions = this._getUserMessagePositions(scroller);
         const scrollerRect = scroller.getBoundingClientRect();
-        
+
         const nextThreshold = this.scrollMargin + this.nextTolerance; // 65px
 
         // Find first message below the threshold
@@ -69,16 +75,37 @@ const model = {
             // Go to that message
             positions[targetIndex].el.scrollIntoView({ block: "start", behavior: "smooth" });
         } else {
-            // No message found below threshold => scroll to bottom
-            this.scrollToBottom();
+            if (getMessageWindowState().hasNewer) {
+                await loadAdjacentMessageWindow("newer");
+                this._scrollToFirstUserBelowThreshold(scroller, nextThreshold);
+            } else {
+                await this.scrollToBottom();
+            }
         }
+    },
+
+    _scrollToLastUserAboveThreshold(scroller, threshold) {
+        const scrollerRect = scroller.getBoundingClientRect();
+        const positions = this._getUserMessagePositions(scroller);
+        const candidates = positions.filter(
+            ({ el }) => el.getBoundingClientRect().top - scrollerRect.top < threshold
+        );
+        candidates.at(-1)?.el.scrollIntoView({ block: "start", behavior: "smooth" });
+    },
+
+    _scrollToFirstUserBelowThreshold(scroller, threshold) {
+        const scrollerRect = scroller.getBoundingClientRect();
+        const target = this._getUserMessagePositions(scroller).find(
+            ({ el }) => el.getBoundingClientRect().top - scrollerRect.top > threshold
+        );
+        target?.el.scrollIntoView({ block: "start", behavior: "smooth" });
     },
 
     // Helpers
     _getChatHistoryEl() {
         return document.getElementById("chat-history");
     },
-    
+
     _getUserMessagePositions(scroller) {
          const userMessageEls = Array.from(
             scroller.querySelectorAll(".message-container.user-container")

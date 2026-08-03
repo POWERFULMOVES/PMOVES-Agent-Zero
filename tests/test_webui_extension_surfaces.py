@@ -25,6 +25,7 @@ class _TestAgentContext:
 sys.modules.setdefault("agent", SimpleNamespace(AgentContext=_TestAgentContext))
 
 from api.load_webui_extensions import LoadWebuiExtensions
+from helpers.extension import get_webui_extension_manifest
 
 
 SURFACE_SCENARIOS: list[tuple[str, str]] = [
@@ -40,6 +41,7 @@ SURFACE_SCENARIOS: list[tuple[str, str]] = [
     ("sidebar-chats-list-end", "webui/components/sidebar/chats/chats-list.html"),
     ("sidebar-tasks-list-start", "webui/components/sidebar/tasks/tasks-list.html"),
     ("sidebar-tasks-list-end", "webui/components/sidebar/tasks/tasks-list.html"),
+    ("sidebar-row-actions-menu", "webui/components/sidebar/left-sidebar.html"),
     ("sidebar-bottom-wrapper-start", "webui/components/sidebar/bottom/sidebar-bottom.html"),
     ("sidebar-bottom-wrapper-end", "webui/components/sidebar/bottom/sidebar-bottom.html"),
     ("chat-input-start", "webui/components/chat/input/chat-bar.html"),
@@ -167,3 +169,18 @@ async def test_webui_surface_extension_point_end_to_end(
         ]
 
         assert any(path.endswith(expected_suffix) for path in extension_paths)
+
+
+def test_webui_extension_manifest_groups_plugin_assets_by_type_and_surface() -> None:
+    surface = "manifest-probe"
+    with _temporary_probe_plugin(surface) as (plugin_id, probe_file_name):
+        manifest = get_webui_extension_manifest(agent=None)
+        expected_suffix = (
+            f"/{plugin_id}/extensions/webui/{surface}/{probe_file_name}"
+        )
+
+        assert any(
+            path.endswith(expected_suffix)
+            for path in manifest["html"].get(surface, [])
+        )
+        assert surface not in manifest["js"]

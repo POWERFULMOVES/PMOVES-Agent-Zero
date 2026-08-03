@@ -1,6 +1,6 @@
 from git import Git, Repo
 from giturlparse import parse
-from datetime import datetime
+from datetime import datetime, timezone
 from dataclasses import dataclass
 import os
 import subprocess
@@ -101,8 +101,8 @@ class GitRepoReleaseInfo:
 def _format_git_timestamp(timestamp: int) -> str:
     return datetime.fromtimestamp(
         timestamp,
-        tz=Localization.get().get_tzinfo(),
-    ).strftime('%Y-%m-%d %H:%M:%S %Z')
+        tz=timezone.utc,
+    ).strftime('%Y-%m-%d %H:%M:%S')
 
 
 def _split_describe_version(describe: str) -> tuple[str, int]:

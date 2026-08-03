@@ -615,7 +615,7 @@
                                             :class="{ active: $store.onboarding.providerMode === 'cloud' }"
                                             :aria-selected="$store.onboarding.providerMode === 'cloud' ? 'true' : 'false'"
                                             @click="$store.onboarding.setProviderMode('cloud')">
-                                        <span class="material-symbols-outlined" aria-hidden="true">cloud</span>
+                                        <x-icon aria-hidden="true" name="cloud"></x-icon>
                                         <span class="mode-copy">
                                             <span class="mode-title">Cloud</span>
                                             <span class="mode-sub">Connect with an API key</span>
@@ -628,7 +628,7 @@
                                             :class="{ active: $store.onboarding.providerMode === 'account' }"
                                             :aria-selected="$store.onboarding.providerMode === 'account' ? 'true' : 'false'"
                                             @click="$store.onboarding.setProviderMode('account')">
-                                        <span class="material-symbols-outlined" aria-hidden="true">account_circle</span>
+                                        <x-icon aria-hidden="true" name="account_circle"></x-icon>
                                         <span class="mode-copy">
                                             <span class="mode-title">Account</span>
                                             <span class="mode-sub">Codex, Copilot, Gemini, Grok</span>
@@ -640,7 +640,7 @@
                                             :class="{ active: $store.onboarding.providerMode === 'local' }"
                                             :aria-selected="$store.onboarding.providerMode === 'local' ? 'true' : 'false'"
                                             @click="$store.onboarding.setProviderMode('local')">
-                                        <span class="material-symbols-outlined" aria-hidden="true">memory</span>
+                                        <x-icon aria-hidden="true" name="memory"></x-icon>
                                         <span class="mode-copy">
                                             <span class="mode-title">Local</span>
                                             <span class="mode-sub">Runs on your machine</span>
@@ -667,7 +667,7 @@
                                         <template x-for="provider in $store.onboarding.oauthProviderCards()" :key="`account-${provider.provider_id}`">
                                             <button type="button" class="oauth-account-card" :class="{ connected: provider.connected }" @click="$store.onboarding.selectOAuthProvider(provider.provider_id)">
                                                 <span class="oauth-account-mark" :class="{ connected: provider.connected }">
-                                                    <span class="material-symbols-outlined" x-text="$store.onboarding.oauthMark(provider)"></span>
+                                                    <x-icon :name="$store.onboarding.oauthMark(provider)"></x-icon>
                                                 </span>
                                                 <span class="oauth-account-copy">
                                                     <span class="oauth-account-title" x-text="$store.onboarding.oauthCardTitle(provider)"></span>
@@ -724,7 +724,7 @@
                                                         title="Refresh model list"
                                                         @click="$store.onboarding.loadModels('chat_model')"
                                                         :disabled="$store.onboarding.modelDropdown.chat_model.loading">
-                                                    <span class="material-symbols-outlined" x-text="$store.onboarding.modelDropdown.chat_model.loading ? 'progress_activity' : 'search'"></span>
+                                                    <x-icon :name="$store.onboarding.modelDropdown.chat_model.loading ? 'progress_activity' : 'search'"></x-icon>
                                                 </button>
                                                 <div class="model-dropdown" x-show="$store.onboarding.modelDropdown.chat_model.open && !$store.onboarding.modelDropdown.chat_model.loading" x-transition.opacity>
                                                     <template x-for="model in $store.onboarding.filteredModels('chat_model')" :key="model">
@@ -740,7 +740,7 @@
                                                 <div class="oauth-connect-main">
                                                     <div class="oauth-status-group">
                                                         <span class="oauth-status-mark" :class="{ connected: $store.onboarding.oauthConnected($store.onboarding.selectedProviderId) }">
-                                                            <span class="material-symbols-outlined" x-text="$store.onboarding.oauthConnected($store.onboarding.selectedProviderId) ? 'check_circle' : $store.onboarding.oauthMark($store.onboarding.oauthProviderStatus($store.onboarding.selectedProviderId))"></span>
+                                                            <x-icon :name="$store.onboarding.oauthConnected($store.onboarding.selectedProviderId) ? 'check_circle' : $store.onboarding.oauthMark($store.onboarding.oauthProviderStatus($store.onboarding.selectedProviderId))"></x-icon>
                                                         </span>
                                                         <span class="oauth-status-copy">
                                                             <span class="oauth-status-label" x-text="$store.onboarding.selectedProviderName()"></span>
@@ -755,7 +755,7 @@
                                                         </button>
                                                         <button type="button" class="btn btn-cancel" x-show="$store.onboarding.oauthConnecting" @click="$store.onboarding.cancelOauthConnect()">Cancel</button>
                                                         <span class="status-pill connected" x-show="$store.onboarding.oauthConnected($store.onboarding.selectedProviderId)">
-                                                            <span class="material-symbols-outlined">check_circle</span>
+                                                            <x-icon name="check_circle"></x-icon>
                                                             <span>Connected</span>
                                                         </span>
                                                     </div>
@@ -781,7 +781,7 @@
                                                     </label>
                                                 </div>
                                                 <div class="oauth-device-note" x-show="$store.onboarding.oauthDevice">
-                                                    <span class="material-symbols-outlined">key</span>
+                                                    <x-icon name="key"></x-icon>
                                                     <span x-show="$store.onboarding.oauthDevice?.user_code">Device code: <b x-text="$store.onboarding.oauthDevice?.user_code"></b></span>
                                                     <span x-show="!$store.onboarding.oauthDevice?.user_code">Finish sign-in in the opened browser tab.</span>
                                                 </div>
@@ -840,7 +840,7 @@
                                                     title="Refresh model list"
                                                     @click="$store.onboarding.loadModels('utility_model')"
                                                     :disabled="$store.onboarding.modelDropdown.utility_model.loading">
-                                                <span class="material-symbols-outlined" x-text="$store.onboarding.modelDropdown.utility_model.loading ? 'progress_activity' : 'search'"></span>
+                                                <x-icon :name="$store.onboarding.modelDropdown.utility_model.loading ? 'progress_activity' : 'search'"></x-icon>
                                             </button>
                                             <div class="model-dropdown" x-show="$store.onboarding.modelDropdown.utility_model.open && !$store.onboarding.modelDropdown.utility_model.loading" x-transition.opacity>
                                                 <template x-for="model in $store.onboarding.filteredModels('utility_model')" :key="model">
@@ -861,7 +861,7 @@
                             <div class="onboarding-advanced-link" x-show="!$store.onboarding.isStep('ready')">
                                 <button type="button" class="advanced-settings-toggle" @click="$store.onboarding.openAdvancedSettings()">
                                     <span>Advanced Settings</span>
-                                    <span class="material-symbols-outlined">keyboard_arrow_right</span>
+                                    <x-icon name="keyboard_arrow_right"></x-icon>
                                 </button>
                             </div>
                         </div>

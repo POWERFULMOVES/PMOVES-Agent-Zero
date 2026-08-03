@@ -66,6 +66,10 @@ const model = {
     this.dragDropOverlayVisible = false;
   },
 
+  isExternalFileDrag(event) {
+    return Array.from(event?.dataTransfer?.types || []).includes("Files");
+  },
+
   // Setup drag and drop event handlers
   setupDragDropHandlers() {
     console.log("Setting up drag and drop handlers...");
@@ -76,6 +80,7 @@ const model = {
       document.addEventListener(
         eventName,
         (e) => {
+          if (!this.isExternalFileDrag(e)) return;
           e.preventDefault();
           e.stopPropagation();
         },
@@ -87,6 +92,7 @@ const model = {
     document.addEventListener(
       "dragenter",
       (e) => {
+        if (!this.isExternalFileDrag(e)) return;
         console.log("Drag enter detected");
         dragCounter++;
         if (dragCounter === 1) {
@@ -101,6 +107,7 @@ const model = {
     document.addEventListener(
       "dragleave",
       (e) => {
+        if (!this.isExternalFileDrag(e) && dragCounter === 0) return;
         dragCounter--;
         if (dragCounter === 0) {
           this.hideDragDropOverlay();
@@ -113,6 +120,7 @@ const model = {
     document.addEventListener(
       "drop",
       async (e) => {
+        if (!this.isExternalFileDrag(e)) return;
         const dataTransfer = e.dataTransfer;
         console.log("Drop detected with files:", dataTransfer?.files?.length || 0);
         dragCounter = 0;

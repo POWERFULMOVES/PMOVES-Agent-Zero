@@ -31,7 +31,7 @@ CHILD_PARALLEL_TOOL_NAME_KEY = "parallel_tool_name"
 DEFAULT_MAX_CALLS = 8
 DEFAULT_TIMEOUT_SECONDS = 300
 POLL_INTERVAL_SECONDS = 0.5
-DISALLOWED_PARALLEL_TOOLS = {"document_query"}
+DISALLOWED_PARALLEL_TOOLS = {"document_query", "response"}
 
 TERMINAL_STATES = {"success", "error", "cancelled", "timeout"}
 JobState = Literal["pending", "running", "success", "error", "cancelled", "timeout"]

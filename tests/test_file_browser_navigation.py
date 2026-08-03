@@ -1,6 +1,8 @@
 from pathlib import Path
 import sys
 
+import pytest
+
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
@@ -219,3 +221,55 @@ def test_file_browser_reports_missing_directory(tmp_path: Path) -> None:
     assert result["entries"] == []
     assert result["current_path"] == str(missing_directory)
     assert result["error"] == "Directory not found"
+
+
+def test_file_browser_moves_selected_items_without_overwriting_or_self_nesting(tmp_path: Path) -> None:
+    browser = FileBrowser()
+    browser.base_dir = tmp_path
+    source_file = tmp_path / "note.md"
+    source_folder = tmp_path / "skills"
+    destination = tmp_path / "archive"
+    source_file.write_text("hello", encoding="utf-8")
+    source_folder.mkdir()
+    destination.mkdir()
+
+    moved = browser.move_items(["note.md", "skills"], "archive")
+
+    assert moved == [str(destination / "note.md"), str(destination / "skills")]
+    assert (destination / "note.md").read_text(encoding="utf-8") == "hello"
+    assert (destination / "skills").is_dir()
+
+    collision = tmp_path / "collision.md"
+    collision.write_text("source", encoding="utf-8")
+    (destination / "collision.md").write_text("keep", encoding="utf-8")
+    with pytest.raises(FileExistsError, match="already exists"):
+        browser.move_items(["collision.md"], "archive")
+    assert collision.read_text(encoding="utf-8") == "source"
+    assert (destination / "collision.md").read_text(encoding="utf-8") == "keep"
+
+    nested = destination / "skills" / "nested"
+    nested.mkdir()
+    with pytest.raises(ValueError, match="cannot be moved into itself"):
+        browser.move_items(["archive/skills"], "archive/skills/nested")
+
+
+def test_file_browser_drag_and_drop_contract() -> None:
+    html = read("webui", "components", "modals", "file-browser", "file-browser.html")
+    store = read("webui", "components", "modals", "file-browser", "file-browser-store.js")
+    attachments = read("webui", "components", "chat", "attachments", "attachmentsStore.js")
+    api = read("api", "rename_work_dir_file.py")
+
+    assert ':draggable="!$store.fileBrowser.isPickerMode() && !$store.fileBrowser.isBulkBusy"' in html
+    assert "$store.fileBrowser.dropItems(file.path, file.name, $event)" in html
+    assert "$store.fileBrowser.dropItems($store.fileBrowser.browser.parentPath, 'parent folder', $event)" in html
+    start_drag = store[store.index("  startDrag("):store.index("  isDraggingPath(")]
+    assert "this.clearSelection()" not in start_drag
+    assert "file.selected = true" not in start_drag
+    assert ": [file.path]" in start_drag
+    assert "decorateEntries(data.data?.entries || [], selectedPaths)" in store
+    assert "application/x-agent-zero-files" in store
+    assert 'action: "move"' in store
+    assert 'fetchApi("/rename_work_dir_file"' in store
+    assert 'if action == "move":' in api
+    assert 'isExternalFileDrag(event)' in attachments
+    assert 'includes("Files")' in attachments

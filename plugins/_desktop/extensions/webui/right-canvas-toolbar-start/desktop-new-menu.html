@@ -13,25 +13,25 @@
     :aria-expanded="open.toString()"
     @click.stop="open = !open"
   >
-    <span class="material-symbols-outlined" aria-hidden="true">add</span>
+    <x-icon aria-hidden="true" name="add"></x-icon>
     <span>New</span>
-    <span class="material-symbols-outlined office-new-chevron" aria-hidden="true">expand_more</span>
+    <x-icon class="office-new-chevron" aria-hidden="true" name="expand_more"></x-icon>
   </button>
   <div class="office-new-menu" role="menu" x-show="open" @click.stop style="display: none;">
     <button type="button" class="office-new-menu-item" role="menuitem" @click="open = false; $store.desktop?.runNewMenuAction('open')">
-      <span class="material-symbols-outlined" aria-hidden="true">folder_open</span>
+      <x-icon aria-hidden="true" name="folder_open"></x-icon>
       <span>Open</span>
     </button>
     <button type="button" class="office-new-menu-item" role="menuitem" @click="open = false; $store.desktop?.runNewMenuAction('writer')">
-      <span class="material-symbols-outlined" aria-hidden="true">description</span>
+      <x-icon aria-hidden="true" name="description"></x-icon>
       <span>Writer</span>
     </button>
     <button type="button" class="office-new-menu-item" role="menuitem" @click="open = false; $store.desktop?.runNewMenuAction('spreadsheet')">
-      <span class="material-symbols-outlined" aria-hidden="true">table_chart</span>
+      <x-icon aria-hidden="true" name="table_chart"></x-icon>
       <span>Spreadsheet</span>
     </button>
     <button type="button" class="office-new-menu-item" role="menuitem" @click="open = false; $store.desktop?.runNewMenuAction('presentation')">
-      <span class="material-symbols-outlined" aria-hidden="true">co_present</span>
+      <x-icon aria-hidden="true" name="co_present"></x-icon>
       <span>Presentation</span>
     </button>
   </div>

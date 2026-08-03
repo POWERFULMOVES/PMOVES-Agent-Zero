@@ -15,29 +15,29 @@
                     <button @click="open = !open" type="button" class="button project-dropdown-button">
                         <span class="project-color-ball" :style="$store.chats.selectedContext.project.color ? { backgroundColor: $store.chats.selectedContext.project.color } : { border: '1px solid var(--color-border)' }"></span>
                         <span x-text="$store.chats.selectedContext.project.title"></span>
-                        <span class="icon material-symbols-outlined">arrow_drop_down</span>
+                        <x-icon class="icon" name="arrow_drop_down"></x-icon>
                     </button>
                 </template>
                 <template x-if="!$store.chats.selectedContext.project?.name">
                     <button @click="open = !open" type="button" class="button project-dropdown-button">
                         No project
-                        <span class="icon material-symbols-outlined">arrow_drop_down</span>
+                        <x-icon class="icon" name="arrow_drop_down"></x-icon>
                     </button>
                 </template>
 
                 <div x-show="open" x-init="$store.projects.loadProjectsList()" class="dropdown-menu" style="display: none;" x-transition>
                     <button type="button" @click="$store.projects.openProjectsModal(); open = false;" class="dropdown-item">
-                        <span class="icon material-symbols-outlined">snippet_folder</span>
+                        <x-icon class="icon" name="snippet_folder"></x-icon>
                         <span>Projects</span>
                     </button>
 
                     <button type="button" x-show="$store.chats.selectedContext.project?.name" @click="$store.projects.editActiveProject(); open = false;" class="dropdown-item">
-                        <span class="icon material-symbols-outlined">edit</span>
+                        <x-icon class="icon" name="edit"></x-icon>
                         <span>Edit <span x-text="$store.chats.selectedContext.project?.title"></span></span>
                     </button>
 
                     <button type="button" x-show="$store.chats.selectedContext.project?.name" @click="$store.projects.deactivateProject(); open = false;" class="dropdown-item">
-                        <span class="icon material-symbols-outlined">close</span>
+                        <x-icon class="icon" name="close"></x-icon>
                         <span>Deactivate</span>
                     </button>
 

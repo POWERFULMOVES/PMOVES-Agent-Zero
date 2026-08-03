@@ -20,7 +20,7 @@
               :aria-selected="$store.pluginValidator.source === 'local'"
               aria-controls="plugin-validator-local-panel"
               @click="$store.pluginValidator.setSource('local')">
-              <span class="material-symbols-outlined pv-tab-icon">folder</span> Local
+              <x-icon class="pv-tab-icon" name="folder"></x-icon> Local
             </button>
           </li>
           <li class="nav-item" role="presentation">
@@ -32,7 +32,7 @@
               :aria-selected="$store.pluginValidator.source === 'git'"
               aria-controls="plugin-validator-git-panel"
               @click="$store.pluginValidator.setSource('git')">
-              <span class="material-symbols-outlined pv-tab-icon">terminal</span> Git
+              <x-icon class="pv-tab-icon" name="terminal"></x-icon> Git
             </button>
           </li>
           <li class="nav-item" role="presentation">
@@ -44,7 +44,7 @@
               :aria-selected="$store.pluginValidator.source === 'zip'"
               aria-controls="plugin-validator-zip-panel"
               @click="$store.pluginValidator.setSource('zip')">
-              <span class="material-symbols-outlined pv-tab-icon">upload_file</span> ZIP
+              <x-icon class="pv-tab-icon" name="upload_file"></x-icon> ZIP
             </button>
           </li>
         </ul>
@@ -88,7 +88,7 @@
               <label for="plugin-validator-zip-file"
                 class="pv-upload-btn button confirm"
                 :class="{ 'pv-has-file': $store.pluginValidator.zipFile }">
-                <span class="icon material-symbols-outlined">upload_file</span>
+                <x-icon class="icon" name="upload_file"></x-icon>
                 <span x-text="$store.pluginValidator.zipFileName || 'Select Plugin ZIP File'"></span>
               </label>
               <input type="file"

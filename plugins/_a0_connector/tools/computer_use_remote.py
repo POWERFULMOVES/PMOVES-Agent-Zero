@@ -332,6 +332,8 @@ class ComputerUseRemote(Tool):
                 payload["key"] = self.args.get("key")
         elif action == "type":
             payload["text"] = self.args.get("text", "")
+            if "window_id" in self.args:
+                payload["window_id"] = self.args.get("window_id")
             if self._coerce_bool(self.args.get("submit")):
                 payload["submit"] = True
         elif action == "list_windows":
@@ -363,6 +365,9 @@ class ComputerUseRemote(Tool):
             if "selector" in self.args:
                 payload["selector"] = self.args.get("selector")
         elif action == "ax_snapshot":
+            for key in ("pid", "window_id"):
+                if key in self.args:
+                    payload[key] = self.args.get(key)
             if "max_depth" in self.args:
                 payload["max_depth"] = self._coerce_int(self.args.get("max_depth"), name="max_depth")
             if "max_nodes" in self.args:
@@ -471,9 +476,17 @@ class ComputerUseRemote(Tool):
             return f"Sent keys: {keys!r}."
         if action == "type":
             text = str(data.get("text", "") or "")
-            if data.get("submitted"):
-                return f"Typed {len(text)} character(s) and submitted."
-            return f"Typed {len(text)} character(s)."
+            window_id = str(data.get("window_id") or "").strip()
+            submitted = " and submitted" if data.get("submitted") else ""
+            if data.get("focus_verified") and window_id:
+                return (
+                    f"Sent {len(text)} keyboard character(s){submitted} to verified active "
+                    f"window_id={window_id}."
+                )
+            return (
+                f"Sent {len(text)} global keyboard character(s){submitted}; destination was not verified. "
+                "Inspect the attached screen before claiming where the text landed."
+            )
         return str(data)
 
     def _format_error(self, result: dict[str, Any]) -> str:
@@ -639,7 +652,7 @@ class ComputerUseRemote(Tool):
                     f"{frame.get('width', '?')}x{frame.get('height', '?')})"
                 )
             flags: list[str] = []
-            for flag in ("is_on_screen", "on_current_space", "focused", "visible"):
+            for flag in ("is_on_screen", "on_current_space", "active", "focused", "visible"):
                 if flag in item:
                     flags.append(f"{flag}={item.get(flag)}")
             if flags:
@@ -658,10 +671,16 @@ class ComputerUseRemote(Tool):
         node_count = data.get("node_count", "?")
         truncated = " truncated" if data.get("truncated") else ""
         mode = str(data.get("mode") or "auto").strip()
+        state_parts = [
+            f"{flag}={window.get(flag)}"
+            for flag in ("active", "focused")
+            if flag in window
+        ]
+        state_text = f" {' '.join(state_parts)}." if state_parts else ""
         return (
             f"Window state for {title!r}"
             f"{f' window_id={window_id}' if window_id else ''}: "
-            f"{node_count} element(s){truncated}, mode={mode}. "
+            f"{node_count} element(s){truncated}, mode={mode}.{state_text} "
             "Use element_action with element_index; dispatch defaults to background."
             f"{self._structural_tree_outline(tree)}"
         )
@@ -688,7 +707,8 @@ class ComputerUseRemote(Tool):
             f"requested_dispatch={requested_dispatch}, actual_dispatch={actual_dispatch}"
             f"{', foreground_fallback_used=true' if fallback else ''}"
         )
-        return f"Performed {operation} on element_index={index} {label}; {dispatch_text}."
+        verification = ", focus_verified=true" if data.get("focus_verified") else ""
+        return f"Performed {operation} on element_index={index} {label}; {dispatch_text}{verification}."
 
     def _format_ax_snapshot(self, data: dict[str, Any]) -> str:
         app = data.get("app") if isinstance(data.get("app"), dict) else {}
@@ -697,8 +717,10 @@ class ComputerUseRemote(Tool):
         node_count = data.get("node_count", "?")
         truncated = " truncated" if data.get("truncated") else ""
         root_label = self._ax_target_label(tree)
+        window_id = str(data.get("window_id") or "").strip()
+        scope = f" scoped to window_id={window_id}" if data.get("scoped") and window_id else ""
         return (
-            f"AX snapshot for {app_name}: {node_count} node(s){truncated}. "
+            f"AX snapshot for {app_name}{scope}: {node_count} node(s){truncated}. "
             f"Root {root_label}. Use path or semantic target fields with ax_action."
             f"{self._structural_tree_outline(tree)}"
         )

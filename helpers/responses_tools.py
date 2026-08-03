@@ -14,9 +14,18 @@ TOOL_NAME_EXAMPLE_PATTERN = re.compile(
     r"""["']tool_name["']\s*:\s*["']([A-Za-z0-9_-]{1,64})["']"""
 )
 TOOL_HEADING_PATTERN = re.compile(r"^\s{0,3}#{1,6}\s+(.+?)\s*$", re.MULTILINE)
+TOOL_DECLARATION_PATTERN = re.compile(
+    r"^\s*-\s+`([A-Za-z0-9_-]{1,64})`:\s+(args?\b.*)$",
+    re.IGNORECASE | re.MULTILINE,
+)
+SIMPLE_ARGS_PATTERN = re.compile(
+    r"^\s*args?:\s*`([A-Za-z_][A-Za-z0-9_-]*)`\s*$",
+    re.IGNORECASE | re.MULTILINE,
+)
 TOOL_PROMPT_PREFIX = "agent.system.tool."
 TOOL_PROMPT_SUFFIX = ".md"
 MAX_TOOL_DESCRIPTION_CHARS = 1024
+TOOL_PROMPT_KWARGS_KEY = "_tool_prompt_kwargs"
 
 
 def build_responses_function_tools(agent: Any) -> tuple[list[dict[str, Any]], dict[str, str]]:
@@ -63,6 +72,9 @@ def _local_tool_prompts(agent: Any) -> list[tuple[str, str]]:
     tool_files = files.get_unique_filenames_in_dirs(
         prompt_dirs, f"{TOOL_PROMPT_PREFIX}*{TOOL_PROMPT_SUFFIX}"
     )
+    get_data = getattr(agent, "get_data", None)
+    tool_kwargs = get_data(TOOL_PROMPT_KWARGS_KEY) if callable(get_data) else {}
+    tool_kwargs = tool_kwargs if isinstance(tool_kwargs, dict) else {}
     result: list[tuple[str, str]] = []
     for tool_file in tool_files:
         basename = os.path.basename(tool_file)
@@ -70,17 +82,31 @@ def _local_tool_prompts(agent: Any) -> list[tuple[str, str]]:
         if not fallback_name:
             continue
         try:
-            prompt = agent.read_prompt(basename)
+            prompt = agent.read_prompt(basename, **tool_kwargs.get(basename, {}))
         except Exception:
             try:
                 prompt = files.read_file(tool_file)
             except Exception:
                 prompt = ""
-        tool_name = _tool_name_from_prompt(prompt, fallback=fallback_name)
-        if not _include_local_tool_prompt(agent, tool_name):
-            continue
-        result.append((tool_name, prompt))
+        for tool_name in _tool_names_from_prompt(prompt, fallback=fallback_name):
+            if _include_local_tool_prompt(agent, tool_name):
+                result.append((tool_name, prompt))
+
+    vision_prompt = _vision_tool_prompt(agent)
+    if vision_prompt:
+        result.append(("vision_load", vision_prompt))
     return result
+
+
+def _vision_tool_prompt(agent: Any) -> str:
+    try:
+        from plugins._model_config.helpers.model_config import get_chat_model_config
+
+        if not get_chat_model_config(agent).get("vision", False):
+            return ""
+        return agent.read_prompt("agent.system.tools_vision.md")
+    except Exception:
+        return ""
 
 
 def _include_local_tool_prompt(agent: Any, tool_name: str) -> bool:
@@ -135,6 +161,15 @@ def _tool_name_from_prompt(prompt: str, *, fallback: str) -> str:
     return fallback
 
 
+def _tool_names_from_prompt(prompt: str, *, fallback: str) -> list[str]:
+    declarations = [
+        match.group(1) for match in TOOL_DECLARATION_PATTERN.finditer(prompt or "")
+    ]
+    if declarations:
+        return list(dict.fromkeys(declarations))
+    return [_tool_name_from_prompt(prompt, fallback=fallback)]
+
+
 def _tool_name_from_heading(heading: str) -> str:
     token = (heading or "").strip().split(None, 1)[0] if heading else ""
     name = token.strip("`'\" :")
@@ -153,31 +188,36 @@ def _native_tool_name(tool_name: str) -> str:
 
 
 def _description_from_prompt(prompt: str, *, fallback: str) -> str:
-    lines: list[str] = []
+    for match in TOOL_DECLARATION_PATTERN.finditer(prompt or ""):
+        if match.group(1) == fallback:
+            return _truncate(match.group(2))
+
     in_fence = False
     for raw_line in (prompt or "").splitlines():
         line = raw_line.strip()
-        if line.startswith("```"):
+        if line.startswith(("```", "~~~")):
             in_fence = not in_fence
             continue
         if in_fence or not line:
             continue
         if line.startswith("#"):
-            line = line.lstrip("#").strip()
-            if line.lower() == fallback.lower():
-                continue
-        lines.append(line)
-        if sum(len(part) for part in lines) >= MAX_TOOL_DESCRIPTION_CHARS:
-            break
-    description = " ".join(lines).strip() or fallback
-    return _truncate(description)
+            continue
+        return _truncate(line)
+    return fallback
 
 
 def _schema_from_prompt(prompt: str) -> dict[str, Any]:
     schema = _schema_from_embedded_json(prompt)
     if schema:
         return schema
-    return _schema_from_args_line(prompt)
+    match = SIMPLE_ARGS_PATTERN.search(prompt or "")
+    if match:
+        return {
+            "type": "object",
+            "properties": {match.group(1): {"type": "string"}},
+            "additionalProperties": True,
+        }
+    return _permissive_schema()
 
 
 def _schema_from_embedded_json(prompt: str) -> dict[str, Any]:
@@ -194,23 +234,6 @@ def _schema_from_embedded_json(prompt: str) -> dict[str, Any]:
         return _schema_from_any(json.loads(candidate))
     except Exception:
         return {}
-
-
-def _schema_from_args_line(prompt: str) -> dict[str, Any]:
-    properties: dict[str, Any] = {}
-    for line in (prompt or "").splitlines():
-        normalized = line.strip()
-        if "args:" not in normalized.lower() and "argument:" not in normalized.lower():
-            continue
-        for name in re.findall(r"`([A-Za-z_][A-Za-z0-9_-]*)`", normalized):
-            properties.setdefault(name, {"type": "string"})
-    if properties:
-        return {
-            "type": "object",
-            "properties": properties,
-            "additionalProperties": True,
-        }
-    return _permissive_schema()
 
 
 def _schema_from_any(schema: Any) -> dict[str, Any]:

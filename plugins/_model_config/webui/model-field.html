@@ -59,8 +59,8 @@
                 :disabled="searching"
                 title="Search available models"
                 aria-label="Search available models">
-          <span class="material-symbols-outlined" :style="searching && 'opacity:0'">search</span>
-          <span class="material-symbols-outlined model-search-spinner" :style="!searching && 'opacity:0'">progress_activity</span>
+          <x-icon :style="searching && 'opacity:0'" name="search"></x-icon>
+          <x-icon class="model-search-spinner" :style="!searching && 'opacity:0'" name="progress_activity"></x-icon>
         </button>
         <div class="model-search-results" x-show="open && results.length > 0" x-transition.opacity>
           <template x-for="m in grouped().matched" :key="'m_'+m">
@@ -91,7 +91,7 @@
                  autocomplete="off"
                  @input="$store.modelConfig.setApiKeyValue(_prov, $el.value)"
                  style="padding-right:32px;" />
-          <span class="material-symbols-outlined eye-toggle"
+          <x-icon class="eye-toggle"
                 @click="
                   showKey = !showKey;
                   const prov = _prov;
@@ -99,7 +99,7 @@
                     $store.modelConfig.revealApiKey(prov).then(v => { if (v) $store.modelConfig.apiKeyValues[prov] = v; });
                   }
                 "
-                x-text="showKey ? 'visibility' : 'visibility_off'"></span>
+                :name="showKey ? 'visibility' : 'visibility_off'"></x-icon>
         </div>
       </div>
     </template>
@@ -115,7 +115,7 @@
           <input :type="showKey ? 'text' : 'password'" x-model="model.api_key" autocomplete="off"
                  :placeholder="$store.modelConfig.apiKeyStatus[_prov] ? '&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;' : ''"
                  style="padding-right:32px;" />
-          <span class="material-symbols-outlined eye-toggle"
+          <x-icon class="eye-toggle"
                 @click="
                   showKey = !showKey;
                   if (showKey && !model.api_key && $store.modelConfig.apiKeyStatus[_prov]) {
@@ -125,7 +125,7 @@
                     model.api_key = ''; _revealed = '';
                   }
                 "
-                x-text="showKey ? 'visibility' : 'visibility_off'"></span>
+                :name="showKey ? 'visibility' : 'visibility_off'"></x-icon>
         </div>
       </div>
     </template>
@@ -162,9 +162,9 @@
     <!-- Advanced Settings (collapsed by default) -->
     <div class="advanced-section" x-data="{ advOpen: false }">
       <div class="advanced-toggle" @click="advOpen = !advOpen">
-        <span class="material-symbols-outlined advanced-toggle-icon"
-              :style="advOpen ? 'transform:rotate(90deg)' : ''"
-              >chevron_right</span>
+        <x-icon class="advanced-toggle-icon"
+              :style="advOpen ? 'transform:rotate(90deg)' : ''" name="chevron_right"
+              ></x-icon>
         <span>Advanced Settings</span>
       </div>
 

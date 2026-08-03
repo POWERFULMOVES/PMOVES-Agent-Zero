@@ -33,7 +33,7 @@
 - `find_file_in_dirs(_filename: str, _directories: list[str])`: This function searches for a filename in a list of directories in order.
 - `get_unique_filenames_in_dirs(dir_paths: list[str], pattern: str=..., type: Literal['file', 'dir', 'any']=...)`
 - `find_existing_paths_by_pattern(pattern: str)`
-- `remove_code_fences(text)`
+- `remove_code_fences(text, language: str | None=...)`: Remove every code fence, or only fences for one language while preserving their contents.
 - `is_full_json_template(text)`
 - `write_file(relative_path: str, content: str, encoding: str=...)`
 - `delete_file(relative_path: str)`
@@ -55,7 +55,7 @@
 
 ## Key Concepts
 
-- Important called helpers/classes observed in the source: `os.path.dirname`, `os.path.abspath`, `find_file_in_dirs`, `is_full_json_template`, `remove_code_fences`, `evaluate_text_conditions`, `replace_placeholders_text`, `process_includes`, `re.compile`, `_process`, `get_abs_path`, `is_probably_binary_bytes`, `replace_value`, `re.sub`, `os.path.normpath`, `FileNotFoundError`, `result.sort`, `glob.glob`, `matches.sort`, `re.fullmatch`.
+- Important called helpers/classes observed in the source: `os.path.dirname`, `os.path.abspath`, `find_file_in_dirs`, `is_full_json_template`, `remove_code_fences`, `evaluate_text_conditions`, `replace_placeholders_text`, `process_includes`, `re.compile`, `re.escape`, `_process`, `get_abs_path`, `is_probably_binary_bytes`, `replace_value`, `re.sub`, `os.path.normpath`, `FileNotFoundError`, `result.sort`, `glob.glob`, `matches.sort`, `re.fullmatch`.
 - Keep request/response, tool, or helper semantics documented here at the same time as source changes.
 
 ## Work Guidance

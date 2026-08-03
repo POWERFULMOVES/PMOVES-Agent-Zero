@@ -22,6 +22,13 @@ max_open_tabs: 32
 # - host_required: Bring Your Own Browser through A0 CLI and prepare it on first browser use when possible.
 runtime_backend: "container"
 
+# Optional proxy used only by the internal Docker browser.
+# Server examples: http://proxy.example:3128 or socks5://proxy.example:1080.
+proxy_server: ""
+proxy_bypass: ""
+proxy_username: ""
+proxy_password: ""
+
 # Local-model enforcement for host-browser content:
 # - enforce_local: block host page content and screenshots unless the active chat model is local.
 # - warn: allow and return a warning in tool output.

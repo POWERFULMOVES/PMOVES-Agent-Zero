@@ -1,0 +1,19 @@
+<html>
+<head>
+  <script type="module">
+    import { store } from "/plugins/_chat_naming/webui/chat-naming-store.js";
+  </script>
+</head>
+<body>
+  <div x-data>
+    <button type="button" class="dropdown-item" role="menuitem"
+      @click="$store.chatNaming.openFromMenu(
+        $store.sidebar.rowMenuOpenId,
+        $store.sidebar.rowMenuKind,
+      )">
+      <x-icon name="edit"></x-icon>
+      <span x-text="$store.sidebar.rowMenuKind === 'task' ? 'Rename Task' : 'Rename Chat'"></span>
+    </button>
+  </div>
+</body>
+</html>

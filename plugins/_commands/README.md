@@ -7,7 +7,7 @@ This plugin lets you define reusable `/commands` as `.command.yaml` files with e
 - a `.txt` template body
 - a `.py` script hook
 
-Commands are managed from the plugin modal and can be inserted directly from the chat composer with prefix syntax (`/goal objective`) or an exact trailing command (`objective /goal`).
+Commands are managed from the plugin modal and can be inserted directly from the chat composer with prefix syntax (`/goal objective`) or an exact trailing command (`objective /goal`). The picker opens only for prefix syntax; trailing commands resolve when sent.
 
 ## Features
 
@@ -18,6 +18,7 @@ Commands are managed from the plugin modal and can be inserted directly from the
 - Prefix and postfix command resolution for WebUI and remote/AI-sent messages
 - Scope-aware command resolution across project and global scopes
 - Built-in A0 CLI connector command pack for common session, queue, model, project, browser, and connector status commands
+- `/stop` control that uses the same hard-stop operation as the WebUI composer button
 - Slash picker in the chat composer with keyboard navigation and create-on-empty flow
 
 ## Command File Model

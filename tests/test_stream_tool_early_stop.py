@@ -235,27 +235,22 @@ def test_provider_defaults_do_not_freeze_litellm_global_kwargs(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_unified_call_stops_after_canonical_root_snapshot(monkeypatch):
+async def test_unified_call_stops_chat_after_canonical_root_snapshot(monkeypatch):
     stream = _AsyncChunkStream(
         [
-            {"type": "response.created"},
-            _response_event(
-                '{"tool_name":"response","tool_args":{"text":"hello"}} trailing text'
-            ),
-            _response_event(" unreachable"),
+            _chunk('{"tool_name":"response","tool_args":{"text":"hello"}}'),
+            _chunk(" unreachable"),
         ]
     )
 
-    async def fake_aresponses(*args, **kwargs):
+    async def fake_acompletion(*args, **kwargs):
         assert kwargs["stream"] is True
-        assert kwargs["input"] == ""
-        assert kwargs["store"] is True
         return stream
 
     async def fake_rate_limiter(*args, **kwargs):
         return None
 
-    monkeypatch.setattr(litellm_transport, "aresponses", fake_aresponses)
+    monkeypatch.setattr(litellm_transport, "acompletion", fake_acompletion)
     monkeypatch.setattr(models, "apply_rate_limiter", fake_rate_limiter)
     monkeypatch.setattr(
         models.settings,
@@ -267,16 +262,14 @@ async def test_unified_call_stops_after_canonical_root_snapshot(monkeypatch):
         model="test-model",
         provider="openai",
         model_config=None,
+        a0_api_mode="chat",
     )
 
     seen: list[tuple[str, str]] = []
 
     async def response_callback(chunk: str, full: str):
         seen.append((chunk, full))
-        snapshot = extract_tools.extract_json_root_string(full)
-        if snapshot:
-            return snapshot
-        return None
+        return full.strip() if extract_tools.extract_tool_request(full) else None
 
     response, reasoning = await wrapper.unified_call(
         messages=[],
@@ -285,35 +278,32 @@ async def test_unified_call_stops_after_canonical_root_snapshot(monkeypatch):
 
     assert response == '{"tool_name":"response","tool_args":{"text":"hello"}}'
     assert reasoning == ""
-    assert stream.index == 2
+    assert stream.index == 1
     assert stream.closed is True
     assert len(seen) == 1
-    assert seen[0][1] == '{"tool_name":"response","tool_args":{"text":"hello"}} trailing text'
+    assert seen[0][1] == '{"tool_name":"response","tool_args":{"text":"hello"}}'
 
 
 @pytest.mark.asyncio
-async def test_unified_call_stops_after_tool_root_with_incidental_json(monkeypatch):
+async def test_unified_call_does_not_stop_for_embedded_tool_json(monkeypatch):
     stream = _AsyncChunkStream(
         [
-            {"type": "response.created"},
-            _response_event('Preamble {"note":"not the tool"}.\n'),
-            _response_event(
+            _chunk('Preamble {"note":"not the tool"}.\n'),
+            _chunk(
                 '{"tool_name":"response","tool_args":{"text":"ok"}} trailing text'
             ),
-            _response_event(" unreachable"),
+            _chunk(" unreachable"),
         ]
     )
 
-    async def fake_aresponses(*args, **kwargs):
+    async def fake_acompletion(*args, **kwargs):
         assert kwargs["stream"] is True
-        assert kwargs["input"] == ""
-        assert kwargs["store"] is True
         return stream
 
     async def fake_rate_limiter(*args, **kwargs):
         return None
 
-    monkeypatch.setattr(litellm_transport, "aresponses", fake_aresponses)
+    monkeypatch.setattr(litellm_transport, "acompletion", fake_acompletion)
     monkeypatch.setattr(models, "apply_rate_limiter", fake_rate_limiter)
     monkeypatch.setattr(
         models.settings,
@@ -325,34 +315,28 @@ async def test_unified_call_stops_after_tool_root_with_incidental_json(monkeypat
         model="test-model",
         provider="openai",
         model_config=None,
+        a0_api_mode="chat",
     )
 
     seen: list[tuple[str, str]] = []
 
     async def response_callback(chunk: str, full: str):
         seen.append((chunk, full))
-        snapshot = extract_tools.extract_json_root_string(full)
-        if not snapshot:
-            return None
-        parsed_snapshot = extract_tools.json_parse_dirty(snapshot)
-        if parsed_snapshot is None:
-            return None
-        try:
-            extract_tools.normalize_tool_request(parsed_snapshot)
-        except ValueError:
-            return None
-        return snapshot
+        return full.strip() if extract_tools.extract_tool_request(full) else None
 
     response, reasoning = await wrapper.unified_call(
         messages=[],
         response_callback=response_callback,
     )
 
-    assert response == '{"tool_name":"response","tool_args":{"text":"ok"}}'
+    assert response == (
+        'Preamble {"note":"not the tool"}.\n'
+        '{"tool_name":"response","tool_args":{"text":"ok"}} trailing text unreachable'
+    )
     assert reasoning == ""
     assert stream.index == 3
-    assert stream.closed is True
-    assert len(seen) == 2
+    assert stream.closed is False
+    assert len(seen) == 3
     assert seen[0][1] == 'Preamble {"note":"not the tool"}.\n'
     assert (
         seen[1][1]
@@ -435,6 +419,44 @@ async def test_chat_completions_escape_hatch_still_uses_acompletion(monkeypatch)
     assert response == "hello"
     assert reasoning == ""
     assert calls == ["chat"]
+
+
+@pytest.mark.asyncio
+async def test_unified_turn_stops_chat_stream_after_text_tool_request(monkeypatch):
+    message = (
+        '{"thoughts":["test"],"actions":['
+        '{"tool_name":"response","tool_args":{"text":"ok"}}]}'
+    )
+    stream = _AsyncChunkStream([_chunk(message), _chunk(" unreachable")])
+
+    async def fake_acompletion(*args, **kwargs):
+        assert kwargs["stream"] is True
+        return stream
+
+    async def fake_rate_limiter(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr(litellm_transport, "acompletion", fake_acompletion)
+    monkeypatch.setattr(models, "apply_rate_limiter", fake_rate_limiter)
+
+    wrapper = models.LiteLLMChatWrapper(
+        model="test-model",
+        provider="openai",
+        model_config=None,
+        a0_api_mode="chat",
+    )
+
+    async def response_callback(chunk: str, full: str):
+        return full if extract_tools.extract_tool_request(full) else None
+
+    result = await wrapper.unified_turn(
+        messages=[],
+        response_callback=response_callback,
+    )
+
+    assert result.response == message
+    assert stream.index == 1
+    assert stream.closed is True
 
 
 @pytest.mark.asyncio
@@ -1032,6 +1054,28 @@ def test_responses_request_normalizes_function_tool_parameter_shapes():
         },
         {"type": "web_search"},
     ]
+    assert request["tool_choice"] == "required"
+    assert request["parallel_tool_calls"] is False
+
+
+def test_responses_request_preserves_explicit_a0_tool_controls():
+    request = litellm_transport.ResponsesTransport.from_chat(
+        [],
+        {
+            "a0_responses_function_tools": [
+                {
+                    "type": "function",
+                    "name": "native_noop",
+                    "parameters": {"type": "object"},
+                }
+            ],
+            "tool_choice": "auto",
+            "parallel_tool_calls": True,
+        },
+    )
+
+    assert request["tool_choice"] == "auto"
+    assert request["parallel_tool_calls"] is True
 
 
 def test_chat_completions_kwargs_omit_empty_tools():

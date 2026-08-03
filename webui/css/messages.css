@@ -1,6 +1,6 @@
 /* Chat History */
 #chat-history {
-  background-color: var(--color-chat-background);
+  background-color: transparent;
   position: relative;
   display: -webkit-flex;
   display: flex;
@@ -9,6 +9,7 @@
   width: 100%;
   overflow-y: scroll;
   overflow-x: hidden;
+  overflow-anchor: none;
   scroll-behavior: auto !important; /* avoid infinite scrolling! */
   padding-left: var(--spacing-sm) !important;
   padding-right: var(--spacing-md) !important;
@@ -16,6 +17,55 @@
   padding-bottom: 4rem !important;
   -webkit-transition: all 0.3s ease;
   transition: all 0.3s ease;
+}
+
+#chat-history.message-window-staging,
+#chat-history.message-window-staging * {
+  animation: none !important;
+  transition: none !important;
+}
+
+.message-window-loader {
+  align-self: center;
+  flex: 0 0 auto;
+  display: flex;
+  justify-content: center;
+  margin: var(--spacing-sm) auto;
+  min-height: 2rem;
+  pointer-events: none;
+}
+
+.chat-loading-splash {
+  position: absolute;
+  inset: 0;
+  z-index: 110;
+  align-items: center;
+  margin: 0;
+  min-height: 0;
+  background: var(--color-chat-background);
+}
+
+.chat-loading-splash[hidden] {
+  display: none;
+}
+
+.chat-loading-splash:not([hidden]) {
+  animation: chat-loading-splash-fade-in 180ms ease-out both;
+}
+
+@keyframes chat-loading-splash-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-loading-splash:not([hidden]) {
+    animation: none;
+  }
 }
 
 /* Message Styles */
@@ -261,7 +311,6 @@
 
 .message-util {
   background-color: transparent;
-  display: none;
 }
 
 .message-warning {
@@ -818,6 +867,11 @@
   -webkit-animation: none !important;
 }
 
+.message-container.message-window-restored {
+  animation: none !important;
+  -webkit-animation: none !important;
+}
+
 .message {
   /* background-color: var(--color-message-bg); */
   /* border-radius: 0; */
@@ -842,14 +896,14 @@
    Shows ~10 lines with fade-out, expand button reveals full content
    =========================================== */
 
-.message.message-collapsible .message-body {
+.message.message-collapsible .message-collapse-content {
   position: relative;
   max-height: 15em !important;
   overflow: hidden;
   transition: max-height 0.3s ease-out;
 }
 
-.message.message-collapsible .message-body::after {
+.message.message-collapsible .message-collapse-content::after {
   content: "";
   position: absolute;
   bottom: 0;
@@ -863,30 +917,56 @@
 }
 
 /* Expanded state */
-.message.message-collapsible.expanded .message-body {
+.message.message-collapsible.expanded .message-collapse-content {
   max-height: none !important;
 }
 
-.message.message-collapsible.expanded .message-body::after {
+.message.message-collapsible.expanded .message-collapse-content::after {
   opacity: 0;
 }
 
 /* No fade when content fits */
-.message.message-collapsible:not(.has-overflow) .message-body::after {
+.message.message-collapsible:not(.has-overflow) .message-collapse-content::after {
   opacity: 0;
 }
 
 /* ALL detail mode: force full response bodies and hide the expand control */
-#chat-history[data-detail-mode="expanded"] .message.message-collapsible .message-body {
+#chat-history[data-detail-mode="expanded"]
+  .message.message-agent-response.message-collapsible
+  .message-collapse-content {
   max-height: none !important;
 }
 
-#chat-history[data-detail-mode="expanded"] .message.message-collapsible .message-body::after {
+#chat-history[data-detail-mode="expanded"]
+  .message.message-agent-response.message-collapsible
+  .message-collapse-content::after {
   opacity: 0;
 }
 
-#chat-history[data-detail-mode="expanded"] .message.message-collapsible .expand-btn {
+#chat-history[data-detail-mode="expanded"]
+  .message.message-agent-response.message-collapsible
+  .expand-btn {
   display: none !important;
+}
+
+/* Long history replays keep oversized bodies as previews until explicitly opened,
+   even when the global preference is ALL. */
+#chat-history[data-detail-mode="expanded"]
+  .message.message-collapsible.lazy-content:not(.expanded)
+  .message-collapse-content {
+  max-height: 15em !important;
+}
+
+#chat-history[data-detail-mode="expanded"]
+  .message.message-collapsible.lazy-content:not(.expanded)
+  .message-collapse-content::after {
+  opacity: 1;
+}
+
+#chat-history[data-detail-mode="expanded"]
+  .message.message-collapsible.lazy-content
+  .expand-btn {
+  display: inline-flex !important;
 }
 
 /* Smooth Render */

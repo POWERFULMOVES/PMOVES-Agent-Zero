@@ -29,14 +29,14 @@
                         </label>
 
                         <label class="skills-search">
-                            <span class="material-symbols-outlined" aria-hidden="true">search</span>
+                            <x-icon aria-hidden="true" name="search"></x-icon>
                             <input type="search" x-model.debounce.150ms="$store.skillsListStore.skillSearch"
                                 placeholder="Search skills" />
                             <button type="button" class="skills-search-clear"
                                 x-show="$store.skillsListStore.skillSearchActive"
                                 @click="$store.skillsListStore.clearSkillSearch()"
                                 title="Clear search">
-                                <span class="material-symbols-outlined" aria-hidden="true">close</span>
+                                <x-icon aria-hidden="true" name="close"></x-icon>
                             </button>
                         </label>
 
@@ -44,7 +44,7 @@
                             <button type="button" class="button confirm" title="Refresh"
                                 @click="$store.skillsListStore.loadSkills()"
                                 :disabled="$store.skillsListStore.loading">
-                                <span class="icon material-symbols-outlined">refresh</span> Refresh
+                                <x-icon class="icon" name="refresh"></x-icon> Refresh
                             </button>
                         </div>
                     </div>
@@ -79,11 +79,11 @@
                                 <div class="skill-actions">
                                     <button type="button" class="button" title="Open in browser"
                                         @click="$store.skillsListStore.openSkill(skill)">
-                                        <span class="icon material-symbols-outlined">folder_open</span> Open
+                                        <x-icon class="icon" name="folder_open"></x-icon> Open
                                     </button>
                                     <button type="button" class="button cancel icon-button" title="Delete"
                                         @click="$confirmClick($event, () => $store.skillsListStore.deleteSkill(skill))">
-                                        <span class="icon material-symbols-outlined">delete</span>
+                                        <x-icon class="icon" name="delete"></x-icon>
                                     </button>
                                 </div>
                             </div>

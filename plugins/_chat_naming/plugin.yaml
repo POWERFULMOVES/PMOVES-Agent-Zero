@@ -1,0 +1,9 @@
+name: _chat_naming
+title: Chat Naming
+description: Rename chats manually or generate concise names with the Utility Model.
+version: 1.0.0
+settings_sections:
+  - agent
+per_project_config: true
+per_agent_config: true
+always_enabled: true

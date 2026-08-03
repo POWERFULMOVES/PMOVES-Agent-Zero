@@ -1,0 +1,5 @@
+name: rename
+description: Rename this chat manually or with the Utility Model.
+argument_hint: "<new name|auto>"
+type: script
+script_path: rename_command.py

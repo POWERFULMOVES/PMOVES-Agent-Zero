@@ -17,7 +17,7 @@
                         <button class="notification-action" @click="$store.notificationStore?.clearAll()"
                             :disabled="!$store.notificationStore || $store.notificationStore.getDisplayNotifications().length === 0"
                             title="Clear All">
-                            <span class="material-symbols-outlined">delete</span> Clear All
+                            <x-icon name="delete"></x-icon> Clear All
                         </button>
                     </div>
                 </div>
@@ -71,7 +71,7 @@
                 <div class="notification-empty"
                     x-show="!$store.notificationStore || $store.notificationStore.getDisplayNotifications().length === 0">
                     <div class="notification-empty-icon">
-                        <span class="material-symbols-outlined">notifications</span>
+                        <x-icon name="notifications"></x-icon>
                     </div>
                     <p>No notifications to display</p>
                 </div>

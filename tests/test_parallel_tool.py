@@ -145,13 +145,14 @@ def test_normalize_parallel_tool_calls_rejects_nested_parallel() -> None:
         )
 
 
-def test_normalize_parallel_tool_calls_rejects_document_query() -> None:
-    with pytest.raises(ValueError, match="document_query.*parallel"):
+@pytest.mark.parametrize("tool_name", ["document_query", "response"])
+def test_normalize_parallel_tool_calls_rejects_disallowed_tools(tool_name: str) -> None:
+    with pytest.raises(ValueError, match=rf"{tool_name}.*parallel"):
         parallel_tools.normalize_parallel_tool_calls(
             [
                 {
-                    "tool_name": "document_query",
-                    "tool_args": {"document": "/tmp/report.pdf"},
+                    "tool_name": tool_name,
+                    "tool_args": {},
                 }
             ]
         )

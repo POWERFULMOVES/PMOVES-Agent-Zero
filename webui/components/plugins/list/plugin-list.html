@@ -45,7 +45,7 @@
                             aria-controls="plugins-plugin-hub"
                             :aria-selected="$store.pluginListStore.activeTab === 'pluginHub'"
                             @click="$store.pluginListStore.setTab('pluginHub')">
-                            <span class="material-symbols-outlined pi-tab-icon">store</span> Browse
+                            <x-icon class="pi-tab-icon" name="store"></x-icon> Browse
                         </button>
                     </li>
                 </ul>
@@ -65,7 +65,7 @@
                                     title="Refresh"
                                     @click="$store.pluginListStore.refresh()"
                                     :disabled="$store.pluginListStore.loading">
-                                    <span class="icon material-symbols-outlined">refresh</span> Refresh
+                                    <x-icon class="icon" name="refresh"></x-icon> Refresh
                                 </button>
 
                                 <x-extension id="plugins-list-header-buttons"></x-extension>
@@ -102,7 +102,7 @@
                                                     class="button"
                                                     title="Open"
                                                     @click="$store.pluginListStore.openPlugin(plugin)">
-                                                    <span class="icon material-symbols-outlined">dashboard</span> Open
+                                                    <x-icon class="icon" name="dashboard"></x-icon> Open
                                                 </button>
                                             </template>
                                             <template x-if="plugin.has_config_screen">
@@ -110,7 +110,7 @@
                                                     class="button"
                                                     title="Config"
                                                     @click="$store.pluginListStore.openPluginConfig(plugin)">
-                                                    <span class="icon material-symbols-outlined">settings</span> Config
+                                                    <x-icon class="icon" name="settings"></x-icon> Config
                                                 </button>
                                             </template>
                                             <template x-if="plugin.has_execute_script">
@@ -118,7 +118,7 @@
                                                     class="button"
                                                     title="Execute"
                                                     @click="$store.pluginListStore.openPluginExecute(plugin)">
-                                                    <span class="icon material-symbols-outlined">terminal</span> Execute
+                                                    <x-icon class="icon" name="terminal"></x-icon> Execute
                                                 </button>
                                             </template>
                                             <button type="button"
@@ -126,7 +126,7 @@
                                                 title="Info"
                                                 aria-label="Info"
                                                 @click="$store.pluginListStore.openPluginInfo(plugin)">
-                                                <span class="icon material-symbols-outlined">info</span>
+                                                <x-icon class="icon" name="info"></x-icon>
                                             </button>
                                             <div class="dropdown plugin-actions-dropdown"
                                                 @click.outside="actionsOpen = false"
@@ -137,7 +137,7 @@
                                                     aria-label="More actions"
                                                     @click.stop="actionsOpen = !actionsOpen"
                                                     :aria-expanded="actionsOpen.toString()">
-                                                    <span class="material-symbols-outlined">more_vert</span>
+                                                    <x-icon name="more_vert"></x-icon>
                                                 </button>
                                                 <div class="dropdown-menu"
                                                     x-show="actionsOpen"
@@ -149,7 +149,7 @@
                                                             class="dropdown-item"
                                                             title="README"
                                                             @click="$store.pluginListStore.openPluginDoc(plugin, 'readme'); actionsOpen = false">
-                                                            <span class="material-symbols-outlined">description</span>
+                                                            <x-icon name="description"></x-icon>
                                                             <span>README</span>
                                                         </button>
                                                     </template>
@@ -158,7 +158,7 @@
                                                             class="dropdown-item"
                                                             title="License"
                                                             @click="$store.pluginListStore.openPluginDoc(plugin, 'license'); actionsOpen = false">
-                                                            <span class="material-symbols-outlined">gavel</span>
+                                                            <x-icon name="gavel"></x-icon>
                                                             <span>License</span>
                                                         </button>
                                                     </template>
@@ -168,7 +168,7 @@
                                                             class="dropdown-item plugin-dropdown-delete"
                                                             title="Delete"
                                                             @click="$confirmClick($event, () => { $store.pluginListStore.deletePlugin(plugin); actionsOpen = false; })">
-                                                            <span class="material-symbols-outlined">delete</span>
+                                                            <x-icon name="delete"></x-icon>
                                                             <span>Delete</span>
                                                         </button>
                                                     </template>

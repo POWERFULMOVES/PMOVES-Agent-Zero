@@ -451,7 +451,7 @@ const model = {
       progress: "hourglass_empty",
     };
     const iconName = icons[type] || "info";
-    return `<span class="material-symbols-outlined">${iconName}</span>`;
+    return `<x-icon name="${iconName}"></x-icon>`;
   },
 
   // Create notification via backend (will appear via polling)

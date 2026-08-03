@@ -24,24 +24,24 @@
                             <div class="mcp-view-tabs">
                                 <button type="button" :class="{ active: $store.mcpServersStore.activeView === 'visual' }"
                                     @click="$store.mcpServersStore.setActiveView('visual')">
-                                    <span class="material-symbols-outlined" aria-hidden="true">dashboard_customize</span>
+                                    <x-icon aria-hidden="true" name="dashboard_customize"></x-icon>
                                     <span>Manager</span>
                                 </button>
                                 <button type="button" :class="{ active: $store.mcpServersStore.activeView === 'raw' }"
                                     @click="$store.mcpServersStore.setActiveView('raw')">
-                                    <span class="material-symbols-outlined" aria-hidden="true">data_object</span>
+                                    <x-icon aria-hidden="true" name="data_object"></x-icon>
                                     <span>Raw JSON</span>
                                 </button>
                             </div>
 
                             <label class="mcp-search" x-show="$store.mcpServersStore.activeView === 'visual'" style="display: none;">
-                                <span class="material-symbols-outlined" aria-hidden="true">search</span>
+                                <x-icon aria-hidden="true" name="search"></x-icon>
                                 <input type="search" x-model.debounce.150ms="$store.mcpServersStore.serverSearch" placeholder="Search MCP servers" />
                                 <button type="button" class="mcp-search-clear"
                                     x-show="$store.mcpServersStore.serverSearchActive"
                                     @click="$store.mcpServersStore.clearServerSearch()"
                                     title="Clear search">
-                                    <span class="material-symbols-outlined" aria-hidden="true">close</span>
+                                    <x-icon aria-hidden="true" name="close"></x-icon>
                                 </button>
                             </label>
                         </div>
@@ -49,10 +49,10 @@
 
                     <div class="mcp-manager-actions">
                         <button type="button" class="button" title="Refresh status" @click="$store.mcpServersStore.loadStatus()">
-                            <span class="material-symbols-outlined" aria-hidden="true">refresh</span>
+                            <x-icon aria-hidden="true" name="refresh"></x-icon>
                         </button>
                         <button type="button" class="button confirm" :disabled="$store.mcpServersStore.applying" @click="$store.mcpServersStore.applyNow()">
-                            <span class="material-symbols-outlined" aria-hidden="true">check</span>
+                            <x-icon aria-hidden="true" name="check"></x-icon>
                             <span x-text="$store.mcpServersStore.applying ? 'Applying' : 'Apply'"></span>
                         </button>
                     </div>
@@ -81,7 +81,7 @@
                                 </div>
                                 <div class="mcp-config-actions">
                                     <button type="button" class="mcp-icon-button" title="Edit" @click="$store.mcpServersStore.editConfigServer(entry.name)">
-                                        <span class="material-symbols-outlined" aria-hidden="true">edit</span>
+                                        <x-icon aria-hidden="true" name="edit"></x-icon>
                                     </button>
                                     <div class="mcp-toggle-group">
                                         <label class="toggle plugin-status-toggle mcp-status-toggle"
@@ -97,7 +97,7 @@
                                     <button type="button" class="mcp-icon-button" title="Remove"
                                         :disabled="$store.mcpServersStore.applying"
                                         @click="$confirmClick($event, () => $store.mcpServersStore.removeConfigServer(entry.name))">
-                                        <span class="material-symbols-outlined" aria-hidden="true">delete</span>
+                                        <x-icon aria-hidden="true" name="delete"></x-icon>
                                     </button>
                                 </div>
                             </article>
@@ -154,7 +154,7 @@
                         <div class="mcp-add-header">
                             <h3>Add MCP server</h3>
                             <button type="button" class="mcp-icon-button" title="Clear form" @click="$store.mcpServersStore.resetForm()">
-                                <span class="material-symbols-outlined" aria-hidden="true">backspace</span>
+                                <x-icon aria-hidden="true" name="backspace"></x-icon>
                             </button>
                         </div>
 
@@ -206,7 +206,7 @@
                         </div>
 
                         <button type="button" class="mcp-advanced-toggle" @click="$store.mcpServersStore.advancedOpen = !$store.mcpServersStore.advancedOpen">
-                            <span class="material-symbols-outlined" :style="$store.mcpServersStore.advancedOpen ? 'transform:rotate(90deg)' : ''">chevron_right</span>
+                            <x-icon :style="$store.mcpServersStore.advancedOpen ? 'transform:rotate(90deg)' : ''" name="chevron_right"></x-icon>
                             <span>Advanced settings</span>
                         </button>
 
@@ -242,11 +242,11 @@
 
                         <div class="mcp-add-actions">
                             <button type="button" class="button" @click="$store.mcpServersStore.openScanModal()">
-                                <span class="material-symbols-outlined" aria-hidden="true">radar</span>
+                                <x-icon aria-hidden="true" name="radar"></x-icon>
                                 <span>Scan with Agent Zero</span>
                             </button>
                             <button type="button" class="button confirm" @click="$store.mcpServersStore.addServerFromForm()">
-                                <span class="material-symbols-outlined" aria-hidden="true">add_circle</span>
+                                <x-icon aria-hidden="true" name="add_circle"></x-icon>
                                 <span>Add to config</span>
                             </button>
                         </div>
@@ -259,14 +259,14 @@
                         <div class="mcp-raw-actions">
                             <button type="button" class="button" onclick="openModal('settings/mcp/client/example.html')">Examples</button>
                             <button type="button" class="button" @click="$store.mcpServersStore.formatJson()">
-                                <span class="material-symbols-outlined" aria-hidden="true">format_indent_increase</span>
+                                <x-icon aria-hidden="true" name="format_indent_increase"></x-icon>
                                 <span>Reformat</span>
                             </button>
                             <button type="button" class="button" title="Refresh status" @click="$store.mcpServersStore.loadStatus()">
-                                <span class="material-symbols-outlined" aria-hidden="true">refresh</span>
+                                <x-icon aria-hidden="true" name="refresh"></x-icon>
                             </button>
                             <button type="button" class="button confirm" :disabled="$store.mcpServersStore.applying" @click="$store.mcpServersStore.applyNow()">
-                                <span class="material-symbols-outlined" aria-hidden="true">check</span>
+                                <x-icon aria-hidden="true" name="check"></x-icon>
                                 <span x-text="$store.mcpServersStore.applying ? 'Applying' : 'Apply'"></span>
                             </button>
                         </div>

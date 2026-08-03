@@ -4,6 +4,10 @@ import { createStore } from "/js/AlpineStore.js";
 const model = {
   isOpen: true,
   menuOpen: false,
+  rowMenuOpenId: "",
+  rowMenuKind: "chat",
+  rowMenuStyle: {},
+  rowListExtensions: { chat: {}, task: {} },
   _initialized: false,
 
   // Centralized collapse state for all sidebar sections (persisted in localStorage)
@@ -85,6 +89,7 @@ const model = {
       this.isOpen = false;
     }
     this.menuClose();
+    this.rowMenuClose();
   },
 
   // Check if the current viewport is mobile
@@ -130,6 +135,70 @@ const model = {
       top: `${rect.bottom + 8}px`,
       left: `${Math.min(Math.max(rect.left, viewportPadding), maxLeft)}px`,
       width: `${menuWidth}px`
+    };
+  },
+
+  registerRowListExtension(kind, name, extension) {
+    if (!this.rowListExtensions[kind] || !name) return;
+    this.rowListExtensions = {
+      ...this.rowListExtensions,
+      [kind]: { ...this.rowListExtensions[kind], [name]: extension },
+    };
+  },
+
+  sortRows(kind, rows) {
+    return Object.values(this.rowListExtensions[kind] || {}).reduce(
+      (result, extension) => extension.sort?.(result) || result,
+      [...rows],
+    );
+  },
+
+  hasRowDividerBefore(kind, item, index, rows) {
+    return Object.values(this.rowListExtensions[kind] || {}).some((extension) =>
+      extension.dividerBefore?.(item, index, rows),
+    );
+  },
+
+  rowMenuToggle(id, kind, triggerElement) {
+    if (this.rowMenuOpenId === id) {
+      this.rowMenuClose();
+      return;
+    }
+
+    this.rowMenuOpenId = id;
+    this.rowMenuKind = kind;
+    this.rowMenuStyle = this.rowMenuPos(triggerElement);
+  },
+
+  rowMenuClose() {
+    this.rowMenuOpenId = "";
+    this.rowMenuStyle = {};
+  },
+
+  rowMenuClick(event, menuElement) {
+    if (!this.rowMenuOpenId || menuElement?.contains(event.target)) return;
+    this.rowMenuClose();
+  },
+
+  rowMenuPos(triggerElement) {
+    if (!triggerElement) return {};
+
+    const rect = triggerElement.getBoundingClientRect();
+    const gap = 6;
+    const padding = 8;
+    const menuWidth = 180;
+    const spaceBelow = window.innerHeight - rect.bottom - gap - padding;
+    const spaceAbove = rect.top - gap - padding;
+    const openUp = spaceBelow < 96 && spaceAbove > spaceBelow;
+    const maxLeft = Math.max(padding, window.innerWidth - menuWidth - padding);
+    const left = Math.min(Math.max(rect.right - menuWidth, padding), maxLeft);
+
+    return {
+      left: `${Math.round(left)}px`,
+      right: "auto",
+      top: openUp ? "auto" : `${Math.round(rect.bottom + gap)}px`,
+      bottom: openUp ? `${Math.round(window.innerHeight - rect.top + gap)}px` : "auto",
+      minWidth: `${menuWidth}px`,
     };
   },
 };

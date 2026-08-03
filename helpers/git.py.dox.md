@@ -37,6 +37,7 @@
 ## Runtime Contracts
 
 - Helper modules own reusable framework APIs and must preserve public callers unless all callers, tests, and docs are updated together.
+- Git commit and release timestamp strings produced by `_format_git_timestamp` use UTC and omit a timezone suffix.
 - Update this file whenever public functions, classes, persistence behavior, path/security assumptions, side effects, or cross-module contracts change.
 - Observed side-effect areas: filesystem writes, filesystem deletion, network calls, subprocess/runtime control, plugin state, settings/state persistence, secret handling.
 - Imported dependency areas include: `base64`, `dataclasses`, `datetime`, `git`, `giturlparse`, `helpers`, `helpers.localization`, `os`, `re`, `subprocess`, `urllib.parse`.

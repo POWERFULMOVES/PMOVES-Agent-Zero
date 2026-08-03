@@ -11,12 +11,12 @@
             <div x-create="$store.pluginToggle.loadConfigs()" class="plugin-configs-container">
 
                 <div x-show="$store.pluginToggle.error" class="plugin-configs-error">
-                    <span class="material-symbols-outlined">error</span>
+                    <x-icon name="error"></x-icon>
                     <span x-text="$store.pluginToggle.error"></span>
                 </div>
 
                 <div x-show="$store.pluginToggle.isLoading" class="plugin-configs-loading">
-                    <span class="material-symbols-outlined spinning">progress_activity</span>
+                    <x-icon class="spinning" name="progress_activity"></x-icon>
                     <span>Loading configurations...</span>
                 </div>
 
@@ -47,11 +47,11 @@
 
                             <div class="plugin-configs-actions">
                                 <button type="button" class="button" @click="$store.pluginToggle.switchToConfig(cfg.project_name || '', cfg.agent_profile || '')">
-                                    <span class="icon material-symbols-outlined">edit</span>
+                                    <x-icon class="icon" name="edit"></x-icon>
                                     Edit
                                 </button>
                                 <button type="button" class="button cancel icon-button" title="Delete" @click="$confirmClick($event, () => $store.pluginToggle.deleteConfig(cfg.path))">
-                                    <span class="icon material-symbols-outlined">delete</span>
+                                    <x-icon class="icon" name="delete"></x-icon>
                                 </button>
                             </div>
                         </div>

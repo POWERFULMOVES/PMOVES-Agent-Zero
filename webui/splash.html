@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en" data-splash-theme="dark">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+    <title>Agent Zero</title>
+    <link rel="icon" href="data:,">
+    <script>
+        try {
+            if (localStorage.getItem("darkMode") === "false") document.documentElement.dataset.splashTheme = "light"
+        } catch (_) {}
+    </script>
+    <style>
+        html, body { width: 100%; height: 100%; margin: 0; }
+        html { background: #131313; color: #fff; }
+        html[data-splash-theme="light"] { background: #fafafa; color: #000; }
+        body { display: grid; place-items: center; font-family: system-ui, sans-serif; }
+        #startup-transition { display: grid; justify-items: center; gap: 1rem; }
+        #startup-transition > svg {
+            width: clamp(12rem, 34vw, 23rem); max-width: 72vw; height: auto;
+            opacity: 0; animation: startup-logo-in .55s ease-out .05s forwards;
+        }
+        #startup-transition > p { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+        @keyframes startup-logo-in { to { opacity: 1; } }
+    </style>
+</head>
+
+<body>
+    <main id="startup-transition" role="status" aria-live="polite">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 163 26" aria-hidden="true">
+            <path fill="currentColor" d="m138.7 15.3c0.8 1.2 1.6 2.4 2.5 3.7h-2.7c-0.8-1-1.6-2.2-2.4-3.3h-3.1v3.3h-2.1v-11.3q1.8 0 3.6 0c1 0 2-0.1 3 0.1 1.6 0.2 2.8 1.1 3.2 2.7 0.3 1.7 0 3.3-1.5 4.4-0.2 0.1-0.3 0.2-0.5 0.4zm-5.7-1.7c1.5 0 2.8 0 4.2-0.1 0.9 0 1.3-0.7 1.3-1.6 0-1-0.4-1.7-1.3-1.8-1.4-0.2-2.8-0.1-4.2-0.1zm-29-5.8v1.6c-2.2 2.5-4.4 5-6.7 7.6h6.7v2.1h-9.6v-2.2c2-2.2 4-4.4 6.2-6.9h-6.2v-2.2zm-48.2-0.7c2.8 2.7 5.3 5.2 8 7.9v-6.5h2v11.4c-2.7-2.6-5.2-5.1-8-7.8v6.8h-2zm94.6 9.3c0.6-0.3 1.4-0.7 1.9-0.9 1.7 2.3 4.4 1.8 5.6 0.7 1.1-1 1.5-2.5 1-4-0.5-1.4-1.8-2.6-3.6-2.5-1.8 0.1-3.4 1.4-3.6 3.5h-2.1c0-2.1 1.5-4.6 3.9-5.3 3.1-0.9 6.1 0.6 7.3 3.5 1 2.8-0.2 5.9-3 7.2-2.6 1.3-6 0.3-7.4-2.2zm-120.5-6.3c-0.5 0.3-1.1 0.7-1.5 1-2.3-1.9-5-1.3-6 1.2-0.5 1.6 0.3 3.7 2.1 4.3 1.5 0.6 3.2 0 3.6-1.3-0.3-0.1-0.7-0.2-1.1-0.3-0.1-0.6-0.1-1.1-0.2-1.8h4.1c0.3 2.4-1.6 5-4 5.6-2.6 0.7-5.4-0.8-6.4-3.4-0.9-2.5 0.2-5.5 2.6-6.7 2.4-1.3 5.4-0.7 6.8 1.4zm-22.4-2.3c2 3.8 3.9 7.5 5.9 11.2h-2.3q-1.8-3.2-3.6-6.6c-1.3 2.3-2.4 4.4-3.6 6.6h-2.3c2-3.7 3.9-7.4 5.9-11.2zm69.1 2.5h-3.8v-1.9h9.5v1.9h-3.6v8.7h-2.1zm38.9-0.4v2.7l2.7 0.1c0 0 0 1.2 0 2.1-1.1 0-2.3 0-3.3-0.2-0.9-0.2-1.6-1-1.6-2-0.1-1.5 0-3.2 0-4.8h9.1v2.1zm-2.2 9.2v-2.9c0.5 0 1.1-0.1 1.7-0.1 0.1 0.3 0.1 0.9 0.4 0.9 0.3 0 4.5 0 6.9 0v2.1zm-71.9-8.7v2.6h2.5c0 0 0 1.2 0 2-1 0-2.1 0-3.1-0.2-0.8-0.2-1.4-0.9-1.5-1.8q0-2.2 0-4.5h8.5v1.9zm-2.1 8.5v-2.6c0.6-0.1 1.1-0.1 1.6-0.1 0.2 0.3 0.2 0.8 0.4 0.8 0.3 0 4.2 0 6.4 0v1.9z"/>
+        </svg>
+        <p id="startup-status">Starting Agent Zero</p>
+    </main>
+
+    <script>
+        (() => {
+            const APP_DOCUMENT_PATH = "/ui/index"
+            const ACTIVATION_TIMEOUT_MS = 8000
+            const CACHE_TIMEOUT_MS = 10000
+            const FALLBACK_TIMEOUT_MS = 15000
+            let replacementStarted = false
+
+            const appDocumentPromise = fetch(APP_DOCUMENT_PATH, {
+                cache: "no-store",
+                credentials: "same-origin",
+                headers: { Accept: "text/html" },
+            }).then(async (response) => {
+                if (!response.ok) throw new Error(`App document request failed: ${response.status}`)
+                return response.text()
+            })
+
+            const replaceWithApp = async () => {
+                if (replacementStarted) return
+                const appHtml = await appDocumentPromise
+                if (replacementStarted) return
+                replacementStarted = true
+                const overlay = document.getElementById("startup-transition")
+                if (overlay && document.documentElement.dataset.splashTheme === "light") {
+                    overlay.dataset.theme = "light"
+                }
+                const appWithTransition = overlay
+                    ? appHtml.replace(
+                        /<body\b[^>]*>/i,
+                        (bodyTag) => bodyTag + overlay.outerHTML,
+                    )
+                    : appHtml
+                document.open()
+                document.write(appWithTransition)
+                document.close()
+            }
+
+            const reportAppLoadFailure = (error) => {
+                console.error("WebUI document unavailable.", error)
+                const status = document.getElementById("startup-status")
+                if (status) {
+                    status.textContent = "Unable to load Agent Zero. Refresh to retry."
+                    status.style.cssText = "position:static;width:auto;height:auto;clip-path:none"
+                }
+            }
+
+            const fallbackTimer = setTimeout(() => {
+                replaceWithApp().catch(reportAppLoadFailure)
+            }, FALLBACK_TIMEOUT_MS)
+
+            const withTimeout = (promise, timeout, label) => new Promise((resolve, reject) => {
+                const timer = setTimeout(() => reject(new Error(`${label} timed out`)), timeout)
+                promise.then(
+                    (value) => { clearTimeout(timer); resolve(value) },
+                    (error) => { clearTimeout(timer); reject(error) },
+                )
+            })
+
+            const waitForActivation = (worker) => {
+                if (worker.state === "activated") return Promise.resolve(worker)
+                return new Promise((resolve, reject) => {
+                    const onStateChange = () => {
+                        if (worker.state === "activated") {
+                            worker.removeEventListener("statechange", onStateChange)
+                            resolve(worker)
+                        } else if (worker.state === "redundant") {
+                            worker.removeEventListener("statechange", onStateChange)
+                            reject(new Error("Service worker became redundant"))
+                        }
+                    }
+                    worker.addEventListener("statechange", onStateChange)
+                })
+            }
+
+            const waitForExpectedWorker = async (registration, expectedUrl) => {
+                const findWorker = () => [
+                    registration.installing,
+                    registration.waiting,
+                    registration.active,
+                ].find((worker) => worker?.scriptURL === expectedUrl)
+
+                let worker = findWorker()
+                if (!worker) {
+                    worker = await withTimeout(new Promise((resolve) => {
+                        const onUpdateFound = () => {
+                            const candidate = findWorker()
+                            if (!candidate) return
+                            registration.removeEventListener("updatefound", onUpdateFound)
+                            resolve(candidate)
+                        }
+                        registration.addEventListener("updatefound", onUpdateFound)
+                    }), ACTIVATION_TIMEOUT_MS, "Service worker update")
+                }
+                return withTimeout(
+                    waitForActivation(worker),
+                    ACTIVATION_TIMEOUT_MS,
+                    "Service worker activation",
+                )
+            }
+
+            const waitForController = (expectedUrl) => {
+                if (navigator.serviceWorker.controller?.scriptURL === expectedUrl) {
+                    return Promise.resolve(navigator.serviceWorker.controller)
+                }
+                return withTimeout(new Promise((resolve) => {
+                    const onControllerChange = () => {
+                        const controller = navigator.serviceWorker.controller
+                        if (controller?.scriptURL !== expectedUrl) return
+                        navigator.serviceWorker.removeEventListener(
+                            "controllerchange",
+                            onControllerChange,
+                        )
+                        resolve(controller)
+                    }
+                    navigator.serviceWorker.addEventListener(
+                        "controllerchange",
+                        onControllerChange,
+                    )
+                }), ACTIVATION_TIMEOUT_MS, "Service worker control")
+            }
+
+            const sendBundle = (worker, bundle, waitForReady) => {
+                if (!waitForReady) {
+                    return Promise.resolve().then(() => {
+                        worker.postMessage({ type: "preload-ui-bundle", bundle })
+                    })
+                }
+
+                return withTimeout(new Promise((resolve, reject) => {
+                    const channel = new MessageChannel()
+                    channel.port1.onmessage = (event) => {
+                        channel.port1.close()
+                        if (event.data?.ok && event.data.version === bundle.version) {
+                            resolve()
+                        } else {
+                            reject(new Error(event.data?.error || "Asset cache rejected bundle"))
+                        }
+                    }
+                    try {
+                        worker.postMessage(
+                            { type: "preload-ui-bundle", bundle },
+                            [channel.port2],
+                        )
+                    } catch (error) {
+                        channel.port1.close()
+                        reject(error)
+                    }
+                }), CACHE_TIMEOUT_MS, "Asset cache preparation")
+            }
+
+            const initialize = async () => {
+                if (!navigator.serviceWorker) return
+                const response = await fetch("/ui/asset-bundle", {
+                    cache: "no-cache",
+                    credentials: "same-origin",
+                })
+                if (!response.ok) throw new Error(`Bundle request failed: ${response.status}`)
+                const bundle = await response.json()
+                if (!bundle?.version || !bundle.files) throw new Error("Invalid asset bundle")
+
+                const registrations = await navigator.serviceWorker.getRegistrations()
+                await Promise.all(
+                    registrations
+                        .filter((registration) => new URL(registration.scope).pathname === "/js/")
+                        .map((registration) => registration.unregister()),
+                )
+
+                const expectedUrl = new URL(
+                    `/sw.js?version=${encodeURIComponent(bundle.version)}`,
+                    location.origin,
+                ).href
+                const previousWorker = navigator.serviceWorker.controller
+                if (previousWorker && previousWorker.scriptURL !== expectedUrl) {
+                    sendBundle(previousWorker, bundle, false).catch(() => undefined)
+                }
+
+                const registration = await navigator.serviceWorker.register(expectedUrl, {
+                    scope: "/",
+                    updateViaCache: "none",
+                })
+                const worker = await waitForExpectedWorker(registration, expectedUrl)
+                await sendBundle(worker, bundle, true)
+                await waitForController(expectedUrl)
+            }
+
+            initialize()
+                .catch((error) => console.warn("WebUI bootstrap cache unavailable.", error))
+                .finally(() => {
+                    clearTimeout(fallbackTimer)
+                    replaceWithApp().catch(reportAppLoadFailure)
+                })
+        })()
+    </script>
+</body>
+
+</html>

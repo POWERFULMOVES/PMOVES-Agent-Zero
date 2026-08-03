@@ -1,0 +1,168 @@
+import base64
+from pathlib import Path
+import shutil
+import subprocess
+
+import pytest
+
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+CHATS_STORE_JS = (
+    PROJECT_ROOT / "webui" / "components" / "sidebar" / "chats" / "chats-store.js"
+)
+
+
+def test_chat_deletion_is_optimistic_and_rejects_stale_snapshots() -> None:
+    if not shutil.which("node"):
+        pytest.skip("Node.js is required to execute the chat-deletion regression.")
+
+    source = CHATS_STORE_JS.read_text(encoding="utf-8")
+    model_start = source.index("const model =")
+    store_start = source.index('const store = createStore("chats", model);')
+    model_source = source[model_start:store_start] + "\nexport { model };\n"
+    stubs = """
+const callJsonApi = (...args) => globalThis.__callJsonApi(...args);
+const sendJsonData = (...args) => globalThis.__sendJsonData(...args);
+const getContext = () => globalThis.__context;
+const setContext = (id) => { globalThis.__context = id; };
+const toastFetchError = (...args) => globalThis.__toastFetchError(...args);
+const toast = () => {};
+const justToast = (...args) => globalThis.__justToast(...args);
+const getConnectionStatus = () => true;
+const notificationStore = {};
+const sidebarStore = { sortRows: (_kind, rows) => [...rows] };
+const tasksStore = { tasks: [] };
+const syncStore = { mode: "HEALTHY" };
+const chatInputStore = {};
+"""
+    module_url = "data:text/javascript;base64," + base64.b64encode(
+        (stubs + model_source).encode("utf-8")
+    ).decode("ascii")
+    script = f"""
+globalThis.sessionStorage = {{
+  values: new Map(),
+  getItem(key) {{ return this.values.get(key) ?? null; }},
+  setItem(key, value) {{ this.values.set(key, String(value)); }},
+  removeItem(key) {{ this.values.delete(key); }},
+}};
+globalThis.__callJsonApi = async () => ({{}});
+globalThis.__toastFetchError = () => {{}};
+globalThis.__justToast = () => {{}};
+
+const {{ model }} = await import({module_url!r});
+
+function assert(condition, message) {{
+  if (!condition) throw new Error(message);
+}}
+
+function reset(contexts, selected) {{
+  model.contexts = contexts.map((context) => ({{ ...context }}));
+  model.selected = selected;
+  model.selectedContext = model.contexts.find((context) => context.id === selected);
+  model.deletedContextIds = {{}};
+  globalThis.__context = selected;
+}}
+
+const chats = [
+  {{ id: "a", created_at: 30 }},
+  {{ id: "b", created_at: 20 }},
+  {{ id: "c", created_at: 10 }},
+];
+
+let resolveDelete;
+globalThis.__sendJsonData = () => new Promise((resolve) => {{ resolveDelete = resolve; }});
+reset(chats, "a");
+const deletion = model.killChat("a");
+
+assert(
+  model.contexts.map((context) => context.id).join(",") === "b,c",
+  "the deleted row must disappear before the request completes",
+);
+assert(model.selected === "b", "fallback selection must happen in the same turn");
+assert(model.deletedContextIds.a === true, "the in-flight delete needs a tombstone");
+await model.selectChat("a");
+assert(
+  model.selected === "b" && globalThis.__context === "b",
+  "a queued click must not navigate back to a context being deleted",
+);
+
+model.applyContexts(chats);
+assert(
+  model.contexts.map((context) => context.id).join(",") === "b,c",
+  "an in-flight stale snapshot must not restore the deleted row",
+);
+
+await new Promise((resolve) => setTimeout(resolve, 0));
+assert(typeof resolveDelete === "function", "the delete request should be in flight");
+resolveDelete({{ message: "Context removed." }});
+await deletion;
+assert(model.deletedContextIds.a === true, "the tombstone must survive the HTTP acknowledgement");
+
+model.applyContexts(chats);
+assert(
+  model.contexts.map((context) => context.id).join(",") === "b,c",
+  "a stale post-acknowledgement snapshot must remain filtered",
+);
+model.applyContexts(chats.slice(1));
+assert(
+  model.deletedContextIds.a === true,
+  "an absent snapshot must not retire the tombstone while older polls can still arrive",
+);
+model.applyContexts(chats);
+assert(
+  model.contexts.map((context) => context.id).join(",") === "b,c",
+  "an older present snapshot arriving after an absent one must remain filtered",
+);
+
+const rapidDeleteResolvers = {{}};
+globalThis.__sendJsonData = (_url, payload) => new Promise((resolve) => {{
+  rapidDeleteResolvers[payload.context] = resolve;
+}});
+reset(chats, "a");
+const deleteA = model.killChat("a");
+await new Promise((resolve) => setTimeout(resolve, 0));
+const deleteB = model.killChat("b");
+assert(
+  model.contexts.map((context) => context.id).join(",") === "c",
+  "rapid deletes must remove every pending row immediately",
+);
+assert(model.selected === "c", "rapid selected-chat deletes must advance without a stale row");
+model.applyContexts(chats);
+assert(
+  model.contexts.map((context) => context.id).join(",") === "c",
+  "one stale snapshot must not reinsert any concurrently deleted row",
+);
+await new Promise((resolve) => setTimeout(resolve, 0));
+rapidDeleteResolvers.b({{ message: "Context removed." }});
+rapidDeleteResolvers.a({{ message: "Context removed." }});
+await Promise.all([deleteA, deleteB]);
+model.applyContexts(chats.slice(2));
+assert(
+  model.deletedContextIds.a === true && model.deletedContextIds.b === true,
+  "rapid-delete tombstones must survive an absent snapshot",
+);
+model.applyContexts(chats);
+assert(
+  model.contexts.map((context) => context.id).join(",") === "c",
+  "late snapshots must not reinsert any rapidly deleted row",
+);
+
+globalThis.__sendJsonData = async () => {{ throw new Error("delete failed"); }};
+reset(chats, "a");
+const originalConsoleError = console.error;
+console.error = () => {{}};
+await model.killChat("a");
+console.error = originalConsoleError;
+assert(
+  model.contexts.map((context) => context.id).join(",") === "a,b,c",
+  "a failed delete must restore the optimistically removed row",
+);
+assert(!model.deletedContextIds.a, "a failed delete must clear its tombstone");
+assert(model.selected === "b", "rollback must not override the fallback or a later user selection");
+"""
+
+    subprocess.run(
+        ["node", "--input-type=module", "-e", script],
+        check=True,
+        text=True,
+    )

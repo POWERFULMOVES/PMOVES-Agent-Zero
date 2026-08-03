@@ -23,6 +23,7 @@
 - The tool is intended for independent calls only; dependent operations remain sequential.
 - Independent calls should share one batch even when they use different tools; split only for dependencies, ordering, shared mutable state, or parent-context state/tool-availability changes.
 - `document_query` is intentionally excluded from wrapped calls because it is too heavy for parallel workers and must be called sequentially.
+- `response` is excluded because a wrapped response cannot end the parent message loop; final responses must be top-level calls.
 - `action="start"` starts calls and optionally waits according to `wait`.
 - `action="await"` waits for requested job IDs until completion or `timeout`; timeout returns running job handles without canceling them.
 - `action="collect"` returns completed job results without waiting.

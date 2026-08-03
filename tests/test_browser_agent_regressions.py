@@ -4,6 +4,7 @@ import json
 import re
 import sys
 import threading
+import zipfile
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
 
@@ -163,6 +164,10 @@ def test_browser_config_normalizes_extension_paths(tmp_path):
         "host_browser_privacy_policy": "allow",
         "host_browser_profile_mode": "existing",
         "host_browser_selection": "",
+        "proxy_server": "",
+        "proxy_bypass": "",
+        "proxy_username": "",
+        "proxy_password": "",
         "model_preset": "",
     }
 
@@ -184,6 +189,24 @@ def test_browser_config_normalizes_host_backend_and_privacy_policy():
     assert config["runtime_backend"] == "host_required"
     assert config["host_browser_privacy_policy"] == "warn"
     assert config["host_browser_profile_mode"] == "agent"
+
+
+def test_browser_config_builds_authenticated_internal_proxy():
+    config = normalize_browser_config(
+        {
+            "proxy_server": "  socks5://proxy.example:1080  ",
+            "proxy_bypass": "  localhost, .example.com  ",
+            "proxy_username": "researcher",
+            "proxy_password": "secret",
+        }
+    )
+
+    assert build_browser_launch_config(config)["proxy"] == {
+        "server": "socks5://proxy.example:1080",
+        "bypass": "localhost, .example.com",
+        "username": "researcher",
+        "password": "secret",
+    }
 
 
 def test_browser_config_normalizes_host_browser_selection():
@@ -306,6 +329,7 @@ def test_browser_launch_config_uses_full_chromium_for_all_sessions(tmp_path):
     assert default_launch["browser_mode"] == "chromium"
     assert default_launch["channel"] is None
     assert default_launch["requires_full_browser"] is True
+    assert default_launch["proxy"] is None
     assert not any(arg.startswith("--load-extension=") for arg in default_launch["args"])
     assert "--headless=new" not in default_launch["args"]
 
@@ -545,6 +569,108 @@ def test_browser_extension_manager_extracts_crx3_zip_payload():
     assert _crx_zip_payload(crx) == payload
 
 
+def test_browser_extension_manager_skips_same_version_reinstall(monkeypatch, tmp_path):
+    extension_id = "a" * 32
+    monkeypatch.setattr(
+        browser_extension_manager_module.files,
+        "get_abs_path",
+        lambda *parts: str(tmp_path.joinpath(*parts)),
+    )
+    target = get_extensions_root() / "chrome-web-store" / extension_id
+    target.mkdir(parents=True)
+    (target / "manifest.json").write_text(
+        json.dumps({"name": "Current", "version": "1.0.0"}),
+        encoding="utf-8",
+    )
+    (target / "keep.txt").write_text("current", encoding="utf-8")
+
+    def download(_extension_id, archive_path):
+        with zipfile.ZipFile(archive_path, "w") as archive:
+            archive.writestr("manifest.json", json.dumps({"name": "Current", "version": "1.0.0"}))
+            archive.writestr("replacement.txt", "should not be extracted")
+
+    monkeypatch.setattr(browser_extension_manager_module, "_download_crx", download)
+    monkeypatch.setattr(
+        browser_extension_manager_module,
+        "get_browser_config",
+        lambda: {"extension_paths": [str(target)]},
+    )
+    monkeypatch.setattr(
+        browser_extension_manager_module.plugins,
+        "save_plugin_config",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        browser_extension_manager_module,
+        "close_all_runtimes_sync",
+        lambda: pytest.fail("same-version reinstall restarted Browser runtimes"),
+    )
+    monkeypatch.setattr(
+        browser_extension_manager_module,
+        "_safe_extract_zip",
+        lambda *_args: pytest.fail("same-version reinstall extracted the package"),
+    )
+
+    result = browser_extension_manager_module.install_chrome_web_store_extension(extension_id)
+
+    assert result["version"] == "1.0.0"
+    assert (target / "keep.txt").read_text(encoding="utf-8") == "current"
+    assert not (target / "replacement.txt").exists()
+
+
+def test_browser_extension_manager_stages_updates_and_restarts_runtime(monkeypatch, tmp_path):
+    extension_id = "a" * 32
+    monkeypatch.setattr(
+        browser_extension_manager_module.files,
+        "get_abs_path",
+        lambda *parts: str(tmp_path.joinpath(*parts)),
+    )
+    target = get_extensions_root() / "chrome-web-store" / extension_id
+    target.mkdir(parents=True)
+    (target / "manifest.json").write_text(
+        json.dumps({"name": "Old", "version": "1.0.0"}),
+        encoding="utf-8",
+    )
+    (target / "old.txt").write_text("old", encoding="utf-8")
+
+    def download(_extension_id, archive_path):
+        with zipfile.ZipFile(archive_path, "w") as archive:
+            archive.writestr("manifest.json", json.dumps({"name": "Updated", "version": "2.0.0"}))
+            archive.writestr("new.txt", "new")
+
+    saved_configs = []
+    restarts = []
+    monkeypatch.setattr(browser_extension_manager_module, "_download_crx", download)
+    monkeypatch.setattr(
+        browser_extension_manager_module,
+        "get_browser_config",
+        lambda: {"extension_paths": [str(target)]},
+    )
+    monkeypatch.setattr(
+        browser_extension_manager_module.plugins,
+        "save_plugin_config",
+        lambda _plugin, _project, _agent, config: saved_configs.append(config.copy()),
+    )
+    def restart():
+        listed_paths = [
+            extension["path"]
+            for extension in browser_extension_manager_module.list_browser_extensions()
+        ]
+        restarts.append(((target / "old.txt").exists(), listed_paths))
+
+    monkeypatch.setattr(browser_extension_manager_module, "close_all_runtimes_sync", restart)
+
+    result = browser_extension_manager_module.install_chrome_web_store_extension(extension_id)
+
+    assert result["name"] == "Updated"
+    assert result["version"] == "2.0.0"
+    assert restarts == [(True, [str(target)])]
+    assert saved_configs[-1]["extension_paths"] == [str(target)]
+    assert (target / "new.txt").read_text(encoding="utf-8") == "new"
+    assert not (target / "old.txt").exists()
+    assert list(target.parent.iterdir()) == [target]
+
+
 def test_browser_extension_manager_uses_modern_chrome_prodversion(monkeypatch):
     extension_id = "a" * 32
 
@@ -589,6 +715,11 @@ def test_browser_extension_menu_exposes_agent_and_url_paths():
     assert "<span>Open</span>" in html
     assert "hasExtensionInstallUrl()" in html
     assert "malicious or buggy extensions" in html
+    assert "'Installing…' : 'Install URL'" in html
+    assert ':aria-busy="$store.browserPage.extensionActionLoading.toString()"' in html
+    assert "Large packages may take a few minutes." in (
+        PROJECT_ROOT / "plugins" / "_browser" / "webui" / "browser-store.js"
+    ).read_text(encoding="utf-8")
     assert skill.exists()
 
 
@@ -599,6 +730,7 @@ def test_browser_viewer_allows_slow_extension_startup():
 
     assert "const BROWSER_SUBSCRIBE_TIMEOUT_MS = 60000;" in js
     assert "const BROWSER_FIRST_INSTALL_TIMEOUT_MS = 300000;" in js
+    assert "const BROWSER_COMMAND_TIMEOUT_MS = 45000;" in js
     assert "? BROWSER_FIRST_INSTALL_TIMEOUT_MS" in js
     assert ": BROWSER_SUBSCRIBE_TIMEOUT_MS" in js
     assert "Installing Chromium for the first Browser run" in js
@@ -688,32 +820,17 @@ def test_browser_canvas_surface_open_waits_for_visible_panel():
     assert "forceCanvasWidthNudgeAfterBrowserMount" not in js
 
 
-def test_browser_canvas_nudges_width_after_first_accepted_frame():
+def test_browser_canvas_does_not_resize_after_first_accepted_frame():
     js = (PROJECT_ROOT / "plugins" / "_browser" / "webui" / "browser-store.js").read_text(
         encoding="utf-8"
     )
 
-    assert "_canvasSurfaceReadySequence" in js
-    assert "_canvasFirstFrameAcceptedSequence" in js
-    assert "_canvasFirstFrameNudgeSequence" in js
-    assert "scheduleCanvasWidthNudgeAfterFirstFrame()" in js
-    assert "this._canvasSurfaceReadySequence = surfaceSequence;" in js
-    assert "const surfaceSequence = this._surfaceOpenSequence;" in js
-    assert "this._canvasFirstFrameAcceptedSequence = surfaceSequence;" in js
-    assert "forceRightCanvasWidthNudge()" in js
-    assert "await nextAnimationFrame();" in js
-    assert "globalThis.Alpine" not in js
-    assert 'import { store as rightCanvasStore } from "/components/canvas/right-canvas-store.js";' in js
-    assert "const canvas = rightCanvasStore;" in js
-    assert 'canvas.activeSurfaceId !== "browser"' in js
-    assert "canvas.setWidth?.(nudgedWidth, { persist: false })" in js
-    assert "this.queueViewportSync(true)" in js
-    frame_accept_index = js.index("this._lastFrameDimensions = dimensions;")
-    frame_nudge_schedule_index = js.index(
-        "this.scheduleCanvasWidthNudgeAfterFirstFrame();",
-        frame_accept_index,
-    )
-    assert frame_accept_index < frame_nudge_schedule_index
+    assert "_canvasSurfaceReadySequence" not in js
+    assert "_canvasFirstFrameAcceptedSequence" not in js
+    assert "_canvasFirstFrameNudgeSequence" not in js
+    assert "scheduleCanvasWidthNudgeAfterFirstFrame" not in js
+    assert "forceRightCanvasWidthNudge" not in js
+    assert "canvas.setWidth?.(nudgedWidth" not in js
 
 
 def test_browser_canvas_restarts_stream_after_page_navigation():
@@ -1138,12 +1255,23 @@ def test_browser_extension_settings_stay_user_facing():
     assert "Maximum tabs per chat" in config_html
     assert 'x-model="$store.browserConfig.config.browser_tab_scope"' in config_html
     assert 'x-model.number="$store.browserConfig.config.max_open_tabs"' in config_html
+    assert 'x-model="$store.browserConfig.config.proxy_server"' in config_html
+    assert 'x-model="$store.browserConfig.config.proxy_bypass"' in config_html
+    assert 'x-model="$store.browserConfig.config.proxy_username"' in config_html
+    assert 'x-model="$store.browserConfig.config.proxy_password"' in config_html
+    assert '<details\n            class="browser-config-proxy"' in config_html
+    assert "<summary>Proxy server</summary>" in config_html
+    assert 'type="password"' in config_html
     assert "normalizeMaxOpenTabs()" in config_html
     assert "BROWSER_TAB_SCOPES" in config_store
     assert "HARD_MAX_OPEN_TABS = 50" in config_store
     assert "extensionDeleteTitle(extension)" in config_html
     assert "deleteExtension(extension)" in config_html
     assert "Delete extension" in config_store
+    assert 'import { showConfirmDialog } from "/js/confirmDialog.js";' in config_store
+    assert "const safeName = name.replace" in config_store
+    assert "const confirmed = await showConfirmDialog({" in config_store
+    assert "globalThis.confirm" not in config_store
     assert "<textarea" not in config_html
     assert "Enabled extension directories" not in config_html
     assert "Chrome Web Store URL installs" not in config_html
@@ -1315,18 +1443,17 @@ def test_browser_viewer_defaults_to_live_screencast_with_snapshot_fallback():
     assert "restart_stream: restartStream && this.usesScreencastTransport()" in browser_store
     assert 'restart_screencast=bool(data.get("restart_stream"))' in ws_browser
     assert "restart_screencast: bool = False" in runtime
-    assert "should_remount_viewport = changed or restart_screencast" in runtime
-    assert "VIEWPORT_REMOUNT_PAUSE_SECONDS = 0.05" in runtime
-    assert "await self._apply_cdp_viewport_with_remount" in runtime
-    assert "await self._apply_viewport_with_remount(page, viewport)" in runtime
-    assert "await self._remount_viewport(page, viewport)" in runtime
-    assert "await asyncio.sleep(VIEWPORT_REMOUNT_PAUSE_SECONDS)" in runtime
-    assert "def _nudged_viewport(viewport: dict[str, int])" in runtime
+    assert "should_restart_screencast = changed or restart_screencast" in runtime
+    assert "await self._apply_cdp_viewport({\"width\": width, \"height\": height})" in runtime
+    assert "await page.set_viewport_size(viewport)" in runtime
+    assert "VIEWPORT_REMOUNT_PAUSE_SECONDS" not in runtime
+    assert "_nudged_viewport" not in runtime
+    assert 'wait_until="commit"' in ws_browser
     assert 'restartStream: this._mode === "canvas" && this.usesScreencastTransport()' in browser_store
     assert "this.frameState = data.state || null" not in browser_store
     assert "function loadFrameDimensions(src)" in browser_store
     assert "frameMatchesViewport(dimensions = null, viewport = null)" in browser_store
-    assert "shouldAcceptMismatchedFrame(dimensions = null)" in browser_store
+    assert "shouldAcceptMismatchedFrame" not in browser_store
     assert "requestViewportSyncAfterRejectedFrame()" in browser_store
     assert "this.applySnapshot(data.snapshot);" in browser_store
     assert "if (!this.frameCanvasReady || !this.usesScreencastTransport())" in browser_store
@@ -1385,6 +1512,27 @@ def test_browser_viewer_frame_payload_supports_binary_slim_frames():
     assert payload["seq"] == 3
     assert "browsers" not in payload
     assert "state" not in payload
+
+
+def test_browser_viewer_frame_dimensions_reject_crops_but_allow_uniform_scaling():
+    dimensions = ws_browser_module.WsBrowser._frame_dimensions
+
+    assert dimensions(
+        {
+            "expectedWidth": 900,
+            "expectedHeight": 600,
+            "jpegWidth": 1800,
+            "jpegHeight": 1200,
+        }
+    ) == {"width": 900, "height": 600}
+    assert dimensions(
+        {
+            "expectedWidth": 900,
+            "expectedHeight": 600,
+            "jpegWidth": 900,
+            "jpegHeight": 500,
+        }
+    ) == {"width": 900, "height": 500}
 
 
 def test_browser_navigation_errors_stay_inside_native_browser_page():
@@ -1688,21 +1836,7 @@ async def test_browser_screencast_acknowledges_and_drops_stale_frames():
         for method, params in session.sent
         if method == "Emulation.setVisibleSize"
     ]
-    assert metrics_calls[:3] == [
-        {
-            "width": 1118,
-            "height": 662,
-            "deviceScaleFactor": 1,
-            "mobile": False,
-            "dontSetVisibleSize": True,
-        },
-        {
-            "width": 1119,
-            "height": 662,
-            "deviceScaleFactor": 1,
-            "mobile": False,
-            "dontSetVisibleSize": True,
-        },
+    assert metrics_calls == [
         {
             "width": 1118,
             "height": 662,
@@ -1711,11 +1845,7 @@ async def test_browser_screencast_acknowledges_and_drops_stale_frames():
             "dontSetVisibleSize": True,
         },
     ]
-    assert visible_calls[:3] == [
-        {"width": 1118, "height": 662},
-        {"width": 1119, "height": 662},
-        {"width": 1118, "height": 662},
-    ]
+    assert visible_calls == [{"width": 1118, "height": 662}]
     start_index = next(
         index
         for index, (method, _params) in enumerate(session.sent)
@@ -2056,9 +2186,7 @@ def test_browser_runtime_context_close_event_clears_cached_state():
     assert core.last_interacted_browser_id is None
 
 
-def test_browser_save_plugin_config_restarts_runtimes_on_change(monkeypatch, tmp_path):
-    extension_dir = tmp_path / "extension"
-    extension_dir.mkdir()
+def test_browser_save_plugin_config_restarts_runtimes_on_change(monkeypatch):
     restarted = []
 
     monkeypatch.setattr(
@@ -2066,6 +2194,7 @@ def test_browser_save_plugin_config_restarts_runtimes_on_change(monkeypatch, tmp
         "_load_saved_browser_config",
         lambda project_name="", agent_profile="": {
             "extension_paths": [],
+            "proxy_server": "",
         },
     )
     monkeypatch.setattr(
@@ -2076,13 +2205,14 @@ def test_browser_save_plugin_config_restarts_runtimes_on_change(monkeypatch, tmp
 
     result = browser_hooks_module.save_plugin_config(
         {
-            "extension_paths": [str(extension_dir)],
+            "extension_paths": [],
+            "proxy_server": "http://proxy.example:3128",
         },
         project_name="",
         agent_profile="",
     )
 
-    assert result["extension_paths"] == [str(extension_dir)]
+    assert result["proxy_server"] == "http://proxy.example:3128"
     assert result["model_preset"] == ""
     assert restarted == [True]
 
@@ -2964,7 +3094,7 @@ async def test_browser_viewer_viewport_input_dispatches_resize(monkeypatch):
 
 
 @pytest.mark.anyio
-async def test_browser_runtime_remounts_same_viewport_when_restarting_screencast():
+async def test_browser_runtime_restarts_screencast_without_resizing_same_viewport():
     viewport_calls = []
     stopped = []
     settled = []
@@ -2998,16 +3128,13 @@ async def test_browser_runtime_remounts_same_viewport_when_restarting_screencast
         "state": {"id": 7},
         "viewport": {"width": 1280, "height": 720},
     }
-    assert viewport_calls == [
-        {"width": 1281, "height": 720},
-        {"width": 1280, "height": 720},
-    ]
+    assert viewport_calls == []
     assert stopped == [7]
     assert settled == [True]
 
 
 @pytest.mark.anyio
-async def test_browser_runtime_remounts_initial_changed_viewport():
+async def test_browser_runtime_applies_changed_viewport_once():
     calls = []
     stopped = []
     settled = []
@@ -3042,8 +3169,6 @@ async def test_browser_runtime_remounts_initial_changed_viewport():
         "viewport": {"width": 672, "height": 789},
     }
     assert calls == [
-        ("viewport", {"width": 672, "height": 789}),
-        ("viewport", {"width": 673, "height": 789}),
         ("viewport", {"width": 672, "height": 789}),
     ]
     assert stopped == [7]

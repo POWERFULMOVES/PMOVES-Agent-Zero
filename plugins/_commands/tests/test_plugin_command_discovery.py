@@ -155,7 +155,7 @@ def test_builtin_commands_use_canonical_names_only():
     discovered = commands_helper._discover_builtin_commands()
     names = {command["name"] for command in discovered}
 
-    assert {"attach", "computer-use", "models", "plugins", "project"} <= names
+    assert {"attach", "computer-use", "models", "plugins", "project", "stop"} <= names
     assert {
         "computer",
         "cu",

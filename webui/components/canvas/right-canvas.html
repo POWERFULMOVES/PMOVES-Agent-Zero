@@ -35,7 +35,7 @@
             :aria-pressed="$store.rightCanvas.isOpen.toString()"
             @click="$store.rightCanvas.toggleCanvas()"
           >
-            <span class="material-symbols-outlined">dock_to_right</span>
+            <x-icon name="dock_to_right"></x-icon>
           </button>
 
           <div class="right-canvas-rail-separator" aria-hidden="true"></div>
@@ -53,7 +53,7 @@
                 <img class="right-canvas-surface-image" :src="surface.image" alt="" aria-hidden="true">
               </template>
               <template x-if="!surface.image">
-                <span class="material-symbols-outlined" x-text="surface.icon"></span>
+                <x-icon :name="surface.icon"></x-icon>
               </template>
             </button>
           </template>
@@ -79,7 +79,7 @@
                     <img class="right-canvas-surface-image" :src="surface.image" alt="" aria-hidden="true">
                   </template>
                   <template x-if="!surface.image">
-                    <span class="material-symbols-outlined" aria-hidden="true" x-text="surface.icon"></span>
+                    <x-icon aria-hidden="true" :name="surface.icon"></x-icon>
                   </template>
                   <span class="right-canvas-tab-label" x-text="surface.title"></span>
                 </button>
@@ -97,7 +97,7 @@
                 x-show="$store.rightCanvas.currentSurfaceCanUndock()"
                 @click="$store.rightCanvas.undockActiveSurface()"
               >
-                <span class="material-symbols-outlined">open_in_new</span>
+                <x-icon name="open_in_new"></x-icon>
               </button>
               <button
                 type="button"
@@ -106,7 +106,7 @@
                 aria-label="Close canvas"
                 @click="$store.rightCanvas.close()"
               >
-                <span class="material-symbols-outlined">close</span>
+                <x-icon name="close"></x-icon>
               </button>
               <x-extension id="right-canvas-toolbar-end"></x-extension>
             </div>
@@ -117,7 +117,7 @@
             <template x-if="$store.rightCanvas.panelSurfaces.length === 0">
               <div class="right-canvas-empty-state">
                 <x-extension id="right-canvas-empty-state"></x-extension>
-                <span class="material-symbols-outlined">space_dashboard</span>
+                <x-icon name="space_dashboard"></x-icon>
                 <span>Canvas</span>
               </div>
             </template>

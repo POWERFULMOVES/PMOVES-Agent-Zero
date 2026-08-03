@@ -1,5 +1,7 @@
 // Message Action Buttons - DOM helpers for message action buttons
 
+import { ICON_SELECTOR, setIconName } from "/js/icons.js";
+
 const ACTION_ICON_MAP = {
   detail: "open_in_full",
   speak: "volume_up",
@@ -45,14 +47,14 @@ export async function copyToClipboard(text) {
  * Show visual feedback on a button (success/error state)
  */
 export function showButtonFeedback(button, success, originalIcon) {
-  const icon = button.querySelector(".material-symbols-outlined");
+  const icon = button.querySelector(ICON_SELECTOR);
   if (!icon) return;
   
-  icon.textContent = success ? "check" : "error";
+  setIconName(icon, success ? "check" : "error");
   button.classList.add(success ? "success" : "error");
   
   setTimeout(() => {
-    icon.textContent = originalIcon;
+    setIconName(icon, originalIcon);
     button.classList.remove("success", "error");
   }, 1000);
 }
@@ -78,7 +80,9 @@ export function createActionButton(icon, text = "", handler = null) {
   }
 
   if (iconName) {
-    button.innerHTML = `<span class="material-symbols-outlined">${iconName}</span>`;
+    const iconElement = document.createElement("x-icon");
+    iconElement.name = iconName;
+    button.appendChild(iconElement);
   } else if (text) {
     button.textContent = text;
   }

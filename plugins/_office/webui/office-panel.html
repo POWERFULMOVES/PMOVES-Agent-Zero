@@ -10,7 +10,7 @@
       <div class="office-panel" x-create="$store.office.onMount($el, xAttrs($el) || {})" x-destroy="$store.office.cleanup()">
         <div class="office-shell">
           <div class="office-state-line" x-show="$store.office.message || $store.office.error || $store.office.loading" style="display: none;">
-            <span class="material-symbols-outlined" :class="{ spinning: $store.office.loading }" x-text="$store.office.loading ? 'progress_activity' : ($store.office.error ? 'error' : 'check_circle')"></span>
+            <x-icon :class="{ spinning: $store.office.loading }" :name="$store.office.loading ? 'progress_activity' : ($store.office.error ? 'error' : 'check_circle')"></x-icon>
             <span x-text="$store.office.error || $store.office.message || 'Working'"></span>
           </div>
 
@@ -18,19 +18,19 @@
             <div class="office-empty" x-show="!$store.office.loading" style="display: none;">
               <div class="office-empty-actions">
                 <button type="button" class="office-icon-button office-command-button" @click="$store.office.runNewMenuAction('open')">
-                  <span class="material-symbols-outlined" aria-hidden="true">folder_open</span>
+                  <x-icon aria-hidden="true" name="folder_open"></x-icon>
                   <span class="office-button-label">Open</span>
                 </button>
                 <button type="button" class="office-icon-button office-command-button" @click="$store.office.runNewMenuAction('writer')">
-                  <span class="material-symbols-outlined" aria-hidden="true">description</span>
+                  <x-icon aria-hidden="true" name="description"></x-icon>
                   <span class="office-button-label">Writer</span>
                 </button>
                 <button type="button" class="office-icon-button office-command-button" @click="$store.office.runNewMenuAction('spreadsheet')">
-                  <span class="material-symbols-outlined" aria-hidden="true">table_chart</span>
+                  <x-icon aria-hidden="true" name="table_chart"></x-icon>
                   <span class="office-button-label">Calc</span>
                 </button>
                 <button type="button" class="office-icon-button office-command-button" @click="$store.office.runNewMenuAction('presentation')">
-                  <span class="material-symbols-outlined" aria-hidden="true">co_present</span>
+                  <x-icon aria-hidden="true" name="co_present"></x-icon>
                   <span class="office-button-label">Impress</span>
                 </button>
               </div>

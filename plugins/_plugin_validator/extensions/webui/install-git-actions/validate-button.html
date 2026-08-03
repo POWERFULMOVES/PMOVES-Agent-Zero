@@ -8,6 +8,6 @@
         title="Validate this plugin repository before installing"
         @click="$store.pluginValidator.openModal({ source: 'git', gitUrl: ($store.pluginInstallStore.gitUrl || '').trim() })"
         :disabled="$store.pluginInstallStore.loading || !($store.pluginInstallStore.gitUrl || '').trim()">
-        <span class="icon material-symbols-outlined">fact_check</span> Validate
+        <x-icon class="icon" name="fact_check"></x-icon> Validate
     </button>
 </span>

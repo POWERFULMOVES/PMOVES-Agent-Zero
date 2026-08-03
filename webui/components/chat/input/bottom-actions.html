@@ -45,7 +45,7 @@
         class="chat-bottom-menu-item"
         @click.stop="$refs.chatFolderInput?.click()"
       >
-        <span class="material-symbols-outlined" aria-hidden="true">drive_folder_upload</span>
+        <x-icon aria-hidden="true" name="drive_folder_upload"></x-icon>
         <span>Attach folder</span>
       </button>
 
@@ -54,7 +54,7 @@
         class="chat-bottom-menu-item"
         @click="$store.mcpServersStore.openFromComposer($store.chats.selectedContext?.project?.name || ''); $store.chatInput.closeChatMoreMenu()"
       >
-        <span class="material-symbols-outlined" aria-hidden="true">hub</span>
+        <x-icon aria-hidden="true" name="hub"></x-icon>
         <span>MCP Servers</span>
       </button>
 
@@ -64,7 +64,7 @@
         @click="$confirmClick($event, () => { $store.chats.resetChat(); $store.chatInput.closeChatMoreMenu() })"
         :disabled="!$store.chats.selected"
       >
-        <span class="material-symbols-outlined" aria-hidden="true">delete_sweep</span>
+        <x-icon aria-hidden="true" name="delete_sweep"></x-icon>
         <span>Clear Chat</span>
       </button>
 

@@ -744,8 +744,6 @@ class LiteLLMChatWrapper(SimpleChatModel):
                             ):
                                 result.response = stop_response
                                 break
-                            if stop_response is not None:
-                                result.response = stop_response
                 else:
                     parsed = await transport.acomplete()
                     output = result.add_chunk(parsed)
@@ -766,7 +764,7 @@ class LiteLLMChatWrapper(SimpleChatModel):
                     provider_model_key=self.model_name,
                     capability=transport._capability_metadata(),
                 )
-                if result.output()["response_delta"]:
+                if result.output()["response_delta"] and not llm_result.function_calls:
                     llm_result.response = result.output()["response_delta"]
                 if result.output()["reasoning_delta"]:
                     llm_result.reasoning = result.output()["reasoning_delta"]

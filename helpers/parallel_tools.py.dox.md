@@ -25,7 +25,7 @@
 - Wrapped tool-call items must use the same shape as normal tool calls: a tool name plus arguments.
 - Normalization accepts full agent-reply-shaped objects when `tool_name` and `tool_args` are present; non-contract planning fields such as `thoughts` or `headline` are ignored.
 - `tool_calls` should be an array, but normalization also accepts a valid JSON string encoding of that array to recover provider/model stringification.
-- Normalization rejects `document_query` inside `parallel` because document parsing and Q&A fan out into heavier worker/model paths that must run sequentially.
+- Normalization rejects `document_query` and `response` inside `parallel`: document parsing and Q&A must run sequentially, while `response` must remain top-level so it can end the message loop.
 - `call_subordinate` jobs run in isolated child chat contexts tagged with parent-chat metadata; they must not be added to the scheduler task list and may use normal child-chat tools, including `parallel`.
 - Direct tool jobs run in isolated background contexts and are blocked from recursively invoking `parallel`.
 - Direct tool background context cleanup removes both the in-memory context and any transient chat folder left on disk.

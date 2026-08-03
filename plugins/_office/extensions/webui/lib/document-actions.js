@@ -143,9 +143,9 @@ export function buildDocumentFileCard(document = {}) {
   card.setAttribute("aria-label", canvasActionTitle(document));
   card.setAttribute("title", canvasActionTitle(document));
 
-  const icon = globalThis.document.createElement("span");
-  icon.className = "material-symbols-outlined document-file-card-icon";
-  icon.textContent = documentIcon(document);
+  const icon = globalThis.document.createElement("x-icon");
+  icon.className = "document-file-card-icon";
+  icon.name = documentIcon(document);
   card.appendChild(icon);
 
   const meta = globalThis.document.createElement("span");
@@ -205,17 +205,16 @@ export function createDocumentActionButton(icon, label, handler = null, options 
   button.setAttribute("title", options.title || label);
 
   if (icon) {
-    const iconEl = globalThis.document.createElement("span");
-    iconEl.className = "material-symbols-outlined";
-    iconEl.textContent = icon;
+    const iconEl = globalThis.document.createElement("x-icon");
+    iconEl.name = icon;
     button.appendChild(iconEl);
   }
 
   if (typeof handler === "function") {
     button.addEventListener("click", async (event) => {
       event.stopPropagation();
-      const iconEl = button.querySelector(".material-symbols-outlined");
-      const originalIcon = iconEl?.textContent || "";
+      const iconEl = button.querySelector("x-icon");
+      const originalIcon = iconEl?.name || "";
       try {
         await handler();
         if (originalIcon) showButtonFeedback(button, true, originalIcon);

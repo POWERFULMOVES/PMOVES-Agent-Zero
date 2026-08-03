@@ -529,7 +529,7 @@ def get_default_settings() -> Settings:
         agent_profile=get_default_value("agent_profile", "agent0"),
         agent_knowledge_subdir=get_default_value("agent_knowledge_subdir", "custom"),
         max_consecutive_unusable_responses=get_default_value(
-            "max_consecutive_unusable_responses", 2
+            "max_consecutive_unusable_responses", 5
         ),
         timezone=_normalize_timezone_setting(get_default_value("timezone", TIMEZONE_AUTO)),
         time_format=_normalize_time_format(get_default_value("time_format", TIME_FORMAT_12H)),

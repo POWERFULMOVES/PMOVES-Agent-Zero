@@ -22,7 +22,7 @@
 	                    :aria-selected="$store.browserPage.isActiveBrowser(browser).toString()"
 	                    :title="$store.browserPage.browserTabTooltip(browser)"
 	                    @click="$store.browserPage.selectBrowser(browser.id, browser.context_id)">
-                    <span class="material-symbols-outlined browser-tab-icon" aria-hidden="true">language</span>
+                    <x-icon class="browser-tab-icon" aria-hidden="true" name="language"></x-icon>
                     <span class="browser-tab-title" x-text="$store.browserPage.browserTabTitle(browser)"></span>
                   </button>
 	                  <button type="button" class="browser-tab-close"
@@ -31,14 +31,14 @@
 	                    :disabled="$store.browserPage.isClosingBrowser(browser.id, browser.context_id)"
 	                    @pointerdown.stop
 	                    @click.stop="$store.browserPage.closeBrowser(browser.id, browser.context_id)">
-                    <span class="material-symbols-outlined">close</span>
+                    <x-icon name="close"></x-icon>
                   </button>
                 </div>
               </template>
 	              <button type="button" class="browser-new-tab" title="New Browser" aria-label="New Browser"
 	                :disabled="$store.browserPage.isBusy()"
 	                @click="$store.browserPage.openNewBrowser()">
-                <span class="material-symbols-outlined">add</span>
+                <x-icon name="add"></x-icon>
               </button>
             </div>
 
@@ -49,15 +49,15 @@
           <div class="browser-navigation">
 	            <button class="btn btn-icon-action" title="Back" @click="$store.browserPage.command('back')"
 	              :disabled="!$store.browserPage.activeBrowserId || $store.browserPage.isBusy()">
-              <span class="material-symbols-outlined">arrow_back</span>
+              <x-icon name="arrow_back"></x-icon>
             </button>
 	            <button class="btn btn-icon-action" title="Forward" @click="$store.browserPage.command('forward')"
 	              :disabled="!$store.browserPage.activeBrowserId || $store.browserPage.isBusy()">
-              <span class="material-symbols-outlined">arrow_forward</span>
+              <x-icon name="arrow_forward"></x-icon>
             </button>
 	            <button class="btn btn-icon-action" title="Reload" @click="$store.browserPage.command('reload')"
 	              :disabled="!$store.browserPage.activeBrowserId || $store.browserPage.isBusy()">
-              <span class="material-symbols-outlined">refresh</span>
+              <x-icon name="refresh"></x-icon>
             </button>
           </div>
 
@@ -67,8 +67,8 @@
               :class="{ 'is-active': $store.browserPage.annotating }"
               :disabled="!$store.browserPage.canAnnotate() && !$store.browserPage.annotating"
               @click="$store.browserPage.toggleAnnotationMode()">
-              <span class="material-symbols-outlined" aria-hidden="true"
-                x-text="$store.browserPage.annotating ? 'rate_review' : 'edit_note'"></span>
+              <x-icon aria-hidden="true"
+                :name="$store.browserPage.annotating ? 'rate_review' : 'edit_note'"></x-icon>
               <span x-text="$store.browserPage.annotating ? 'Annotating' : 'Annotate'"></span>
             </button>
             <div class="browser-extension-menu" @click.outside="$store.browserPage.closeExtensionsMenu()"
@@ -77,7 +77,7 @@
                 aria-label="Browser settings" @click.stop="$store.browserPage.toggleExtensionsMenu()"
                 :aria-expanded="$store.browserPage.extensionMenuOpen.toString()"
                 :class="{ 'is-active': $store.browserPage.status?.extensions?.active }">
-                <span class="material-symbols-outlined">tune</span>
+                <x-icon name="tune"></x-icon>
               </button>
               <div class="browser-extension-dropdown" x-show="$store.browserPage.extensionMenuOpen" x-transition
                 style="display: none;">
@@ -96,7 +96,7 @@
                 </div>
                 <div class="browser-extension-section-title">Chrome Extensions</div>
                 <button type="button" class="dropdown-item" @click="$store.browserPage.createExtensionWithAgent()">
-                  <span class="material-symbols-outlined">add_circle</span>
+                  <x-icon name="add_circle"></x-icon>
                   <span>Create New Extension with A0</span>
                 </button>
                 <div class="browser-extension-url">
@@ -106,21 +106,22 @@
                     placeholder="https://chromewebstore.google.com/detail/..." />
                   <div class="browser-extension-url-actions">
                     <button type="button" class="btn btn-ok" @click="$store.browserPage.installExtensionFromUrl()"
-                      :disabled="$store.browserPage.extensionActionLoading">
-                      <span class="material-symbols-outlined"
+                      :disabled="$store.browserPage.extensionActionLoading"
+                      :aria-busy="$store.browserPage.extensionActionLoading.toString()">
+                      <x-icon
                         :class="{ spinning: $store.browserPage.extensionActionLoading }"
-                        x-text="$store.browserPage.extensionActionLoading ? 'progress_activity' : 'download'"></span>
-                      <span>Install URL</span>
+                        :name="$store.browserPage.extensionActionLoading ? 'progress_activity' : 'download'"></x-icon>
+                      <span x-text="$store.browserPage.extensionActionLoading ? 'Installing…' : 'Install URL'">Install URL</span>
                     </button>
                     <button type="button" class="btn btn-field"
                       @click="$store.browserPage.askAgentInstallExtension()">
-                      <span class="material-symbols-outlined">psychology_alt</span>
+                      <x-icon name="psychology_alt"></x-icon>
                       <span x-text="$store.browserPage.extensionAssistantActionLabel()">Scan with A0</span>
                     </button>
                   </div>
                   <div class="browser-extension-warning" x-show="$store.browserPage.hasExtensionInstallUrl()"
                     x-transition style="display: none;">
-                    <span class="material-symbols-outlined">warning</span>
+                    <x-icon name="warning"></x-icon>
                     <span>
                       Extensions run inside the Docker browser sandbox, but malicious or buggy extensions can still
                       damage that environment. Review what you install.
@@ -132,8 +133,8 @@
                   style="display: none;">
                   <div class="browser-extension-list-header">
                     <span>Installed extensions</span>
-                    <span class="material-symbols-outlined spinning"
-                      x-show="$store.browserPage.extensionsListLoading">progress_activity</span>
+                    <x-icon class="spinning"
+                      x-show="$store.browserPage.extensionsListLoading" name="progress_activity"></x-icon>
                   </div>
                   <template x-for="extension in $store.browserPage.extensionsList" :key="extension.path">
                     <div class="browser-extension-row" :title="extension.path">
@@ -149,7 +150,7 @@
                           :aria-label="$store.browserPage.extensionOpenTitle(extension)"
                           :disabled="!extension.enabled || $store.browserPage.isBusy()"
                           @click.stop="$store.browserPage.openExtensionUi(extension)">
-                          <span class="material-symbols-outlined">open_in_new</span>
+                          <x-icon name="open_in_new"></x-icon>
                           <span>Open</span>
                         </button>
                         <label class="browser-extension-toggle">
@@ -163,7 +164,7 @@
                   </template>
                 </div>
                 <button type="button" class="dropdown-item" @click="$store.browserPage.openExtensionsSettings()">
-                  <span class="material-symbols-outlined">tune</span>
+                  <x-icon name="tune"></x-icon>
                   <span>Settings</span>
                 </button>
                 <div class="browser-extension-message" x-show="$store.browserPage.extensionActionMessage"
@@ -175,7 +176,7 @@
           </div>
 
           <form class="browser-address-form" aria-label="Browser navigation" @submit.prevent="$store.browserPage.go()">
-            <span class="material-symbols-outlined browser-address-icon">language</span>
+            <x-icon class="browser-address-icon" name="language"></x-icon>
 	            <input class="browser-address" aria-label="Browser address" name="browser_address" x-model="$store.browserPage.address"
 	              @focus="$store.browserPage.onAddressFocus()" @blur="$store.browserPage.onAddressBlur()"
 	              @keydown.enter.prevent="$store.browserPage.go()"
@@ -250,7 +251,7 @@
 	              <span>Annotations</span>
 	              <button type="button" class="browser-annotation-clear" title="Clear annotations"
 	                aria-label="Clear annotations" @click="$store.browserPage.clearVisibleAnnotations()">
-	                <span class="material-symbols-outlined">delete</span>
+	                <x-icon name="delete"></x-icon>
 	              </button>
 	            </div>
 	            <div class="browser-annotation-chips">
@@ -260,7 +261,7 @@
 	                  <span class="browser-annotation-chip-text" x-text="annotation.comment"></span>
 	                  <button type="button" title="Remove annotation" aria-label="Remove annotation"
 	                    @click="$store.browserPage.removeAnnotationComment(annotation.id)">
-	                    <span class="material-symbols-outlined">close</span>
+	                    <x-icon name="close"></x-icon>
 	                  </button>
 	                </div>
 	              </template>
@@ -274,7 +275,7 @@
 	          </div>
 	          <template x-if="!$store.browserPage.hasFrame() && !$store.browserPage.isBusy()">
             <div class="browser-empty">
-              <span class="material-symbols-outlined">captive_portal</span>
+              <x-icon name="captive_portal"></x-icon>
               <button class="btn btn-field" @click="$store.browserPage.command('open')">Open
                 Browser</button>
             </div>
@@ -285,7 +286,7 @@
           :class="{ 'is-active': $store.browserPage.isBusy() || $store.browserPage.error, 'has-error': $store.browserPage.error && !$store.browserPage.isBusy() }">
           <template x-if="$store.browserPage.isBusy()">
             <div class="browser-status" :title="$store.browserPage.loadingMessage()">
-              <span class="material-symbols-outlined spinning">progress_activity</span>
+              <x-icon class="spinning" name="progress_activity"></x-icon>
               <span x-text="$store.browserPage.loadingMessage()">Loading</span>
             </div>
           </template>

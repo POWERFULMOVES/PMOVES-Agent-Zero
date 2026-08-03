@@ -1,0 +1,51 @@
+<html>
+<head><title>Chat Naming</title></head>
+<body>
+  <div x-data>
+    <template x-if="config">
+      <div>
+        <div class="section-title">Chat Naming</div>
+        <div class="section-description">
+          Configure automatic names for chats in this project and agent profile.
+        </div>
+
+        <div class="field">
+          <div class="field-label">
+            <div class="field-title">Automatic chat naming</div>
+            <div class="field-description">
+              Use the Utility Model to generate names for chats.
+            </div>
+          </div>
+          <div class="field-control">
+            <label class="toggle">
+              <input type="checkbox" x-model="config.automatic_naming"
+                x-init="if (config.automatic_naming == null) config.automatic_naming = true">
+              <span class="toggler"></span>
+            </label>
+          </div>
+        </div>
+
+        <div class="field" x-show="config.automatic_naming" x-transition>
+          <div class="field-label">
+            <div class="field-title">Automatic naming method</div>
+            <div class="field-description" x-show="config.automatic_naming_mode === 'once'">
+              Rename only when the chat has no name, using its first user message.
+            </div>
+            <div class="field-description" x-show="config.automatic_naming_mode === 'always'">
+              Refresh the name after every user message so it stays in sync with the conversation.
+            </div>
+          </div>
+          <div class="field-control">
+            <select x-model="config.automatic_naming_mode"
+              x-init="if (!['once', 'always'].includes(config.automatic_naming_mode))
+                config.automatic_naming_mode = 'once'">
+              <option value="once">Only once</option>
+              <option value="always">After every user message</option>
+            </select>
+          </div>
+        </div>
+      </div>
+    </template>
+  </div>
+</body>
+</html>

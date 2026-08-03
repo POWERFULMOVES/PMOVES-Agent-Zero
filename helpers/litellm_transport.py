@@ -751,6 +751,10 @@ class ResponsesTransport:
         elif "tool_choice" in request:
             request["tool_choice"] = cls.tool_choice_from_chat(request["tool_choice"])
 
+        if _has_tools(response_function_tools):
+            request.setdefault("tool_choice", "required")
+            request.setdefault("parallel_tool_calls", False)
+
         if not _has_tools(request.get("tools")):
             request.pop("tool_choice", None)
             request.pop("parallel_tool_calls", None)

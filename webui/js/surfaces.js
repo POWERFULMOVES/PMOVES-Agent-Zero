@@ -1,3 +1,5 @@
+import { setIconName } from "./icons.js";
+
 export const SURFACE_MODE_DOCKED = "canvas";
 export const SURFACE_MODE_FLOATING = "modal";
 export const SURFACE_MODAL_GROUP = "surfaces";
@@ -501,8 +503,8 @@ export function setupFloatingSurfaceModalChrome(options = {}) {
     focusButton.setAttribute("aria-label", label);
     focusButton.setAttribute("title", label);
     focusButton.classList.toggle("is-active", active);
-    const icon = focusButton.querySelector(".material-symbols-outlined");
-    if (icon) icon.textContent = active ? "fullscreen_exit" : "fullscreen";
+    const icon = focusButton.querySelector("x-icon");
+    setIconName(icon, active ? "fullscreen_exit" : "fullscreen");
   };
   const setFocusMode = (enabled) => {
     const active = Boolean(enabled);
@@ -565,7 +567,7 @@ export function setupFloatingSurfaceModalChrome(options = {}) {
     focusButton.className = ["surface-button", "surface-modal-focus-button", focusButtonClass]
       .filter(Boolean)
       .join(" ");
-    focusButton.innerHTML = '<span class="material-symbols-outlined" aria-hidden="true">fullscreen</span>';
+    focusButton.innerHTML = '<x-icon aria-hidden="true" name="fullscreen"></x-icon>';
     const onFocusClick = () => setFocusMode(!inner.classList.contains("is-focus-mode"));
     updateFocusButton(false);
     focusButton.addEventListener("click", onFocusClick);
@@ -625,10 +627,9 @@ function createModalSurfaceButton(surface, metadata, modal) {
     image.setAttribute("aria-hidden", "true");
     button.appendChild(image);
   } else {
-    const icon = document.createElement("span");
-    icon.className = "material-symbols-outlined";
+    const icon = document.createElement("x-icon");
     icon.setAttribute("aria-hidden", "true");
-    icon.textContent = surface.icon || "web_asset";
+    icon.name = surface.icon || "web_asset";
     button.appendChild(icon);
   }
 
@@ -681,7 +682,10 @@ function configureModalDockButton(modal, metadata) {
   button.type = "button";
   button.className = "surface-dock-button modal-dock-button";
   button.setAttribute("aria-label", metadata.title);
-  button.innerHTML = `<span class="material-symbols-outlined" aria-hidden="true">${metadata.icon}</span>`;
+  const icon = document.createElement("x-icon");
+  icon.setAttribute("aria-hidden", "true");
+  icon.name = metadata.icon;
+  button.appendChild(icon);
   button.addEventListener("click", async () => {
     if (button.disabled) return;
     button.disabled = true;

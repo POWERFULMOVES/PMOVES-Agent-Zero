@@ -197,25 +197,25 @@ const model = {
     root.className = "office-header-actions";
     root.innerHTML = `
       <button type="button" class="office-header-new-button" aria-haspopup="menu" aria-expanded="false">
-        <span class="material-symbols-outlined" aria-hidden="true">add</span>
+        <x-icon aria-hidden="true" name="add"></x-icon>
         <span>New</span>
-        <span class="material-symbols-outlined office-new-chevron" aria-hidden="true">expand_more</span>
+        <x-icon class="office-new-chevron" aria-hidden="true" name="expand_more"></x-icon>
       </button>
       <div class="office-new-menu" role="menu" hidden>
         <button type="button" class="office-new-menu-item" role="menuitem" data-office-new-action="open">
-          <span class="material-symbols-outlined" aria-hidden="true">folder_open</span>
+          <x-icon aria-hidden="true" name="folder_open"></x-icon>
           <span>Open</span>
         </button>
         <button type="button" class="office-new-menu-item" role="menuitem" data-office-new-action="writer">
-          <span class="material-symbols-outlined" aria-hidden="true">description</span>
+          <x-icon aria-hidden="true" name="description"></x-icon>
           <span>Writer</span>
         </button>
         <button type="button" class="office-new-menu-item" role="menuitem" data-office-new-action="spreadsheet">
-          <span class="material-symbols-outlined" aria-hidden="true">table_chart</span>
+          <x-icon aria-hidden="true" name="table_chart"></x-icon>
           <span>Spreadsheet</span>
         </button>
         <button type="button" class="office-new-menu-item" role="menuitem" data-office-new-action="presentation">
-          <span class="material-symbols-outlined" aria-hidden="true">co_present</span>
+          <x-icon aria-hidden="true" name="co_present"></x-icon>
           <span>Presentation</span>
         </button>
       </div>

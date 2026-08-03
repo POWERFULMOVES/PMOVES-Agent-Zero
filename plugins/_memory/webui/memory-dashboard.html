@@ -87,7 +87,7 @@
                     <div class="data-status-bar" x-show="!$store.memoryDashboardStore.loading">
                         <div class="status-info">
                             <span class="status-item">
-                                <span class="material-symbols-outlined">database</span>
+                                <x-icon name="database"></x-icon>
                                 Total: <strong x-text="$store.memoryDashboardStore.totalDbCount"></strong>
                             </span>
                             <span class="status-separator">•</span>
@@ -108,7 +108,7 @@
                         <div class="status-pagination" x-show="$store.memoryDashboardStore.totalPages > 1">
                             <button class="btn btn-icon" @click="$store.memoryDashboardStore.prevPage()"
                                 :disabled="$store.memoryDashboardStore.currentPage === 1" title="Previous Page">
-                                <span class="material-symbols-outlined">chevron_left</span>
+                                <x-icon name="chevron_left"></x-icon>
                             </button>
                             <div class="page-input-group">
                                 <label>Page</label>
@@ -123,7 +123,7 @@
                             <button class="btn btn-icon" @click="$store.memoryDashboardStore.nextPage()"
                                 :disabled="$store.memoryDashboardStore.currentPage === $store.memoryDashboardStore.totalPages"
                                 title="Next Page">
-                                <span class="material-symbols-outlined">chevron_right</span>
+                                <x-icon name="chevron_right"></x-icon>
                             </button>
                         </div>
                     </div>
@@ -137,27 +137,27 @@
                         <div class="mass-actions">
                             <button class="btn btn-mass copy" @click="$store.memoryDashboardStore.bulkCopyMemories()"
                                 title="Copy Selected Content">
-                                <span class="material-symbols-outlined">content_copy</span>
+                                <x-icon name="content_copy"></x-icon>
                                 Copy
                             </button>
 
                             <button class="btn btn-mass export"
                                 @click="$store.memoryDashboardStore.bulkExportMemories()"
                                 title="Export Selected Memories">
-                                <span class="material-symbols-outlined">download</span>
+                                <x-icon name="download"></x-icon>
                                 Export
                             </button>
 
                             <button class="btn btn-mass delete"
                                 @click="$confirmClick($event, () => $store.memoryDashboardStore.bulkDeleteMemories())"
                                 title="Delete Selected Memories">
-                                <span class="material-symbols-outlined">delete</span>
+                                <x-icon name="delete"></x-icon>
                                 Delete
                             </button>
 
                             <button class="btn btn-mass clear" @click="$store.memoryDashboardStore.clearSelection()"
                                 title="Clear Selection">
-                                <span class="material-symbols-outlined">close</span>
+                                <x-icon name="close"></x-icon>
                                 Clear
                             </button>
                         </div>
@@ -232,13 +232,13 @@
                                                 <button class="btn btn-action copy"
                                                     @click="$store.memoryDashboardStore.copyToClipboard($store.memoryDashboardStore.formatMemoryForCopy(memory))"
                                                     title="Copy Memory">
-                                                    <span class="material-symbols-outlined">content_copy</span>
+                                                    <x-icon name="content_copy"></x-icon>
                                                 </button>
 
                                                 <button class="btn btn-action delete"
                                                     @click="$confirmClick($event, () => $store.memoryDashboardStore.deleteMemory(memory))"
                                                     title="Delete Memory">
-                                                    <span class="material-symbols-outlined">delete</span>
+                                                    <x-icon name="delete"></x-icon>
                                                 </button>
                                             </div>
                                         </td>
@@ -260,27 +260,27 @@
                         <div class="mass-actions">
                             <button class="btn btn-mass copy" @click="$store.memoryDashboardStore.bulkCopyMemories()"
                                 title="Copy Selected Content">
-                                <span class="material-symbols-outlined">content_copy</span>
+                                <x-icon name="content_copy"></x-icon>
                                 Copy
                             </button>
 
                             <button class="btn btn-mass export"
                                 @click="$store.memoryDashboardStore.bulkExportMemories()"
                                 title="Export Selected Memories">
-                                <span class="material-symbols-outlined">download</span>
+                                <x-icon name="download"></x-icon>
                                 Export
                             </button>
 
                             <button class="btn btn-mass delete"
                                 @click="$confirmClick($event, () => $store.memoryDashboardStore.bulkDeleteMemories())"
                                 title="Delete Selected Memories">
-                                <span class="material-symbols-outlined">delete</span>
+                                <x-icon name="delete"></x-icon>
                                 Delete
                             </button>
 
                             <button class="btn btn-mass clear" @click="$store.memoryDashboardStore.clearSelection()"
                                 title="Clear Selection">
-                                <span class="material-symbols-outlined">close</span>
+                                <x-icon name="close"></x-icon>
                                 Clear
                             </button>
                         </div>
@@ -291,7 +291,7 @@
                     <div class="data-status-bar data-status-bar-bottom" x-show="!$store.memoryDashboardStore.loading">
                         <div class="status-info">
                             <span class="status-item">
-                                <span class="material-symbols-outlined">database</span>
+                                <x-icon name="database"></x-icon>
                                 Total: <strong x-text="$store.memoryDashboardStore.totalDbCount"></strong>
                             </span>
                             <span class="status-separator">•</span>
@@ -312,7 +312,7 @@
                         <div class="status-pagination" x-show="$store.memoryDashboardStore.totalPages > 1">
                             <button class="btn btn-icon" @click="$store.memoryDashboardStore.prevPage()"
                                 :disabled="$store.memoryDashboardStore.currentPage === 1" title="Previous Page">
-                                <span class="material-symbols-outlined">chevron_left</span>
+                                <x-icon name="chevron_left"></x-icon>
                             </button>
                             <div class="page-input-group">
                                 <label>Page</label>
@@ -327,7 +327,7 @@
                             <button class="btn btn-icon" @click="$store.memoryDashboardStore.nextPage()"
                                 :disabled="$store.memoryDashboardStore.currentPage === $store.memoryDashboardStore.totalPages"
                                 title="Next Page">
-                                <span class="material-symbols-outlined">chevron_right</span>
+                                <x-icon name="chevron_right"></x-icon>
                             </button>
                         </div>
                     </div>

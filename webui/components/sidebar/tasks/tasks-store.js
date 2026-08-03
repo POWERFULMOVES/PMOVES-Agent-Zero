@@ -1,5 +1,6 @@
 import { createStore } from "/js/AlpineStore.js";
 import { store as chatsStore } from "/components/sidebar/chats/chats-store.js";
+import { store as sidebarStore } from "/components/sidebar/sidebar-store.js";
 import { store as schedulerStore } from "/components/modals/scheduler/scheduler-store.js";
 
 // Tasks sidebar store: tasks list and selected task id
@@ -39,6 +40,10 @@ const model = {
     return Array.isArray(this.tasks) && this.tasks.some((t) => t?.id === taskId);
   },
 
+  visibleTasks() {
+    return sidebarStore.sortRows("task", this.tasks);
+  },
+
   // Convenience: id of the first task in the current list (or empty string)
   firstId() {
     return (Array.isArray(this.tasks) && this.tasks[0]?.id) || "";
@@ -69,5 +74,4 @@ const model = {
 };
 
 export const store = createStore("tasks", model);
-
 

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import shutil
+import subprocess
 import threading
 import uuid
 from dataclasses import dataclass, field
@@ -63,6 +65,33 @@ def _save_command(
         extra_frontmatter=extra_frontmatter or {},
     )
     return _track_paths(scope, command)
+
+
+def test_composer_picker_ignores_postfix_slashes() -> None:
+    if not shutil.which("node"):
+        pytest.skip("Node.js is required to execute the slash-picker regression.")
+
+    source = (Path(__file__).resolve().parents[1] / "webui" / "commands-slash-store.js").read_text(
+        encoding="utf-8"
+    )
+    start = source.index("function parseSlashInput(")
+    function_source = source[start : source.index("\n\nfunction notifyError", start)]
+    script = f"""
+{function_source}
+
+const leading = parseSlashInput("/goal objective", false);
+if (!leading.active || leading.query !== "goal") throw new Error("leading command hidden");
+
+const trailing = parseSlashInput("objective /goal", false);
+if (trailing.active) throw new Error("postfix command opened the picker");
+
+const path = parseSlashInput("Review /a0/usr/projects/example", false);
+if (path.active) throw new Error("path opened the picker");
+
+const resolvable = parseSlashInput("objective /goal");
+if (!resolvable.active || resolvable.query !== "goal") throw new Error("postfix resolution broke");
+"""
+    subprocess.run(["node", "-e", script], check=True, text=True)
 
 
 @pytest.fixture
@@ -264,6 +293,49 @@ def test_models_command_always_opens_modal():
     assert result == {
         "text": "",
         "effects": [{"type": "open_plugin_config", "plugin": "_model_config"}],
+    }
+
+
+def test_stop_command_uses_the_composer_stop_operation(monkeypatch):
+    class Log:
+        def __init__(self):
+            self.progress = []
+            self.entries = []
+
+        def set_progress(self, value, *, active):
+            self.progress.append((value, active))
+
+        def log(self, **kwargs):
+            self.entries.append(kwargs)
+
+    context = SimpleNamespace(
+        id="stop-command-context",
+        paused=True,
+        log=Log(),
+        is_running=lambda: True,
+        kill_process=lambda: setattr(context, "killed", True),
+        killed=False,
+    )
+    monkeypatch.setattr(connector_commands, "_context", lambda _context_id: context)
+
+    result = connector_commands.run(
+        {
+            "invocation": {"command_name": "stop", "raw_arguments": ""},
+            "context": {"context_id": context.id},
+        }
+    )
+
+    assert context.killed is True
+    assert context.paused is False
+    assert context.log.progress == [("", False)]
+    assert context.log.entries == [
+        {"type": "info", "content": "Agent process stopped.", "finished": True}
+    ]
+    assert result == {
+        "text": "",
+        "effects": [
+            {"type": "toast", "message": "Agent process stopped.", "level": "success"}
+        ],
     }
 
 

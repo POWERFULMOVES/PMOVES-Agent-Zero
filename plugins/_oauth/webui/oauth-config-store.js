@@ -51,6 +51,9 @@ function ensureConfig(config) {
   codex.proxy_token = String(codex.proxy_token || "");
   codex.codex_version = String(codex.codex_version || "");
   codex.models = Array.isArray(codex.models) ? codex.models : [];
+  codex.reasoning_effort = String(codex.reasoning_effort || "high");
+  codex.reasoning_summary = String(codex.reasoning_summary || "auto");
+  codex.text_verbosity = String(codex.text_verbosity || "medium");
 
   config.gemini_api = config.gemini_api && typeof config.gemini_api === "object" ? config.gemini_api : {};
   const geminiApi = config.gemini_api;

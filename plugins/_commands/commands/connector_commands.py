@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from agent import AgentContext
+from api.stop import stop_context
 from helpers import message_queue as mq
 from helpers import plugins, projects
 from helpers.integration_commands import try_handle_command
@@ -44,6 +45,8 @@ def run(payload: dict[str, Any]) -> dict[str, Any]:
         return _effects(_toast("Resume requested."), {"type": "pause_agent", "paused": False})
     if command == "nudge":
         return _effects(_toast("Nudge sent."), {"type": "nudge_agent"})
+    if command == "stop":
+        return _handle_stop(context)
     if command == "send":
         return _handle_queue(context, ["send"])
     if command == "queue":
@@ -210,6 +213,14 @@ def _handle_queue(context: AgentContext | None, tokens: list[str]) -> dict[str, 
         return _effects(_toast("Queued message removed."))
 
     return _effects(_toast("Usage: /queue [send|clear|remove <number|id>]", level="error"))
+
+
+def _handle_stop(context: AgentContext | None) -> dict[str, Any]:
+    error = _require_context(context)
+    if error:
+        return _effects(_toast(error, level="error"))
+    result = stop_context(context)
+    return _effects(_toast(str(result["message"])))
 
 
 def _queue_summary(queue: list[dict[str, Any]]) -> str:

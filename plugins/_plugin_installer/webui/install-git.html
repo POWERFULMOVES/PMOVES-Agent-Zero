@@ -39,7 +39,7 @@
                         </template>
                         <template x-if="!$store.pluginInstallStore.loading">
                             <span>
-                                <span class="icon material-symbols-outlined">terminal</span> Clone & Install
+                                <x-icon class="icon" name="terminal"></x-icon> Clone & Install
                             </span>
                         </template>
                     </button>
@@ -48,7 +48,7 @@
 
                 <div x-show="$store.pluginInstallStore.result" class="pi-result">
                     <div class="pi-result-icon">
-                        <span class="material-symbols-outlined">check_circle</span>
+                        <x-icon name="check_circle"></x-icon>
                     </div>
                     <div class="pi-result-text">
                         <strong x-text="'Plugin installed: ' + ($store.pluginInstallStore.result?.title || $store.pluginInstallStore.result?.plugin_name || '')"></strong>

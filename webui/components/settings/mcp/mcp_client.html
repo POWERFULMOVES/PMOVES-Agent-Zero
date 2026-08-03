@@ -29,8 +29,8 @@
 
           <div class="settings-advanced-section" x-data="{ advOpen: false }">
             <button type="button" class="settings-advanced-toggle" @click="advOpen = !advOpen">
-              <span class="material-symbols-outlined settings-advanced-toggle-icon"
-                    :style="advOpen ? 'transform:rotate(90deg)' : ''">chevron_right</span>
+              <x-icon class="settings-advanced-toggle-icon"
+                    :style="advOpen ? 'transform:rotate(90deg)' : ''" name="chevron_right"></x-icon>
               <span>Advanced Settings</span>
             </button>
 
