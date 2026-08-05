@@ -530,8 +530,16 @@ def move_dir(old_path: str, new_path: str):
         os.rename(abs_old, abs_new)
     except OSError:
         # os.rename fails across Docker volume mount points
-        import shutil
-        shutil.move(abs_old, abs_new)
+        try:
+            import shutil
+            shutil.move(abs_old, abs_new)
+        except OSError:
+            # Cross-device link: copy + remove instead of rename/move
+            import shutil
+            if os.path.isdir(abs_new):
+                shutil.rmtree(abs_new)
+            shutil.copytree(abs_old, abs_new)
+            shutil.rmtree(abs_old)
 
 
 # move dir safely, remove with number if needed
