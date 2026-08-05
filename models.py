@@ -795,7 +795,14 @@ class LiteLLMEmbeddingWrapper(Embeddings):
         model_config: Optional[ModelConfig] = None,
         **kwargs: Any,
     ):
-        self.model_name = f"{provider}/{model}" if provider != "openai" else model
+        # PMOVES patch: TensorZero models need the provider prefix even when
+        # provider is "openai", because LiteLLM needs "openai/tensorzero::..."
+        # to route correctly. Without this, embedding calls fail with
+        # BadRequestError: LLM Provider NOT provided.
+        if provider == "openai" and not model.startswith(f"{provider}/"):
+            self.model_name = f"{provider}/{model}"
+        else:
+            self.model_name = f"{provider}/{model}" if provider != "openai" else model
         self.kwargs = kwargs
         self.a0_model_conf = model_config
 
