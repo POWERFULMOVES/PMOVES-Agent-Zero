@@ -64,7 +64,6 @@ class EditProjectData(BasicProjectData):
     variables: str
     secrets: str
     mcp_servers: str
-    subagents: dict[str, SubAgentSettings]
     git_status: GitStatusData
 
 
@@ -72,7 +71,7 @@ ProjectExtendedData = dict[str, object]
 _PROJECT_CORE_EDIT_KEYS = frozenset(BasicProjectData.__annotations__) | frozenset(
     EditProjectData.__annotations__
 )
-_PROJECT_TRANSIENT_INPUT_KEYS = frozenset({"git_token"})
+_PROJECT_TRANSIENT_INPUT_KEYS = frozenset({"git_token", "subagents"})
 
 
 def get_projects_parent_folder():
@@ -227,7 +226,6 @@ def _normalizeEditData(data: EditProjectData) -> EditProjectData:
             "file_structure",
             _default_file_structure_settings(),
         ),
-        "subagents": data.get("subagents", {}),
     }
     return normalized
 
@@ -246,7 +244,6 @@ def _basic_data_to_edit_data(data: BasicProjectData) -> EditProjectData:
             "knowledge_files_count": 0,
             "variables": "",
             "secrets": "",
-            "subagents": {},
             "git_status": {"is_git_repo": False},
         },
     )
@@ -269,7 +266,6 @@ def update_project(name: str, data: EditProjectData):
     save_project_variables(name, current["variables"])
     save_project_secrets(name, current["secrets"])
     save_project_mcp_servers(name, current["mcp_servers"])
-    save_project_subagents(name, current["subagents"])
     save_project_extended_data(name, extended_data)
 
     reactivate_project_in_chats(name)
@@ -291,7 +287,6 @@ def load_edit_project_data(name: str) -> EditProjectData:
     variables = load_project_variables(name)
     mcp_servers = load_project_mcp_servers(name)
     secrets = load_project_secrets_masked(name)
-    subagents = load_project_subagents(name)
     knowledge_files_count = get_knowledge_files_count(name)
     git_status = cast(GitStatusData, git.get_repo_status(get_project_folder(name)))
     
@@ -305,7 +300,6 @@ def load_edit_project_data(name: str) -> EditProjectData:
             "variables": variables,
             "mcp_servers": mcp_servers,
             "secrets": secrets,
-            "subagents": subagents,
             "git_status": git_status,
         },
     )
@@ -405,6 +399,52 @@ def _get_projects_list(parent_dir):
     return projects
 
 
+def reconcile_agent_profile(
+    context: "AgentContext", project_name: str | None, available: dict | None = None
+) -> bool:
+    from helpers import subagents
+    from initialize import initialize_agent
+
+    if available is None:
+        available = subagents.get_available_agents_dict(project_name)
+    if getattr(context.config, "profile", "") in available:
+        return False
+
+    config = initialize_agent()
+    if config.profile not in available:
+        fallback = "agent0" if "agent0" in available else next(iter(available), "agent0")
+        config = initialize_agent(override_settings={"agent_profile": fallback})
+    context.config = config
+    context.agent0.config = config
+    return True
+
+
+def reconcile_agent_profiles(
+    project_name: str | None, *, all_scopes: bool = False
+) -> None:
+    from agent import AgentContext
+    from helpers import subagents
+    from helpers.state_monitor_integration import mark_dirty_for_context
+
+    available_by_project: dict[str | None, dict] = {}
+    for context in AgentContext.all():
+        context_project = get_context_project_name(context)
+        if not all_scopes and context_project != project_name:
+            continue
+        if context_project not in available_by_project:
+            available_by_project[context_project] = (
+                subagents.get_available_agents_dict(context_project)
+            )
+        if not reconcile_agent_profile(
+            context, context_project, available_by_project[context_project]
+        ):
+            continue
+        persist_chat.save_tmp_chat(context)
+        mark_dirty_for_context(
+            context.id, reason="projects.reconcile_agent_profiles"
+        )
+
+
 def activate_project(context_id: str, name: str, *, mark_dirty: bool = True):
     from agent import AgentContext
 
@@ -419,6 +459,7 @@ def activate_project(context_id: str, name: str, *, mark_dirty: bool = True):
         CONTEXT_DATA_KEY_PROJECT,
         {"name": name, "title": display_name, "color": data.get("color", "")},
     )
+    reconcile_agent_profile(context, name)
 
     # persist
     persist_chat.save_tmp_chat(context)
@@ -436,6 +477,7 @@ def deactivate_project(context_id: str, *, mark_dirty: bool = True):
         raise Exception("Context not found")
     context.set_data(CONTEXT_DATA_KEY_PROJECT, None)
     context.set_output_data(CONTEXT_DATA_KEY_PROJECT, None)
+    reconcile_agent_profile(context, None)
 
     # persist
     persist_chat.save_tmp_chat(context)
@@ -451,7 +493,6 @@ def reactivate_project_in_chats(name: str):
     for context in AgentContext.all():
         if context.get_data(CONTEXT_DATA_KEY_PROJECT) == name:
             activate_project(context.id, name, mark_dirty=False)
-        persist_chat.save_tmp_chat(context)
 
     from helpers.state_monitor_integration import mark_dirty_all
     mark_dirty_all(reason="projects.reactivate_project_in_chats")
@@ -463,7 +504,6 @@ def deactivate_project_in_chats(name: str):
     for context in AgentContext.all():
         if context.get_data(CONTEXT_DATA_KEY_PROJECT) == name:
             deactivate_project(context.id, mark_dirty=False)
-        persist_chat.save_tmp_chat(context)
 
     from helpers.state_monitor_integration import mark_dirty_all
     mark_dirty_all(reason="projects.deactivate_project_in_chats")
@@ -648,7 +688,7 @@ def load_project_subagents(name: str) -> dict[str, SubAgentSettings]:
         abs_path = files.get_abs_path(get_project_meta(name), "agents.json")
         data = dirty_json.parse(files.read_file(abs_path))
         if isinstance(data, dict):
-            return _normalize_subagents(data)  # type: ignore[arg-type,return-value]
+            return _normalize_subagents(data, name)  # type: ignore[arg-type,return-value]
         return {}
     except Exception:
         return {}
@@ -656,21 +696,55 @@ def load_project_subagents(name: str) -> dict[str, SubAgentSettings]:
 
 def save_project_subagents(name: str, subagents_data: dict[str, SubAgentSettings]):
     abs_path = files.get_abs_path(get_project_meta(name), "agents.json")
-    normalized = _normalize_subagents(subagents_data)
+    normalized = _normalize_subagents(subagents_data, name)
     content = dirty_json.stringify(normalized)
     files.write_file(abs_path, content)
 
 
+def set_project_subagent_enabled(name: str, profile_id: str, enabled: bool) -> None:
+    from helpers import subagents
+
+    name = validate_project_name(name)
+    if not os.path.isdir(get_project_folder(name)):
+        raise ValueError("Project not found.")
+    if not isinstance(enabled, bool):
+        raise ValueError("Agent availability must be true or false.")
+    agent = subagents.get_agents_dict(name).get(profile_id)
+    if not agent:
+        raise ValueError(f'Agent profile "{profile_id}" does not exist.')
+
+    path = get_project_meta(name, "agents.json")
+    try:
+        settings = dirty_json.parse(files.read_file(path))
+    except FileNotFoundError:
+        settings = {}
+    except Exception as exc:
+        raise ValueError("Project agent availability is invalid.") from exc
+    if not isinstance(settings, dict) or any(
+        not isinstance(key, str)
+        or not isinstance(value, dict)
+        or not isinstance(value.get("enabled"), bool)
+        for key, value in settings.items()
+    ):
+        raise ValueError("Project agent availability is invalid.")
+
+    if agent.enabled == enabled:
+        settings.pop(profile_id, None)
+    else:
+        settings[profile_id] = {"enabled": enabled}
+    save_project_subagents(name, settings)
+
+
 def _normalize_subagents(
-    subagents_data: dict[str, SubAgentSettings]
+    subagents_data: dict[str, SubAgentSettings], project_name: str = ""
 ) -> dict[str, SubAgentSettings]:
     from helpers import subagents
 
-    agents_dict = subagents.get_agents_dict()
+    scoped_agents = subagents.get_agents_dict(project_name or None)
 
     normalized: dict[str, SubAgentSettings] = {}
     for key, value in subagents_data.items():
-        agent = agents_dict.get(key)
+        agent = scoped_agents.get(key)
         if not agent:
             continue
 

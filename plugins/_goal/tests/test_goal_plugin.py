@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+import base64
+import shutil
+import subprocess
 import uuid
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -55,6 +59,73 @@ def test_goal_storage_round_trip(context_id: str):
 
     goal.delete_goal(context_id)
     assert goal.get_goal(context_id) is None
+
+
+def test_goal_changes_publish_state_revision(context_id: str, monkeypatch):
+    from agent import AgentContext
+    from helpers import state_monitor_integration
+
+    revisions = iter([1.0, 2.0, 3.0])
+    output_data = {}
+    dirty = []
+    context = SimpleNamespace(
+        set_output_data=lambda key, value: output_data.__setitem__(key, value)
+    )
+    monkeypatch.setattr(AgentContext, "get", lambda _context_id: context)
+    monkeypatch.setattr(goal.time, "time", lambda: next(revisions))
+    monkeypatch.setattr(
+        state_monitor_integration,
+        "mark_dirty_for_context",
+        lambda context_id, *, reason: dirty.append((context_id, reason)),
+    )
+
+    goal.create_goal(context_id, "Publish changes")
+    goal.update_goal(context_id, status="paused")
+    goal.delete_goal(context_id)
+
+    assert output_data["_goal_revision"] == 3.0
+    assert dirty == [(context_id, "plugins._goal")] * 3
+
+
+def test_goal_webui_uses_state_revisions_instead_of_polling():
+    plugin_root = Path(__file__).resolve().parents[1]
+    store = (plugin_root / "webui" / "goal-store.js").read_text()
+    strip = (
+        plugin_root
+        / "extensions"
+        / "webui"
+        / "chat-input-progress-start"
+        / "goal-strip.html"
+    ).read_text()
+    refresh = (
+        plugin_root
+        / "extensions"
+        / "webui"
+        / "apply_snapshot_before"
+        / "refresh-goal.js"
+    ).read_text()
+
+    assert "setInterval(() => this.refresh" not in store
+    assert "$watch('$store.chats.selected'" not in strip
+    assert "_goal_revision" in refresh
+    assert "goalStore.refresh(true)" in refresh
+
+
+@pytest.mark.skipif(not shutil.which("node"), reason="node is required")
+def test_goal_webui_uses_shared_hour_aware_duration_formatter():
+    project_root = Path(__file__).resolve().parents[3]
+    time_utils = (project_root / "webui" / "js" / "time-utils.js").read_bytes()
+    module_url = "data:text/javascript;base64," + base64.b64encode(time_utils).decode("ascii")
+    script = f"""
+import {{ formatDuration }} from {module_url!r};
+if (formatDuration(3_782_000) !== "1h3m2s") throw new Error("hours");
+if (formatDuration(62_000) !== "1m2s") throw new Error("minutes");
+"""
+    subprocess.run(["node", "--input-type=module", "-e", script], check=True)
+
+    store = (project_root / "plugins" / "_goal" / "webui" / "goal-store.js").read_text()
+    assert 'import { formatDuration } from "/js/time-utils.js";' in store
+    assert "return formatDuration(this.elapsedSeconds * 1000);" in store
 
 
 def test_goal_command_sets_pauses_resumes_and_deletes(context_id: str):
