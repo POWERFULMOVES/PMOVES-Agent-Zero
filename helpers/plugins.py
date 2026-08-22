@@ -45,6 +45,7 @@ _META_TARGET_RE = re.compile(
 
 
 type ToggleState = Literal["enabled", "disabled"]
+type CallerContext = Literal["ui", "agent", "api"]
 
 
 class PluginAssetFile(TypedDict):
@@ -218,6 +219,17 @@ def get_plugin_roots(plugin_name: str = "") -> List[str]:
         files.get_abs_path(files.USER_DIR, files.PLUGINS_DIR, plugin_name),
         files.get_abs_path(files.PLUGINS_DIR, plugin_name),
     ]
+
+
+def get_plugin_name_from_path(path: str | Path) -> str:
+    """Return the plugin directory name for a path under a canonical plugin root."""
+    candidate = Path(path).absolute()
+    for root in get_plugin_roots():
+        try:
+            return candidate.relative_to(Path(root).absolute()).parts[0]
+        except (IndexError, ValueError):
+            continue
+    return ""
 
 
 def get_plugins_list():
@@ -464,6 +476,11 @@ def get_enabled_plugins(agent: Agent | None):
     active = []
 
     for plugin in plugins:
+        meta = get_plugin_meta(plugin)
+        if meta and meta.always_enabled:
+            active.append(plugin)
+            continue
+
         # plugins are toggled via .enabled / .disabled files
         # every plugin is on by default, unless disabled in usr dir
         enabled = True
@@ -535,6 +552,10 @@ def toggle_plugin(
     agent_profile: str = "",
     clear_overrides: bool = False,
 ):
+    meta = get_plugin_meta(plugin_name)
+    if meta and meta.always_enabled and not enabled:
+        raise ValueError(f'Plugin "{plugin_name}" is always enabled.')
+
     if clear_overrides:
         all_toggles = find_plugin_assets(
             TOGGLE_FILE_PATTERN,
@@ -570,6 +591,7 @@ def get_plugin_config(
     agent: Agent | None = None,
     project_name: str | None = None,
     agent_profile: str | None = None,
+    caller: CallerContext = "api",
 ):
 
     default_used = False
@@ -615,6 +637,7 @@ def get_plugin_config(
         agent=agent,
         project_name=project_name,
         agent_profile=agent_profile,
+        hook_context={"caller": caller},
     )
 
     return result
@@ -643,7 +666,11 @@ def get_default_plugin_config(plugin_name: str):
 
 @extension.extensible
 def save_plugin_config(
-    plugin_name: str, project_name: str, agent_profile: str, settings: dict
+    plugin_name: str,
+    project_name: str,
+    agent_profile: str,
+    settings: dict,
+    caller: CallerContext = "api",
 ):
     file_path = determine_plugin_asset_path(
         plugin_name, project_name, agent_profile, CONFIG_FILE_NAME
@@ -657,6 +684,7 @@ def save_plugin_config(
         project_name=project_name,
         agent_profile=agent_profile,
         settings=settings,
+        hook_context={"caller": caller},
     )
 
     # or do standard load

@@ -42,6 +42,8 @@
 - `save_project_mcp_servers(name: str, mcp_servers: str)`
 - `get_active_projects_list()`
 - `_get_projects_list(parent_dir)`
+- `reconcile_agent_profile(context: AgentContext, project_name: str | None) -> bool`
+- `reconcile_agent_profiles(project_name: str | None, *, all_scopes: bool=...) -> None`
 - `activate_project(context_id: str, name: str, mark_dirty: bool=...)`
 - `deactivate_project(context_id: str, mark_dirty: bool=...)`
 - `reactivate_project_in_chats(name: str)`
@@ -54,6 +56,10 @@
 - `get_project_agents_md_instruction_file(name: str) -> tuple[str, str] | None`
 - `_format_project_instruction_files(instruction_files: list[tuple[str, str]]) -> str`
 - `_normalize_include_agents_md(value: object) -> bool`
+- `load_project_subagents(name: str) -> dict[str, SubAgentSettings]`
+- `save_project_subagents(name: str, subagents_data: dict[str, SubAgentSettings])`
+- `set_project_subagent_enabled(name: str, profile_id: str, enabled: bool) -> None`
+- `_normalize_subagents(subagents_data: dict[str, SubAgentSettings], project_name: str=...) -> dict[str, SubAgentSettings]`
 - Notable constants/configuration names: `PROJECTS_PARENT_DIR`, `PROJECT_META_DIR`, `PROJECT_INSTRUCTIONS_DIR`, `PROJECT_KNOWLEDGE_DIR`, `PROJECT_SKILLS_DIR`, `PROJECT_HEADER_FILE`, `PROJECT_MCP_SERVERS_FILE`, `PROJECT_AGENTS_MD_FILES`, `DEFAULT_MCP_SERVERS_CONFIG`, `CONTEXT_DATA_KEY_PROJECT`.
 
 ## Runtime Contracts
@@ -69,8 +75,27 @@
 - Active-project AGENTS.md protocol guidance excludes the exact project root AGENTS.md because `build_system_prompt_vars(...)` already loads it into project instructions; prose for that protocol block lives in `prompts/agent.protocol.projects.agents_md.md`.
 - Project MCP config uses the same JSON string shape as global MCP settings: an object with `mcpServers`.
 - Project MCP load/save paths validate project names as simple folder basenames before touching `.a0proj/mcp_servers.json`.
+- Activating or deactivating a project preserves the active chat profile when it
+  is available in the destination scope; otherwise it replaces it with the
+  configured default profile, then `agent0`, then the first available profile.
+- Per-project profile availability is persisted sparsely in `.a0proj/agents.json`;
+  entries matching the profile definition's scoped default are omitted. The
+  helper retains the established tolerant load contract for read-only settings.
+  Profile-scoped mutations re-read the file strictly, preserve unrelated
+  entries, refuse malformed data, and write through `helpers.files`. General
+  project edit payloads neither expose nor mutate profile availability; legacy
+  `subagents` input is ignored.
+- Profile reconciliation treats `None` as the Global scope. Callers must pass
+  `all_scopes=True` to check every loaded chat after a Global availability
+  change. Each pass resolves the available profile catalog once per encountered
+  scope; only chats whose active profile actually changes are persisted and
+  marked dirty. Context creation uses the same reconciliation after resolving
+  its scope, so a disabled configured profile cannot become invisibly active.
+- Project updates and deletion refresh only chats assigned to that project and
+  persist each affected chat once; unrelated chats are never rewritten.
 - Observed side-effect areas: filesystem reads, filesystem writes, filesystem deletion, plugin state, settings/state persistence, secret handling.
-- Imported dependency areas include: `helpers`, `helpers.print_style`, `os`, `typing`.
+- Imported dependency areas include: `helpers`, `helpers.print_style`, `os`,
+  `typing`.
 
 ## Key Concepts
 

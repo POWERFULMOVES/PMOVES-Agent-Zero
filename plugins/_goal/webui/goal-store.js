@@ -1,5 +1,6 @@
 import { createStore } from "/js/AlpineStore.js";
 import { callJsonApi } from "/js/api.js";
+import { formatDuration } from "/js/time-utils.js";
 import { store as chatsStore } from "/components/sidebar/chats/chats-store.js";
 import {
   toastFrontendError,
@@ -15,7 +16,6 @@ const model = {
   editing: false,
   draft: "",
   lastContextId: "",
-  intervalId: null,
   clockIntervalId: null,
   goalChangedHandler: null,
   now: Date.now(),
@@ -69,30 +69,22 @@ const model = {
   },
 
   get elapsedLabel() {
-    const seconds = this.elapsedSeconds;
-    const hours = Math.floor(seconds / 3600);
-    const minutes = Math.floor((seconds % 3600) / 60);
-    const remainingSeconds = seconds % 60;
-    if (hours) return `${hours}h ${minutes}m`;
-    if (minutes) return `${minutes}m ${remainingSeconds}s`;
-    return `${remainingSeconds}s`;
+    return formatDuration(this.elapsedSeconds * 1000);
   },
 
   onMount() {
     document.getElementById("progress-bar-box")?.classList.add("has-goal-bar");
     this.goalChangedHandler = (event) => {
       const detail = event?.detail || {};
-      if (detail.goal === null) {
-        this.goal = null;
-      }
-      void this.refresh(true);
+      if (detail.context_id && detail.context_id !== this.contextId) return;
+      this.goal = detail.goal || null;
+      this.now = Date.now();
+      if (!this.goal) this.editing = false;
     };
     window.addEventListener("goal:changed", this.goalChangedHandler);
     this.clockIntervalId = window.setInterval(() => {
       this.now = Date.now();
     }, 1000);
-    this.intervalId = window.setInterval(() => this.refresh(), 3000);
-    void this.refresh(true);
   },
 
   cleanup() {
@@ -100,14 +92,10 @@ const model = {
     if (this.goalChangedHandler) {
       window.removeEventListener("goal:changed", this.goalChangedHandler);
     }
-    if (this.intervalId) {
-      window.clearInterval(this.intervalId);
-    }
     if (this.clockIntervalId) {
       window.clearInterval(this.clockIntervalId);
     }
     this.goalChangedHandler = null;
-    this.intervalId = null;
     this.clockIntervalId = null;
   },
 

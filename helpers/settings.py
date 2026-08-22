@@ -258,9 +258,13 @@ def convert_out(settings: Settings) -> SettingsOutput:
             chat_providers=get_providers("chat"),
             embedding_providers=get_providers("embedding"),
             is_dockerized=runtime.is_dockerized(),
-            agent_subdirs=[{"value": item["key"], "label": item["label"]}
-                for item in subagents.get_all_agents_list()
-                if item["key"] != "_example"],
+            agent_subdirs=[
+                {"value": key, "label": item.title or key}
+                for key, item in sorted(
+                    subagents.get_available_agents_dict(None).items()
+                )
+                if key != "default"
+            ],
             knowledge_subdirs=[{"value": subdir, "label": subdir}
                 for subdir in files.get_subdirectories("knowledge", exclude="default")],
             timezones=_timezone_options(),
@@ -284,7 +288,14 @@ def convert_out(settings: Settings) -> SettingsOutput:
         ),
     }
 
-    additional["agent_subdirs"] = _ensure_option_present(additional.get("agent_subdirs"), current.get("agent_profile"))
+    current_profile = current.get("agent_profile")
+    if current_profile and current_profile != "default" and not any(
+        option["value"] == current_profile
+        for option in additional["agent_subdirs"]
+    ):
+        additional["agent_subdirs"].append(
+            {"value": current_profile, "label": f"{current_profile} (unavailable)"}
+        )
     additional["knowledge_subdirs"] = _ensure_option_present(additional.get("knowledge_subdirs"), current.get("agent_knowledge_subdir"))
     if current.get("timezone") != TIMEZONE_AUTO:
         additional["timezones"] = _ensure_option_present(additional.get("timezones"), current.get("timezone"))
@@ -423,7 +434,17 @@ def normalize_settings(settings: Settings) -> Settings:
             except (ValueError, TypeError):
                 copy[key] = value  # make default instead
 
-    # mcp server token - use env var if set, otherwise generate one (PMOVES hardening)
+    # upstream: default profile was renamed to agent0
+    if copy["agent_profile"] == "default":
+        copy["agent_profile"] = "agent0"
+
+    # mcp server token - use env var if set, otherwise generate one (PMOVES hardening).
+    # KEEP THIS OVERRIDE ON EVERY UPSTREAM MERGE. Upstream sets the token
+    # unconditionally via create_auth_token(), which mints a NEW token on every
+    # start. PMOVES authenticates Archon (and any external MCP client) against
+    # A0_SET_mcp_server_token / MCP_CLIENT_SECRET, so an unconditional regenerate
+    # silently breaks MCP auth after each restart. Honour the env var first, and
+    # only generate when it is unset.
     copy["mcp_server_token"] = get_default_value("mcp_server_token", "") or create_auth_token()
     # upstream (v2.5): clamp consecutive-unusable-response budget
     copy["max_consecutive_unusable_responses"] = max(

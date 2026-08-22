@@ -41,6 +41,16 @@
             <button
               type="button"
               class="editor-new-tab"
+              title="Open file"
+              aria-label="Open file"
+              :disabled="$store.editor.loading || $store.editor.saving"
+              @click="$store.editor.runNewMenuAction('open')"
+            >
+              <span class="material-symbols-outlined" aria-hidden="true">folder_open</span>
+            </button>
+            <button
+              type="button"
+              class="editor-new-tab"
               title="New Markdown"
               aria-label="New Markdown"
               :disabled="$store.editor.loading || $store.editor.saving"

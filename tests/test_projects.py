@@ -1,6 +1,13 @@
+import threading
 from pathlib import Path
+from types import SimpleNamespace
 
-from helpers import dirty_json, files, projects
+import pytest
+
+import initialize
+from agent import AgentConfig, AgentContext
+from helpers import dirty_json, files, persist_chat, projects, subagents
+from helpers import state_monitor_integration
 
 
 def _prepare_project_tree(monkeypatch, tmp_path: Path) -> None:
@@ -8,6 +15,322 @@ def _prepare_project_tree(monkeypatch, tmp_path: Path) -> None:
     (tmp_path / "usr" / "projects").mkdir(parents=True, exist_ok=True)
     (tmp_path / "usr" / "plugins").mkdir(parents=True, exist_ok=True)
     (tmp_path / "plugins").mkdir(parents=True, exist_ok=True)
+
+
+@pytest.mark.parametrize(
+    "destination_project", ["project-y", None], ids=["project", "global"]
+)
+def test_project_switch_resets_only_profiles_missing_from_the_new_scope(
+    monkeypatch, destination_project
+):
+    context_id = "ctx-project-profile-switch"
+    AgentContext.remove(context_id)
+    context = AgentContext(
+        config=AgentConfig(mcp_servers="", profile="project-only"),
+        id=context_id,
+        set_current=False,
+    )
+    monkeypatch.setattr(
+        projects,
+        "load_edit_project_data",
+        lambda name: {"title": name.title(), "color": ""},
+    )
+    monkeypatch.setattr(persist_chat, "save_tmp_chat", lambda _context: None)
+    monkeypatch.setattr(
+        subagents,
+        "get_agents_dict",
+        lambda project_name=None: {
+            "agent0": subagents.SubAgentListItem(name="agent0"),
+            **(
+                {
+                    "project-only": subagents.SubAgentListItem(
+                        name="project-only"
+                    )
+                }
+                if project_name == "project-x"
+                else {}
+            ),
+        },
+    )
+    monkeypatch.setattr(
+        initialize,
+        "initialize_agent",
+        lambda override_settings=None: AgentConfig(
+            mcp_servers="",
+            profile=(override_settings or {}).get("agent_profile", "agent0"),
+        ),
+    )
+
+    try:
+        projects.activate_project(context_id, "project-x", mark_dirty=False)
+        assert context.config.profile == "project-only"
+
+        if destination_project:
+            projects.activate_project(
+                context_id, destination_project, mark_dirty=False
+            )
+        else:
+            projects.deactivate_project(context_id, mark_dirty=False)
+        assert context.config.profile == "agent0"
+        assert context.agent0.config.profile == "agent0"
+    finally:
+        AgentContext.remove(context_id)
+
+
+def test_project_agent_availability_retains_project_only_profiles(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        subagents,
+        "get_agents_dict",
+        lambda project_name=None: {
+            "global": subagents.SubAgentListItem(name="global", enabled=True),
+            **(
+                {
+                    "project-only": subagents.SubAgentListItem(
+                        name="project-only", enabled=True
+                    )
+                }
+                if project_name == "demo"
+                else {}
+            ),
+        },
+    )
+
+    assert projects._normalize_subagents(
+        {
+            "global": {"enabled": True},
+            "project-only": {"enabled": False},
+            "missing": {"enabled": False},
+        },
+        "demo",
+    ) == {"project-only": {"enabled": False}}
+
+
+def test_project_profile_toggle_preserves_other_entries_and_refuses_bad_json(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    _prepare_project_tree(monkeypatch, tmp_path)
+    meta = tmp_path / "usr" / "projects" / "demo" / ".a0proj"
+    meta.mkdir(parents=True)
+    availability = meta / "agents.json"
+    monkeypatch.setattr(
+        subagents,
+        "get_agents_dict",
+        lambda _project=None: {
+            "default": subagents.SubAgentListItem(name="default", enabled=True),
+            "researcher": subagents.SubAgentListItem(
+                name="researcher", enabled=True
+            ),
+        },
+    )
+    availability.write_text(
+        '{"default":{"enabled":false}}',
+        encoding="utf-8",
+    )
+
+    projects.set_project_subagent_enabled("demo", "researcher", False)
+
+    assert dirty_json.parse(availability.read_text(encoding="utf-8")) == {
+        "default": {"enabled": False},
+        "researcher": {"enabled": False},
+    }
+    broken = b'{"default":'
+    availability.write_bytes(broken)
+
+    with pytest.raises(ValueError, match="Project agent availability"):
+        projects.set_project_subagent_enabled("demo", "researcher", True)
+
+    assert availability.read_bytes() == broken
+
+
+def test_project_edit_ignores_stale_agent_availability(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    _prepare_project_tree(monkeypatch, tmp_path)
+    meta = tmp_path / "usr" / "projects" / "demo" / ".a0proj"
+    meta.mkdir(parents=True)
+    (meta / "project.json").write_text('{"title":"Demo"}', encoding="utf-8")
+    availability = meta / "agents.json"
+    original = b'{"default":{"enabled":false}}'
+    availability.write_bytes(original)
+    monkeypatch.setattr("helpers.git.get_repo_status", lambda _path: {})
+    monkeypatch.setattr(projects, "reactivate_project_in_chats", lambda _name: None)
+    extended: list[dict] = []
+    monkeypatch.setattr(
+        projects,
+        "save_project_extended_data",
+        lambda _name, data: extended.append(data),
+    )
+
+    loaded = projects.load_edit_project_data("demo")
+    projects.update_project(
+        "demo",
+        {
+            **loaded,
+            "title": "Renamed",
+            "subagents": {"default": {"enabled": True}},
+        },
+    )
+
+    assert "subagents" not in loaded
+    assert availability.read_bytes() == original
+    assert extended and all("subagents" not in data for data in extended)
+
+
+def test_profile_reconciliation_uses_an_available_fallback(monkeypatch) -> None:
+    context_id = "ctx-profile-availability-fallback"
+    AgentContext.remove(context_id)
+    context = AgentContext(
+        config=AgentConfig(mcp_servers="", profile="disabled"),
+        id=context_id,
+        set_current=False,
+    )
+    monkeypatch.setattr(
+        subagents,
+        "get_available_agents_dict",
+        lambda _project_name: {
+            "researcher": subagents.SubAgentListItem(name="researcher")
+        },
+    )
+    monkeypatch.setattr(
+        initialize,
+        "initialize_agent",
+        lambda override_settings=None: AgentConfig(
+            mcp_servers="",
+            profile=(override_settings or {}).get("agent_profile", "default"),
+        ),
+    )
+
+    try:
+        assert projects.reconcile_agent_profile(context, None) is True
+        assert context.config.profile == "researcher"
+        assert context.agent0.config.profile == "researcher"
+    finally:
+        AgentContext.remove(context_id)
+
+
+def test_context_lookup_reconciles_only_new_contexts(monkeypatch) -> None:
+    from helpers.context_utils import use_context
+
+    existing_id = "ctx-existing-profile"
+    created_id = "ctx-new-profile"
+    AgentContext.remove(existing_id)
+    AgentContext.remove(created_id)
+    existing = AgentContext(
+        config=AgentConfig(mcp_servers="", profile="default"),
+        id=existing_id,
+        set_current=False,
+    )
+    reconciled: list[str] = []
+    monkeypatch.setattr(
+        initialize,
+        "initialize_agent",
+        lambda: AgentConfig(mcp_servers="", profile="default"),
+    )
+    monkeypatch.setattr(
+        projects,
+        "reconcile_agent_profile",
+        lambda context, _project: reconciled.append(context.id),
+    )
+
+    try:
+        assert use_context(threading.RLock(), existing_id) is existing
+        assert reconciled == []
+
+        assert use_context(threading.RLock(), created_id).id == created_id
+        assert reconciled == [created_id]
+    finally:
+        AgentContext.remove(existing_id)
+        AgentContext.remove(created_id)
+
+
+@pytest.mark.parametrize(
+    ("all_scopes", "expected"),
+    [
+        (False, ["global-changed"]),
+        (True, ["global-changed", "project-changed"]),
+    ],
+)
+def test_bulk_profile_reconciliation_persists_only_changed_chats(
+    monkeypatch, all_scopes: bool, expected: list[str]
+) -> None:
+    unchanged = SimpleNamespace(id="global-unchanged", project=None)
+    global_changed = SimpleNamespace(id="global-changed", project=None)
+    project_changed = SimpleNamespace(id="project-changed", project="demo")
+    saved: list[str] = []
+    dirty: list[str] = []
+    catalog_lookups: list[str | None] = []
+    monkeypatch.setattr(
+        AgentContext,
+        "all",
+        classmethod(
+            lambda _cls: [unchanged, global_changed, project_changed]
+        ),
+    )
+    monkeypatch.setattr(
+        projects, "get_context_project_name", lambda context: context.project
+    )
+    monkeypatch.setattr(
+        projects,
+        "reconcile_agent_profile",
+        lambda context, _project, _available: context is not unchanged,
+    )
+    monkeypatch.setattr(
+        subagents,
+        "get_available_agents_dict",
+        lambda project: catalog_lookups.append(project) or {},
+    )
+    monkeypatch.setattr(
+        persist_chat, "save_tmp_chat", lambda context: saved.append(context.id)
+    )
+    monkeypatch.setattr(
+        state_monitor_integration,
+        "mark_dirty_for_context",
+        lambda context_id, **_kwargs: dirty.append(context_id),
+    )
+
+    projects.reconcile_agent_profiles(None, all_scopes=all_scopes)
+
+    assert saved == expected
+    assert dirty == expected
+    assert catalog_lookups == ([None, "demo"] if all_scopes else [None])
+
+
+def test_project_refresh_touches_only_matching_chats(monkeypatch) -> None:
+    contexts = [
+        SimpleNamespace(id="matching", get_data=lambda _key: "demo"),
+        SimpleNamespace(id="unrelated", get_data=lambda _key: "other"),
+    ]
+    calls: list[tuple] = []
+    monkeypatch.setattr(
+        AgentContext, "all", staticmethod(lambda: contexts)
+    )
+    monkeypatch.setattr(
+        projects,
+        "activate_project",
+        lambda context_id, name, *, mark_dirty: calls.append(
+            ("activate", context_id, name, mark_dirty)
+        ),
+    )
+    monkeypatch.setattr(
+        projects,
+        "deactivate_project",
+        lambda context_id, *, mark_dirty: calls.append(
+            ("deactivate", context_id, mark_dirty)
+        ),
+    )
+    monkeypatch.setattr(state_monitor_integration, "mark_dirty_all", lambda **_kwargs: None)
+
+    projects.reactivate_project_in_chats("demo")
+    projects.deactivate_project_in_chats("demo")
+
+    assert calls == [
+        ("activate", "matching", "demo", False),
+        ("deactivate", "matching", False),
+    ]
 
 
 def test_project_include_agents_md_defaults_true_and_saves(monkeypatch, tmp_path):

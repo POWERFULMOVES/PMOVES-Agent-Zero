@@ -21,6 +21,7 @@
 - `refresh_plugin_modules(plugin_names: list[str] | None=...)`
 - `clear_plugin_cache(plugin_names: list[str] | None=...)`
 - `get_plugin_roots(plugin_name: str=...) -> List[str]`: Plugin root directories, ordered by priority (user first).
+- `get_plugin_name_from_path(path: str | Path) -> str`: Return the plugin directory name only for paths below a canonical user or bundled plugin root.
 - `get_plugins_list()`
 - `get_enhanced_plugins_list(custom: bool=..., builtin: bool=..., plugin_names: list[str] | None=...) -> List[PluginListItem]`: Discover plugins by directory convention. First root wins on ID conflict.
 - `get_custom_plugins_updates(plugin_names: list[str] | None=...) -> List[PluginUpdateInfo]`
@@ -34,9 +35,9 @@
 - `determined_toggle_from_paths(default: bool, paths: Iterator[str])`
 - `get_toggle_state(plugin_name: str) -> ToggleState`
 - `toggle_plugin(plugin_name: str, enabled: bool, project_name: str=..., agent_profile: str=..., clear_overrides: bool=...)`
-- `get_plugin_config(plugin_name: str, agent: Agent | None=..., project_name: str | None=..., agent_profile: str | None=...)`
+- `get_plugin_config(plugin_name: str, agent: Agent | None=..., project_name: str | None=..., agent_profile: str | None=..., caller: CallerContext=...)`
 - `get_default_plugin_config(plugin_name: str)`
-- `save_plugin_config(plugin_name: str, project_name: str, agent_profile: str, settings: dict)`
+- `save_plugin_config(plugin_name: str, project_name: str, agent_profile: str, settings: dict, caller: CallerContext=...)`
 - `find_plugin_asset(plugin_name: str, *subpaths, project_name=..., agent_profile=...)`
 - `find_plugin_assets(*subpaths, plugin_name: str=..., project_name: str=..., agent_profile: str=..., only_first: bool=...) -> list[PluginAssetFile]`
 - `determine_plugin_asset_path(plugin_name: str, project_name: str, agent_profile: str, *subpaths)`
@@ -48,13 +49,17 @@
 ## Runtime Contracts
 
 - Helper modules own reusable framework APIs and must preserve public callers unless all callers, tests, and docs are updated together.
+- Plugins marked `always_enabled` remain in runtime discovery regardless of
+  stale global or scoped disable files, and disable attempts are rejected.
+- Config hooks receive `hook_context={"caller": caller}` with one of `ui`,
+  `agent`, or `api`; this is behavioral context, not an authorization boundary.
 - Update this file whenever public functions, classes, persistence behavior, path/security assumptions, side effects, or cross-module contracts change.
 - Observed side-effect areas: filesystem reads, filesystem writes, filesystem deletion, WebSocket state, plugin state, settings/state persistence, secret handling.
 - Imported dependency areas include: `__future__`, `asyncio`, `glob`, `helpers`, `helpers.defer`, `helpers.watchdog`, `json`, `pathlib`, `pydantic`, `re`, `regex`, `time`, `typing`.
 
 ## Key Concepts
 
-- Important called helpers/classes observed in the source: `re.compile`, `Field`, `watchdog.add_watchdog`, `clear_plugin_cache`, `send_frontend_reload_notification`, `DeferredTask.start_task`, `get_plugin_roots`, `result.sort`, `cache.add`, `get_enhanced_plugins_list`, `find_plugin_dir`, `files.get_abs_path`, `files.exists`, `call_plugin_hook`, `delete_plugin`, `files.delete_dir`, `after_plugin_change`, `get_enabled_plugins`, `get_plugins_list`, `get_plugin_meta`.
+- Important called helpers/classes observed in the source: `re.compile`, `Field`, `watchdog.add_watchdog`, `clear_plugin_cache`, `send_frontend_reload_notification`, `DeferredTask.start_task`, `get_plugin_roots`, `get_plugin_name_from_path`, `result.sort`, `cache.add`, `get_enhanced_plugins_list`, `find_plugin_dir`, `files.get_abs_path`, `files.exists`, `call_plugin_hook`, `delete_plugin`, `files.delete_dir`, `after_plugin_change`, `get_enabled_plugins`, `get_plugins_list`, `get_plugin_meta`.
 - Keep request/response, tool, or helper semantics documented here at the same time as source changes.
 
 ## Work Guidance
@@ -75,6 +80,7 @@
   - `tests/test_document_query_plugin.py`
   - `tests/test_error_retry_plugin.py`
   - `tests/test_host_browser_connector.py`
+  - `tests/test_tool_policy.py`
 
 ## Child DOX Index
 

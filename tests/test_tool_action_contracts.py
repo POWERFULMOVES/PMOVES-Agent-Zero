@@ -130,20 +130,6 @@ def _load_skills_tool(monkeypatch, skill_root: Path):
         tags=[],
     )
     skills_stub.list_skills = lambda *args, **kwargs: [fake_skill]
-    fake_command = {
-        "name": "summarize",
-        "description": "Summarize the current work.",
-        "argument_hint": "[focus]",
-    }
-    skills_stub.list_slash_commands = lambda *args, **kwargs: [fake_command]
-    skills_stub.find_slash_command = (
-        lambda command_name, *args, **kwargs: (
-            fake_command if command_name == "/summarize" else None
-        )
-    )
-    skills_stub.format_slash_command = (
-        lambda command: f"Slash command: /{command['name']}\nDefinition: prompt"
-    )
     skills_stub.search_skills = lambda *args, **kwargs: [fake_skill]
     skills_stub.find_skill = lambda *args, **kwargs: fake_skill
     skills_stub.load_skill_for_agent = (
@@ -229,7 +215,9 @@ def _load_loaded_skills_extension(monkeypatch, skill_root: Path):
     return importlib.import_module(module_name)
 
 
-def _load_relevant_skills_extension(monkeypatch, queries: list[str]):
+def _load_relevant_skills_extension(
+    monkeypatch, queries: list[str], *, skills_tool_allowed: bool = True
+):
     extension_stub = types.ModuleType("helpers.extension")
     extension_stub.Extension = _FakeExtension
     monkeypatch.setitem(sys.modules, "helpers.extension", extension_stub)
@@ -247,9 +235,16 @@ def _load_relevant_skills_extension(monkeypatch, queries: list[str]):
     skills_stub.search_skills = _search_skills
     monkeypatch.setitem(sys.modules, "helpers.skills", skills_stub)
 
+    tool_policy_stub = types.ModuleType("helpers.tool_policy")
+    tool_policy_stub.resolve_tool = lambda *args, **kwargs: types.SimpleNamespace(
+        allowed=skills_tool_allowed
+    )
+    monkeypatch.setitem(sys.modules, "helpers.tool_policy", tool_policy_stub)
+
     import helpers
 
     monkeypatch.setattr(helpers, "skills", skills_stub, raising=False)
+    monkeypatch.setattr(helpers, "tool_policy", tool_policy_stub, raising=False)
 
     module_name = "extensions.python.message_loop_prompts_after._63_recall_relevant_skills"
     sys.modules.pop(module_name, None)
@@ -350,28 +345,7 @@ def test_skills_tool_defaults_missing_action_to_list(monkeypatch, tmp_path: Path
 
     assert "Available skills" in response.message
     assert "browser-form-workflows" in response.message
-    assert "Available slash commands" in response.message
-    assert "/summarize [focus]" in response.message
-
-
-def test_skills_tool_load_reads_slash_command_without_loading_a_skill(
-    monkeypatch, tmp_path: Path
-):
-    module = _load_skills_tool(monkeypatch, tmp_path)
-    agent = _FakeAgent()
-    tool = module.SkillsTool(
-        agent,
-        "skills_tool",
-        None,
-        {"action": "load", "skill_name": "/summarize"},
-        "",
-        None,
-    )
-
-    response = asyncio.run(tool.execute(**tool.args))
-
-    assert response.message == "Slash command: /summarize\nDefinition: prompt"
-    assert agent.context.get_data("loaded_skills") is None
+    assert "slash commands" not in response.message
 
 
 def test_skills_tool_load_appends_skill_instructions_as_tool_result(
@@ -556,6 +530,29 @@ def test_relevant_skill_recall_uses_raw_user_message(monkeypatch):
     assert queries == ["Open a browser and take a screenshot."]
 
 
+def test_relevant_skill_recall_skips_blocked_skills_tool(monkeypatch):
+    queries: list[str] = []
+    module = _load_relevant_skills_extension(
+        monkeypatch, queries, skills_tool_allowed=False
+    )
+    loop_data = types.SimpleNamespace(
+        iteration=0,
+        user_message=types.SimpleNamespace(
+            content="Open a browser and take a screenshot.",
+            output_text=lambda: "Open a browser and take a screenshot.",
+        ),
+        extras_temporary={},
+    )
+
+    asyncio.run(
+        module.RecallRelevantSkills(types.SimpleNamespace()).execute(
+            loop_data=loop_data
+        )
+    )
+
+    assert queries == []
+
+
 def test_skills_tool_read_file_action_reads_inside_skill_dir(
     monkeypatch, tmp_path: Path
 ):
@@ -712,9 +709,10 @@ def test_behaviour_adjustment_normalizes_duplicate_rules(monkeypatch):
 
 
 def test_behaviour_prompts_preserve_exact_rules_and_avoid_promptinclude():
-    behaviour_prompt = Path("prompts/agent.system.tool.behaviour.md").read_text(
-        encoding="utf-8"
+    behaviour_prompt_path = Path(
+        "plugins/_memory/prompts/agent.system.tool.behaviour.md"
     )
+    behaviour_prompt = behaviour_prompt_path.read_text(encoding="utf-8")
     merge_prompt = Path("prompts/behaviour.merge.sys.md").read_text(
         encoding="utf-8"
     )
@@ -724,6 +722,7 @@ def test_behaviour_prompts_preserve_exact_rules_and_avoid_promptinclude():
 
     assert "exact-response rules" in behaviour_prompt
     assert "preserve it verbatim" in behaviour_prompt
+    assert not Path("prompts/agent.system.tool.behaviour.md").exists()
     assert "respond exactly with a phrase" in merge_prompt
     assert "use behaviour_adjustment, not promptinclude files" in promptinclude_prompt
 

@@ -201,11 +201,13 @@ def test_model_switcher_frontend_renders_custom_overrides():
     assert "normalizeModelIdentity(o.chat || o)" in switcher_content
     assert "normalizeModelIdentity(o.utility)" in switcher_content
     assert "$store.modelConfig.getSwitcherLabel()" in switcher_html
+    assert "loadAgentProfiles(true)" not in switcher_html
     assert "model-switcher-active-pills" not in switcher_html
     assert "model-pill-role" not in switcher_html
     assert "_model_config_override_revision" in refresh_extension_content
     assert "activeContext?.agent_profile" in refresh_extension_content
     assert "activeContext?.project" in refresh_extension_content
+    assert "modelConfigStore.loadAgentProfiles(true)" in refresh_extension_content
     assert "modelConfigStore.refreshSwitcher(contextId)" in refresh_extension_content
 
 
