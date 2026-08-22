@@ -55,6 +55,11 @@ exchangelib>=5.4.3
 pywinpty==3.0.2; sys_platform == "win32"
 prometheus-client>=0.20.0
 fastapi>=0.115.0
+# anthropic is used by the PMOVES layer (services/agent-zero/mcp_server.py).
+# Declared HERE rather than in the PMOVES service requirements because it
+# depends on pydantic, which this file pins exactly. Declared downstream it
+# would be resolved separately and then installed second, overriding that pin.
+anthropic>=0.69.0
 python-socketio>=5.14.2
 uvicorn>=0.38.0
 watchdog==6.0.0
