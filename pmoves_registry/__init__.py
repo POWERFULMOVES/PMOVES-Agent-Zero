@@ -217,7 +217,7 @@ async def check_service_health(
         async with httpx.AsyncClient(timeout=timeout) as client:
             response = await client.get(info.health_check_url)
             return response.status_code == 200
-    except Exception:
+    except Exception:  # noqa: BLE001 - a health probe reports False on ANY failure; narrowing would let an unexpected error escape
         return False
 
 
