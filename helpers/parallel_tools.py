@@ -23,6 +23,7 @@ PARALLEL_WORKER_JOB_KEY = "_parallel_job_id"
 PARALLEL_WORKER_KIND_KEY = "_parallel_worker_kind"
 
 CHILD_PARENT_CONTEXT_ID_KEY = "parent_context_id"
+CHILD_PARENT_AGENT_NUMBER_KEY = "parent_agent_number"
 CHILD_PARENT_CONTEXT_KIND_KEY = "parent_context_kind"
 CHILD_PARENT_CONTEXT_LABEL_KEY = "parent_context_label"
 CHILD_PARALLEL_JOB_ID_KEY = "parallel_job_id"
@@ -53,6 +54,7 @@ class ParallelJob:
     tool_name: str
     tool_args: dict[str, Any]
     kind: JobKind
+    parent_agent: "Agent | None" = field(default=None, repr=False)
     state: JobState = "pending"
     created_at: float = field(default_factory=time.time)
     started_at: float | None = None
@@ -208,6 +210,7 @@ async def start_parallel_jobs(
             tool_name=call.tool_name,
             tool_args=call.tool_args,
             kind=kind,
+            parent_agent=agent,
         )
         job_store[job.id] = job
         jobs.append(job)
@@ -218,6 +221,8 @@ async def start_parallel_jobs(
             job.started_at = time.time()
             task = DeferredTask(thread_name=THREAD_BACKGROUND)
             job.deferred_task = task
+            if _parallel_worker_kind(agent) == "subordinate" and context.task:
+                context.task.add_child_task(task)
             task.start_task(_run_parallel_job, context.id, job.id)
         except Exception as exc:
             _finish_job(job, "error", error=str(exc))
@@ -410,34 +415,39 @@ async def _run_parallel_job(parent_context_id: str, job_id: str) -> None:
 
 
 async def _run_subordinate_context_job(parent_context_id: str, job: ParallelJob) -> str:
-    from agent import AgentContext, AgentContextType, UserMessage
-    from helpers import message_queue, persist_chat
+    from agent import AgentContext
     from helpers.tool_policy import ensure_tool_allowed
-    from tools.call_subordinate import _validate_subordinate_profile
+    from tools.call_subordinate import get_or_create_subordinate, run_subordinate
 
     parent_context = AgentContext.get(parent_context_id)
     if not parent_context:
         raise ValueError("Parent context not found.")
-    ensure_tool_allowed(parent_context.agent0, "call_subordinate")
+    parent_agent = job.parent_agent or parent_context.agent0
+    ensure_tool_allowed(parent_agent, "call_subordinate")
 
     args = job.tool_args
     message = str(args.get("message") or "").strip()
     if not message:
         raise ValueError("call_subordinate requires `tool_args.message`.")
 
-    profile = _validate_subordinate_profile(
-        parent_context.agent0,
-        str(args.get("profile") or args.get("agent_profile") or ""),
+    context_id = str(args.get("context_id") or args.get("agent_id") or "").strip()
+    reset = args.get("reset", False)
+    slot = (
+        job.id
+        if coerce_bool(reset, False) and not context_id
+        else "default"
     )
     attachments = args.get("attachments") if isinstance(args.get("attachments"), list) else []
-    attachments = [str(item) for item in attachments]
-
-    child_name = _subordinate_context_name(job)
-    worker_context = AgentContext(
-        config=_clone_config(parent_context.config, profile=profile),
-        name=child_name,
-        type=AgentContextType.USER,
+    subordinate = get_or_create_subordinate(
+        parent_agent,
+        profile=str(args.get("profile") or args.get("agent_profile") or ""),
+        reset=reset,
+        context_id=context_id,
+        name=str(args.get("name") or ""),
+        message=message,
+        slot=slot,
     )
+    worker_context = subordinate.context
     job.worker_context_id = worker_context.id
     if job.deferred_task:
         worker_context.task = job.deferred_task
@@ -445,30 +455,9 @@ async def _run_subordinate_context_job(parent_context_id: str, job: ParallelJob)
     worker_context.set_data(PARALLEL_WORKER_PARENT_CONTEXT_KEY, parent_context.id)
     worker_context.set_data(PARALLEL_WORKER_JOB_KEY, job.id)
     worker_context.set_data(PARALLEL_WORKER_KIND_KEY, job.kind)
-    worker_context.set_output_data(CHILD_PARENT_CONTEXT_ID_KEY, parent_context.id)
-    worker_context.set_output_data(CHILD_PARENT_CONTEXT_KIND_KEY, "parallel")
-    worker_context.set_output_data(CHILD_PARENT_CONTEXT_LABEL_KEY, child_name)
     worker_context.set_output_data(CHILD_PARALLEL_JOB_ID_KEY, job.id)
     worker_context.set_output_data(CHILD_PARALLEL_TOOL_NAME_KEY, job.tool_name)
-    _copy_project(parent_context, worker_context)
-
-    system_prompt = _subordinate_worker_system_prompt(profile)
-    message_queue.log_user_message(worker_context, message, attachments, source=" (parallel)")
-    worker_context.agent0.hist_add_user_message(
-        UserMessage(
-            message=message,
-            attachments=attachments,
-            system_message=[system_prompt],
-        )
-    )
-    persist_chat.save_tmp_chat(worker_context)
-
-    try:
-        result = await worker_context.agent0.monologue()
-        worker_context.agent0.history.new_topic()
-        return result
-    finally:
-        persist_chat.save_tmp_chat(worker_context)
+    return await run_subordinate(parent_agent, subordinate, message, attachments)
 
 
 async def _run_direct_tool_job(parent_context_id: str, job: ParallelJob) -> str:
@@ -711,16 +700,13 @@ def _job_snapshot(job: ParallelJob, *, include_result: bool) -> dict[str, Any]:
     return data
 
 
-def _clone_config(config: "AgentConfig", *, profile: str = "") -> "AgentConfig":
+def _clone_config(config: "AgentConfig") -> "AgentConfig":
     try:
-        cloned = replace(
+        return replace(
             config,
             knowledge_subdirs=list(config.knowledge_subdirs),
             additional=dict(config.additional),
         )
-        if profile:
-            cloned.profile = profile
-        return cloned
     except Exception:
         return config
 
@@ -734,27 +720,3 @@ def _copy_project(parent_context: "AgentContext", worker_context: "AgentContext"
             projects.activate_project(worker_context.id, project_name, mark_dirty=False)
     except Exception:
         pass
-
-
-def _subordinate_worker_system_prompt(profile: str) -> str:
-    lines = [
-        "You are running as an isolated parallel worker for a parent Agent Zero chat.",
-        "Return a concise final textual summary for the parent. Artifacts and files are supplementary, not a substitute for the textual result.",
-    ]
-    if profile:
-        lines.append(f"Act with the `{profile}` profile's expertise and priorities.")
-    return "\n".join(lines)
-
-
-def _subordinate_context_name(job: ParallelJob) -> str:
-    name = str(job.tool_args.get("name") or "").strip()
-    if name:
-        return name
-    message = str(job.tool_args.get("message") or "").strip()
-    label = _short_label(message)
-    return label or f"Parallel subordinate {job.index + 1}"
-
-
-def _short_label(text: str, limit: int = 80) -> str:
-    compact = " ".join(text.split())
-    return compact[:limit].rstrip()

@@ -1659,10 +1659,18 @@ def test_office_runtime_dependency_install_waits_out_apt_locks(monkeypatch):
 
 
 def test_desktop_runtime_packages_include_libreoffice_for_desktop_status():
+    install_additional = (
+        PROJECT_ROOT / "docker" / "run" / "fs" / "ins" / "install_additional.sh"
+    ).read_text(encoding="utf-8")
+
     assert set(desktop_hooks.LIBREOFFICE_RUNTIME_PACKAGES).issubset(desktop_hooks.RUNTIME_PACKAGES)
     assert "libreoffice-writer" in desktop_hooks.RUNTIME_PACKAGES
     assert "libreoffice-calc" in desktop_hooks.RUNTIME_PACKAGES
     assert "libreoffice-impress" in desktop_hooks.RUNTIME_PACKAGES
+    assert desktop_hooks.GTK_RUNTIME_PACKAGE in desktop_hooks.RUNTIME_PACKAGES
+    assert "xpra-client" in desktop_hooks.RUNTIME_PACKAGES
+    assert "xpra-client-gtk3" in desktop_hooks.RUNTIME_PACKAGES
+    assert f'XPRA_VERSION="{desktop_hooks.XPRA_VERSION}"' in install_additional
 
 
 def test_desktop_cleanup_moves_retired_state_to_plugin_state(tmp_path, monkeypatch):
@@ -1756,8 +1764,8 @@ def test_cleanup_hook_enables_official_xpra_repo_when_kali_lacks_candidate(tmp_p
     assert errors == []
     assert installed == ["xpra"]
     assert keyring.read_bytes() == b"xpra-key"
-    assert "URIs: https://xpra.org/beta" in source.read_text(encoding="utf-8")
-    assert "Suites: sid" in source.read_text(encoding="utf-8")
+    assert "URIs: https://xpra.org\n" in source.read_text(encoding="utf-8")
+    assert "Suites: trixie" in source.read_text(encoding="utf-8")
     assert calls.count(["apt-get", "update"]) == 2
     assert calls[-1][:4] == ["apt-get", "install", "-y", "--no-install-recommends"]
 
@@ -1803,24 +1811,19 @@ def test_cleanup_hook_uses_trixie_xpra_components_for_kali_arm64(tmp_path, monke
     assert "URIs: https://xpra.org\n" in source_text
     assert "Suites: trixie" in source_text
     assert "xpra" not in calls[-1]
-    assert calls[-1][-3:] == ["xpra-server", "xpra-x11", "xpra-html5"]
+    assert calls[-1][-3:] == [
+        f"xpra-server={desktop_hooks.XPRA_VERSION}",
+        f"xpra-x11={desktop_hooks.XPRA_VERSION}",
+        "xpra-html5",
+    ]
 
 
-def test_cleanup_hook_skips_optional_xpra_client_codec_conflict(monkeypatch):
+def test_cleanup_hook_installs_matching_xpra_client_stack(monkeypatch):
     calls = []
     installed_state = {
-        "xpra-server": True,
         "xpra-client": False,
         "xpra-client-gtk3": False,
-        "xpra-x11": True,
-        "xpra-html5": True,
     }
-    codec_error = (
-        "E: Unable to satisfy dependencies. Reached two conflicting assignments:\n"
-        "   1. xpra-codecs:arm64=6.4.3-r0-1 is selected for install\n"
-        "   2. xpra-codecs:arm64 Depends libvpx9 (>= 1.12.0)\n"
-        "      but none of the choices are installable: [no choices]"
-    )
 
     monkeypatch.setattr(desktop_hooks.os, "geteuid", lambda: 0)
     monkeypatch.setattr(
@@ -1831,16 +1834,18 @@ def test_cleanup_hook_skips_optional_xpra_client_codec_conflict(monkeypatch):
     monkeypatch.setattr(
         desktop_hooks,
         "RUNTIME_PACKAGES",
-        ("xpra-server", "xpra-client", "xpra-client-gtk3", "xpra-x11", "xpra-html5"),
+        ("xpra-client", "xpra-client-gtk3"),
     )
     monkeypatch.setattr(desktop_hooks, "_package_installed", lambda package: installed_state.get(package, False))
+    monkeypatch.setattr(desktop_hooks, "_package_version", lambda package: "6.5.2-r0-1")
 
     def fake_run(command, **kwargs):
         calls.append(command)
         if command[:2] == ["apt-cache", "policy"]:
-            return types.SimpleNamespace(returncode=0, stdout="Candidate: 6.4.3-r0-1\n", stderr="")
+            return types.SimpleNamespace(returncode=0, stdout="Candidate: 6.5.3-r0-1\n", stderr="")
         if command[:2] == ["apt-get", "install"]:
-            return types.SimpleNamespace(returncode=100, stdout="", stderr=codec_error)
+            installed_state["xpra-client"] = True
+            installed_state["xpra-client-gtk3"] = True
         return types.SimpleNamespace(returncode=0, stdout="", stderr="")
 
     monkeypatch.setattr(desktop_hooks.subprocess, "run", fake_run)
@@ -1849,9 +1854,49 @@ def test_cleanup_hook_skips_optional_xpra_client_codec_conflict(monkeypatch):
 
     desktop_hooks._ensure_runtime_dependencies(installed, errors)
 
-    assert installed == []
+    assert installed == ["xpra-client", "xpra-client-gtk3"]
     assert errors == []
-    assert calls[-1][-2:] == ["xpra-client", "xpra-client-gtk3"]
+    assert calls[-1][-2:] == ["xpra-client=6.5.2-r0-1", "xpra-client-gtk3=6.5.2-r0-1"]
+
+
+def test_cleanup_hook_repairs_kali_gtk_from_rolling_source(monkeypatch):
+    calls = []
+    source_text = []
+    installed_state = {desktop_hooks.GTK_RUNTIME_PACKAGE: False}
+
+    monkeypatch.setattr(desktop_hooks.os, "geteuid", lambda: 0)
+    monkeypatch.setattr(
+        desktop_hooks.shutil,
+        "which",
+        lambda name: f"/usr/bin/{name}" if name in {"apt-get", "dpkg-query"} else "",
+    )
+    monkeypatch.setattr(desktop_hooks, "RUNTIME_PACKAGES", (desktop_hooks.GTK_RUNTIME_PACKAGE,))
+    monkeypatch.setattr(desktop_hooks, "_read_os_release", lambda: {"ID": "kali"})
+    monkeypatch.setattr(desktop_hooks, "_package_installed", lambda package: installed_state.get(package, False))
+
+    def fake_run(command, **kwargs):
+        calls.append(command)
+        source_option = next(
+            (item for item in command if item.startswith("Dir::Etc::sourcelist=")),
+            "",
+        )
+        if source_option:
+            source_text.append(Path(source_option.split("=", 1)[1]).read_text(encoding="utf-8"))
+        if "install" in command:
+            installed_state[desktop_hooks.GTK_RUNTIME_PACKAGE] = True
+        return types.SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(desktop_hooks.subprocess, "run", fake_run)
+    installed = []
+    errors = []
+
+    desktop_hooks._ensure_runtime_dependencies(installed, errors)
+
+    assert installed == [desktop_hooks.GTK_RUNTIME_PACKAGE]
+    assert errors == []
+    assert source_text == [desktop_hooks.KALI_ROLLING_SOURCE, desktop_hooks.KALI_ROLLING_SOURCE]
+    assert calls[0][-1] == "update"
+    assert calls[1][-2:] == ["--no-install-recommends", desktop_hooks.GTK_RUNTIME_PACKAGE]
 
 
 def test_cleanup_hook_reports_required_xpra_codec_conflict(monkeypatch):

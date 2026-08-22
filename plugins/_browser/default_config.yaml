@@ -8,7 +8,8 @@ default_homepage: "about:blank"
 # When the Browser surface is already open, keep it synced to agent Browser tool results.
 autofocus_active_page: true
 
-# Browser tab visibility in the WebUI:
+# Browser tab visibility in the WebUI. Both modes use the same internal
+# Chromium runtime and sign-in profile:
 # - per_context: each chat shows only its own Browser tabs.
 # - shared: show Browser tabs from all active chats.
 browser_tab_scope: "per_context"

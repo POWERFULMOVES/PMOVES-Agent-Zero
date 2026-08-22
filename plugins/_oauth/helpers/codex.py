@@ -670,6 +670,25 @@ def fetch_models() -> list[str]:
 def prepare_responses_body(body: dict[str, Any], *, force_stream: bool) -> dict[str, Any]:
     normalized = dict(body)
     settings = codex_config()
+    tools = normalized.get("tools")
+    if isinstance(tools, list):
+        normalized["tools"] = [
+            {
+                **tool,
+                "strict": True,
+                "parameters": {
+                    "type": "object",
+                    "properties": {"text": {"type": "string"}},
+                    "required": ["text"],
+                    "additionalProperties": False,
+                },
+            }
+            if isinstance(tool, dict)
+            and tool.get("type") == "function"
+            and tool.get("name") == "response"
+            else tool
+            for tool in tools
+        ]
     reasoning_effort = normalized.pop("reasoning_effort", None)
     reasoning = normalized.get("reasoning")
     if isinstance(reasoning, dict):
@@ -775,6 +794,7 @@ def collect_completed_response(response: requests.Response) -> dict[str, Any]:
     latest_error: Any = None
     text_pieces: list[str] = []
     latest_usage: dict[str, Any] | None = None
+    completed_items: dict[int, dict[str, Any]] = {}
     for event in iter_sse_events(response):
         data = event.get("data")
         if not data:
@@ -789,12 +809,27 @@ def collect_completed_response(response: requests.Response) -> dict[str, Any]:
             latest_error = parsed
             continue
         text_pieces.extend(extract_sse_text_deltas(parsed, event.get("event", "")))
+        if (parsed.get("type") or event.get("event")) == "response.output_item.done":
+            output_index = parsed.get("output_index")
+            item = parsed.get("item")
+            if isinstance(output_index, int) and isinstance(item, dict):
+                completed_items[output_index] = item
         usage = parsed.get("usage")
         if isinstance(usage, dict):
             latest_usage = usage
         candidate = parsed.get("response")
         if isinstance(candidate, dict):
             latest_response = candidate
+
+    if (
+        latest_response is not None
+        and completed_items
+        and not latest_response.get("output")
+    ):
+        latest_response = dict(latest_response)
+        latest_response["output"] = [
+            completed_items[index] for index in sorted(completed_items)
+        ]
 
     if text_pieces:
         text = "".join(text_pieces)

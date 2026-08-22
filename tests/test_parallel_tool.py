@@ -48,6 +48,7 @@ class _FakeContext:
         self.id = "ctx"
         self.data = {}
         self.log = _FakeLog()
+        self.task = None
 
     def get_data(self, key: str, recursive: bool = True):
         return self.data.get(key)
@@ -60,14 +61,29 @@ class _FakeAgent:
     def __init__(self) -> None:
         self.context = _FakeContext()
         self.agent_name = "A0"
+        self.number = 0
 
 
 class _FakeDeferredTask:
-    def __init__(self, *, ready: bool = False, alive: bool = True, result=None) -> None:
+    def __init__(
+        self,
+        *,
+        ready: bool = False,
+        alive: bool = True,
+        result=None,
+        thread_name=None,
+    ) -> None:
         self.ready = ready
         self.alive = alive
         self._result = result
         self.killed = 0
+        self.thread_name = thread_name
+        self.started = None
+        self.children = []
+
+    def start_task(self, func, *args):
+        self.started = (func, args)
+        return self
 
     def is_ready(self):
         return self.ready
@@ -81,6 +97,12 @@ class _FakeDeferredTask:
     def kill(self):
         self.killed += 1
         self.alive = False
+        for child in self.children:
+            child.kill()
+        self.children = []
+
+    def add_child_task(self, task, terminate_thread=False):
+        self.children.append(task)
 
 
 def test_normalize_parallel_tool_calls_accepts_normal_tool_request_shapes() -> None:
@@ -136,6 +158,20 @@ def test_normalize_parallel_tool_calls_accepts_json_string_array() -> None:
     assert calls[0].tool_args["profile"] == "researcher"
     assert calls[0].tool_args["reset"] is True
     assert calls[1].tool_args["message"] == "Research nuclear fusion news in Italian."
+
+
+def test_subordinate_prompts_share_reusable_tree_contract() -> None:
+    call_prompt = (PROJECT_ROOT / "prompts/agent.system.tool.call_sub.md").read_text(
+        encoding="utf-8"
+    )
+    parallel_prompt = (PROJECT_ROOT / "prompts/agent.system.tool.parallel.md").read_text(
+        encoding="utf-8"
+    )
+
+    assert "A0 creates A1 children, A1 creates A2 children" in call_prompt
+    assert "stable child ID" in call_prompt
+    assert "same child lifecycle here as it does top-level" in parallel_prompt
+    assert "each job's `context_id`" in parallel_prompt
 
 
 def test_normalize_parallel_tool_calls_rejects_nested_parallel() -> None:
@@ -473,6 +509,246 @@ async def test_parallel_subordinate_reuses_profile_validation(monkeypatch) -> No
 
     with pytest.raises(RepairableException, match="Agent profile 'ghost' not found"):
         await parallel_tools._run_subordinate_context_job("ctx", job)
+
+
+@pytest.mark.asyncio
+async def test_parallel_subordinates_are_distinct_reusable_a1_children(monkeypatch) -> None:
+    from agent import Agent, AgentConfig, AgentContext
+    from helpers import message_queue, persist_chat, tool_policy
+
+    parent_id = "ctx-parallel-a1-tree"
+    AgentContext.remove(parent_id)
+    parent = AgentContext(
+        AgentConfig(mcp_servers="", profile="agent0"),
+        id=parent_id,
+        set_current=False,
+    )
+
+    async def fake_monologue(agent):
+        return agent.agent_name
+
+    monkeypatch.setattr(Agent, "monologue", fake_monologue)
+    monkeypatch.setattr(tool_policy, "ensure_tool_allowed", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(message_queue, "log_user_message", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(persist_chat, "save_tmp_chat", lambda _context: None)
+
+    child_ids = []
+    try:
+        jobs = await parallel_tools.start_parallel_jobs(
+            parent.agent0,
+            [
+                parallel_tools.NormalizedToolCall(
+                    index=0,
+                    tool_name="call_subordinate",
+                    tool_args={"message": "left branch", "reset": True},
+                ),
+                parallel_tools.NormalizedToolCall(
+                    index=1,
+                    tool_name="call_subordinate",
+                    tool_args={"message": "right branch", "reset": True},
+                ),
+            ],
+        )
+        results = await parallel_tools.await_parallel_jobs(
+            parent.agent0,
+            [job.id for job in jobs],
+            timeout=10,
+        )
+        child_ids = [result["context_id"] for result in results]
+
+        assert [result["state"] for result in results] == ["success", "success"]
+        assert [result["result"] for result in results] == ["A1", "A1"]
+        assert len(set(child_ids)) == 2
+        assert set(parent.agent0.get_data("_subordinates")) == set(child_ids)
+        for child_id in child_ids:
+            child = AgentContext.get(child_id)
+            assert child is not None
+            assert child.agent0.number == 1
+            assert child.get_output_data("parent_context_id") == parent.id
+            assert child.get_output_data("parent_agent_number") == 0
+            assert child.get_output_data("parent_context_kind") == "subordinate"
+    finally:
+        for child_id in child_ids:
+            AgentContext.remove(child_id)
+        AgentContext.remove(parent_id)
+
+
+@pytest.mark.asyncio
+async def test_failed_parallel_subordinate_continues_directly_or_in_parallel(
+    monkeypatch,
+) -> None:
+    from agent import Agent, AgentConfig, AgentContext
+    from helpers import message_queue, persist_chat, tool_policy
+    from tools.call_subordinate import Delegation
+
+    parent_id = "ctx-parallel-resume-tree"
+    AgentContext.remove(parent_id)
+    parent = AgentContext(
+        AgentConfig(mcp_servers="", profile="agent0"),
+        id=parent_id,
+        set_current=False,
+    )
+    calls = {}
+
+    async def flaky_monologue(agent):
+        count = calls.get(agent.context.id, 0) + 1
+        calls[agent.context.id] = count
+        if count == 1:
+            raise RuntimeError("simulated API failure")
+        return f"{agent.agent_name} continuation {count}"
+
+    monkeypatch.setattr(Agent, "monologue", flaky_monologue)
+    monkeypatch.setattr(tool_policy, "ensure_tool_allowed", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(message_queue, "log_user_message", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(persist_chat, "save_tmp_chat", lambda _context: None)
+
+    child_id = ""
+    try:
+        failed = parallel_tools.ParallelJob(
+            id="callsubordin-failed",
+            parent_context_id=parent.id,
+            index=0,
+            tool_name="call_subordinate",
+            tool_args={"message": "remember ALPHA", "reset": True},
+            kind="subordinate",
+            parent_agent=parent.agent0,
+        )
+        parallel_tools._jobs_for_context(parent)[failed.id] = failed
+        await parallel_tools._run_parallel_job(parent.id, failed.id)
+        child_id = failed.worker_context_id or ""
+
+        assert failed.state == "error"
+        assert failed.error == "simulated API failure"
+        assert child_id
+        assert AgentContext.get(child_id).agent0.number == 1  # type: ignore[union-attr]
+
+        direct = Delegation(
+            parent.agent0,
+            "call_subordinate",
+            None,
+            {},
+            "",
+            None,
+        )
+        direct_result = await direct.execute(
+            message="continue after the API failure",
+            context_id=child_id,
+            reset=False,
+        )
+        assert direct_result.message == "A1 continuation 2"
+        assert direct_result.additional == {"context_id": child_id}
+
+        continued = parallel_tools.ParallelJob(
+            id="callsubordin-continued",
+            parent_context_id=parent.id,
+            index=0,
+            tool_name="call_subordinate",
+            tool_args={
+                "message": "continue once more",
+                "context_id": child_id,
+                "reset": False,
+            },
+            kind="subordinate",
+            parent_agent=parent.agent0,
+        )
+        parallel_tools._jobs_for_context(parent)[continued.id] = continued
+        await parallel_tools._run_parallel_job(parent.id, continued.id)
+
+        assert continued.state == "success"
+        assert continued.worker_context_id == child_id
+        assert continued.result == "A1 continuation 3"
+        assert calls == {child_id: 3}
+    finally:
+        if child_id:
+            AgentContext.remove(child_id)
+        AgentContext.remove(parent_id)
+
+
+@pytest.mark.asyncio
+async def test_parallel_a1_spawns_a2_with_same_lifecycle(monkeypatch) -> None:
+    from agent import Agent, AgentConfig, AgentContext
+    from helpers import message_queue, persist_chat, tool_policy
+
+    parent_id = "ctx-parallel-a2-tree"
+    AgentContext.remove(parent_id)
+    parent = AgentContext(
+        AgentConfig(mcp_servers="", profile="agent0"),
+        id=parent_id,
+        set_current=False,
+    )
+
+    async def fake_monologue(agent):
+        return agent.agent_name
+
+    monkeypatch.setattr(Agent, "monologue", fake_monologue)
+    monkeypatch.setattr(tool_policy, "ensure_tool_allowed", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(message_queue, "log_user_message", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(persist_chat, "save_tmp_chat", lambda _context: None)
+
+    child_ids = []
+    try:
+        a1_job = parallel_tools.ParallelJob(
+            id="callsubordin-a1",
+            parent_context_id=parent.id,
+            index=0,
+            tool_name="call_subordinate",
+            tool_args={"message": "be A1", "reset": True},
+            kind="subordinate",
+            parent_agent=parent.agent0,
+        )
+        a1_result = await parallel_tools._run_subordinate_context_job(parent.id, a1_job)
+        a1 = AgentContext.get(a1_job.worker_context_id or "").agent0  # type: ignore[union-attr]
+        child_ids.append(a1.context.id)
+
+        a2_job = parallel_tools.ParallelJob(
+            id="callsubordin-a2",
+            parent_context_id=a1.context.id,
+            index=0,
+            tool_name="call_subordinate",
+            tool_args={"message": "be A2", "reset": True},
+            kind="subordinate",
+            parent_agent=a1,
+        )
+        a2_result = await parallel_tools._run_subordinate_context_job(
+            a1.context.id, a2_job
+        )
+        a2_context = AgentContext.get(a2_job.worker_context_id or "")
+        child_ids.append(a2_context.id)  # type: ignore[union-attr]
+
+        assert a1_result == "A1"
+        assert a1.number == 1
+        assert a2_result == "A2"
+        assert a2_context.agent0.number == 2  # type: ignore[union-attr]
+        assert a2_context.get_output_data("parent_context_id") == a1.context.id  # type: ignore[union-attr]
+        assert a2_context.get_output_data("parent_agent_number") == 1  # type: ignore[union-attr]
+    finally:
+        for child_id in reversed(child_ids):
+            AgentContext.remove(child_id)
+        AgentContext.remove(parent_id)
+
+
+@pytest.mark.asyncio
+async def test_parallel_subordinate_owns_nested_parallel_tasks(monkeypatch) -> None:
+    monkeypatch.setattr(parallel_tools, "DeferredTask", _FakeDeferredTask)
+    agent = _FakeAgent()
+    parent_task = _FakeDeferredTask()
+    agent.context.task = parent_task
+    agent.context.set_data(parallel_tools.PARALLEL_WORKER_KIND_KEY, "subordinate")
+
+    jobs = await parallel_tools.start_parallel_jobs(
+        agent,  # type: ignore[arg-type]
+        [
+            parallel_tools.NormalizedToolCall(
+                index=0,
+                tool_name="call_subordinate",
+                tool_args={"message": "nested", "reset": True},
+            )
+        ],
+    )
+
+    assert parent_task.children == [jobs[0].deferred_task]
+    parent_task.kill()
+    assert jobs[0].deferred_task.killed == 1  # type: ignore[union-attr]
 
 
 @pytest.mark.asyncio

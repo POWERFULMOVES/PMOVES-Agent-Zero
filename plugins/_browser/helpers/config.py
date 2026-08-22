@@ -9,6 +9,7 @@ if TYPE_CHECKING:
 
 PLUGIN_NAME = "_browser"
 MODEL_PRESET_KEY = "model_preset"
+BROWSER_MODEL_ACTIVE_KEY = "_browser_model_active"
 DEFAULT_HOMEPAGE_KEY = "default_homepage"
 AUTOFOCUS_ACTIVE_PAGE_KEY = "autofocus_active_page"
 TAB_SCOPE_KEY = "browser_tab_scope"
@@ -30,11 +31,6 @@ DEFAULT_MAX_OPEN_TABS = 32
 MIN_MAX_OPEN_TABS = 1
 HARD_MAX_OPEN_TABS = 50
 DEFAULT_HOST_BROWSER_PRIVACY_POLICY = "allow"
-BASE_BROWSER_ARGS = [
-    "--no-sandbox",
-    "--disable-dev-shm-usage",
-    "--disable-gpu",
-]
 
 
 def _normalize_extension_paths(value: Any) -> list[str]:
@@ -324,10 +320,34 @@ def resolve_browser_model_selection(
     }
 
 
-def resolve_browser_model(agent: "Agent", settings: dict[str, Any] | None = None):
+def activate_browser_model(agent: "Agent") -> dict[str, Any]:
+    selection = resolve_browser_model_selection(agent=agent)
+    agent.set_data(
+        BROWSER_MODEL_ACTIVE_KEY,
+        selection["selected_preset_name"]
+        if selection["source_kind"] == "preset"
+        else "",
+    )
+    return selection
+
+
+def clear_browser_model(agent: "Agent") -> None:
+    agent.set_data(BROWSER_MODEL_ACTIVE_KEY, "")
+
+
+def browser_model_is_active(agent: "Agent") -> bool:
+    return bool(agent.get_data(BROWSER_MODEL_ACTIVE_KEY))
+
+
+def resolve_browser_model(
+    agent: "Agent",
+    settings: dict[str, Any] | None = None,
+    fallback: Any = None,
+):
     selection = resolve_browser_model_selection(agent=agent, settings=settings)
     if selection["source_kind"] == "main":
-        return agent.get_chat_model()
+        clear_browser_model(agent)
+        return fallback if fallback is not None else agent.get_chat_model()
 
     import models
     from plugins._model_config.helpers import model_config
@@ -388,7 +408,7 @@ def describe_browser_extensions(settings: dict[str, Any] | None) -> dict[str, An
 def build_browser_launch_config(settings: dict[str, Any] | None) -> dict[str, Any]:
     config = normalize_browser_config(settings)
     extensions = describe_browser_extensions(config)
-    args = list(BASE_BROWSER_ARGS)
+    args = ["--hide-crash-restore-bubble"]
     channel: str | None = None
     browser_mode = "chromium"
     proxy = None

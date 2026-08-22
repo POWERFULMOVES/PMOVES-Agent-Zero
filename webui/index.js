@@ -608,6 +608,7 @@ globalThis.newContext = newContext;
 
 export const setContext = function (id) {
   if (id == context) return;
+  inputStore.setDraftContext(id);
   context = id;
   if (id) beginChatLoading(id);
   else beginChatLoading(null);
