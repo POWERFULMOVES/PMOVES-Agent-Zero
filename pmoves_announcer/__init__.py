@@ -33,9 +33,9 @@ import asyncio
 import json
 import os
 from dataclasses import dataclass, field
-from datetime import datetime
-from typing import Any, Dict, Optional
+from datetime import datetime, timezone
 from enum import Enum
+from typing import Any
 
 
 class ServiceTier(str, Enum):
@@ -65,8 +65,8 @@ class ServiceAnnouncement:
     health_check: str
     tier: ServiceTier
     port: int
-    timestamp: str = field(default_factory=lambda: datetime.utcnow().isoformat())
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    timestamp: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    metadata: dict[str, Any] = field(default_factory=dict)
 
     # NATS subject for announcements
     SUBJECT: str = "services.announce.v1"
@@ -97,7 +97,7 @@ class ServiceAnnouncement:
             health_check=data["health_check"],
             tier=ServiceTier(data["tier"]),
             port=data["port"],
-            timestamp=data.get("timestamp", datetime.utcnow().isoformat()),
+            timestamp=data.get("timestamp", datetime.now(timezone.utc).isoformat()),
             metadata=data.get("metadata", {}),
         )
 
@@ -116,9 +116,9 @@ class ServiceAnnouncer:
         url: str,
         port: int,
         tier: ServiceTier | str,
-        health_check: str = None,
-        nats_url: str = None,
-        metadata: Dict[str, Any] = None,
+        health_check: str | None = None,
+        nats_url: str | None = None,
+        metadata: dict[str, Any] | None = None,
     ):
         """
         Initialize the service announcer.
@@ -155,7 +155,7 @@ class ServiceAnnouncer:
             health_check=self.health_check,
             tier=self.tier,
             port=self.port,
-            timestamp=datetime.utcnow().isoformat(),
+            timestamp=datetime.now(timezone.utc).isoformat(),
             metadata=self.metadata,
         )
 
@@ -180,7 +180,7 @@ class ServiceAnnouncer:
             await nc.close()
 
             return True
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 - announcing is best-effort; it must never break the caller
             print(f"Failed to announce service: {e}")
             return False
 
@@ -211,9 +211,9 @@ async def announce_service(
     url: str,
     port: int,
     tier: ServiceTier | str,
-    health_check: str = None,
-    nats_url: str = None,
-    metadata: Dict[str, Any] = None,
+    health_check: str | None = None,
+    nats_url: str | None = None,
+    metadata: dict[str, Any] | None = None,
 ) -> bool:
     """
     Convenience function to announce a service.
@@ -276,7 +276,7 @@ class BackgroundAnnouncer:
         self.announcer = announcer
         self.interval = interval
         self._running = False
-        self._task: Optional[asyncio.Task] = None
+        self._task: asyncio.Task | None = None
 
     async def _announce_loop(self):
         """Internal announcement loop."""
