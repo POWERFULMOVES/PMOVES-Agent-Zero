@@ -168,20 +168,35 @@ def test_responses_function_tools_add_empty_properties_to_mcp_schemas(
     ]
 
 
-def test_response_tool_native_contract_omits_wrapper_and_exposes_text():
-    prompt = (PROJECT_ROOT / "prompts" / "agent.system.tool.response.md").read_text(
-        encoding="utf-8"
-    )
+def test_response_tool_native_contract_stays_provider_neutral(monkeypatch):
+    prompt_root = PROJECT_ROOT / "agents" / "agent0" / "prompts"
+    prompt = (prompt_root / "agent.system.tool.response.md").read_text(encoding="utf-8")
 
     description = tool_policy.tool_prompt_description(
         prompt,
         "response",
         fallback="response",
     )
-    schema = responses_tools._schema_from_prompt(prompt)
+    monkeypatch.setattr(
+        responses_tools.subagents,
+        "get_paths",
+        lambda *args, **kwargs: [str(prompt_root)],
+    )
+    monkeypatch.setattr(
+        responses_tools,
+        "_include_local_tool_prompt",
+        lambda agent, tool_name: True,
+    )
+    monkeypatch.setattr(responses_tools, "_vision_tool_prompt", lambda agent: "")
+    monkeypatch.setattr(responses_tools, "_mcp_tools", lambda agent: [])
+    tools, _name_map = responses_tools.build_responses_function_tools(
+        FakeAgent(prompt_root)
+    )
+    response_tool = next(tool for tool in tools if tool["name"] == "response")
 
     assert description == "final answer to user"
-    assert schema["properties"] == {"text": {"type": "string"}}
+    assert response_tool["parameters"] == responses_tools._schema_from_prompt(prompt)
+    assert "strict" not in response_tool
 
 
 def test_complex_prompt_args_are_not_guessed_as_string_schemas():

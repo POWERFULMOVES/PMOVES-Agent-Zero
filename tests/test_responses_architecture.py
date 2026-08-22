@@ -249,7 +249,9 @@ async def test_transport_downgrades_unsupported_builtin_tools(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_unified_turn_captures_response_id_without_stop_request(monkeypatch):
+async def test_unified_turn_keeps_streamed_call_when_completion_omits_output(
+    monkeypatch,
+):
     stream = _AsyncEventStream(
         [
             {
@@ -274,15 +276,7 @@ async def test_unified_turn_captures_response_id_without_stop_request(monkeypatc
                 "type": "response.completed",
                 "response": {
                     "id": "resp_1",
-                    "output": [
-                        {
-                            "type": "function_call",
-                            "id": "fc_1",
-                            "call_id": "call_1",
-                            "name": "lookup",
-                            "arguments": '{"q":"a0"}',
-                        }
-                    ],
+                    "output": [],
                 },
             },
         ]
@@ -315,6 +309,7 @@ async def test_unified_turn_captures_response_id_without_stop_request(monkeypatc
     assert stream.closed is False
     assert result.response_id == "resp_1"
     assert result.function_calls[0].call_id == "call_1"
+    assert result.function_calls[0].arguments == {"q": "a0"}
 
 
 @pytest.mark.asyncio

@@ -121,7 +121,7 @@ class PluginUpdateInfo(BaseModel):
 
 def register_watchdogs():
 
-    def on_plugin_change(events: list[WatchItem]):
+    def on_plugin_change(events: list[WatchItem], frontend_reload: bool = True):
         plugin_names: list[str] = []
         for path, _event in events:
             path = path.replace("\\", "/")
@@ -132,7 +132,11 @@ def register_watchdogs():
                 plugin_names.append(plugin_name)
         print_style.PrintStyle.debug("Plugins watchdog triggered", plugin_names)
         python_change = any(path.endswith('.py') for path, _event in events)
-        after_plugin_change(plugin_names or None, python_change=python_change)
+        after_plugin_change(
+            plugin_names or None,
+            python_change=python_change,
+            frontend_reload=frontend_reload,
+        )
 
     relevant_patterns = ["**/extensions/**/*", TOGGLE_FILE_PATTERN, HOOKS_SCRIPT]
 
@@ -162,7 +166,7 @@ def register_watchdogs():
             *expand_patterns(f"*/{projects.PROJECT_META_DIR}/plugins/"),
             *expand_patterns(f"*/{projects.PROJECT_META_DIR}/agents/*/plugins/"),
         ],
-        handler=on_plugin_change,
+        handler=lambda events: on_plugin_change(events, frontend_reload=False),
     )
 
     # add watchdogs for plugin overrides in /agents/plugins and /usr/agents/plugins
@@ -173,16 +177,21 @@ def register_watchdogs():
             files.get_abs_path(subagents.USER_AGENTS_DIR),
         ],
         patterns=[*expand_patterns(f"*/plugins/*/")],
-        handler=on_plugin_change,
+        handler=lambda events: on_plugin_change(events, frontend_reload=False),
     )
 
 
 @extension.extensible
-def after_plugin_change(plugin_names: list[str] | None = None, python_change:bool=False):
+def after_plugin_change(
+    plugin_names: list[str] | None = None,
+    python_change: bool = False,
+    frontend_reload: bool = True,
+):
     clear_plugin_cache(plugin_names)
     if python_change:
         refresh_plugin_modules(plugin_names)
-    send_frontend_reload_notification(plugin_names)
+    if frontend_reload:
+        send_frontend_reload_notification(plugin_names)
 
 
 def refresh_plugin_modules(plugin_names: list[str] | None = None):
@@ -582,7 +591,9 @@ def toggle_plugin(
         files.write_file(enabled_file, "")
     else:
         files.write_file(disabled_file, "")
-    after_plugin_change([plugin_name])
+    after_plugin_change(
+        [plugin_name], frontend_reload=not (project_name or agent_profile)
+    )
 
 
 @extension.extensible

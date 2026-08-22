@@ -205,6 +205,12 @@ class UiServerRuntime:
             handlers.serve_extension_asset,
             methods=["GET"],
         )
+        self.webapp.add_url_rule(
+            "/usr/extensions/webui/<path:asset_path>",
+            "serve_user_extension_asset",
+            handlers.serve_user_extension_asset,
+            methods=["GET"],
+        )
         self._routes_registered = True
 
     def register_transport_handlers(self) -> None:
@@ -403,9 +409,19 @@ class UiRouteHandlers:
 
     @requires_auth
     async def serve_extension_asset(self, asset_path):
-        exts = files.get_abs_path("extensions/webui")
-        path = files.get_abs_path(exts, asset_path)
-        if not files.is_in_dir(path, exts):
+        return self._serve_extension_asset(
+            files.get_abs_path("extensions/webui"), asset_path
+        )
+
+    @requires_auth
+    async def serve_user_extension_asset(self, asset_path):
+        return self._serve_extension_asset(
+            files.get_abs_path(files.USER_DIR, "extensions/webui"), asset_path
+        )
+
+    def _serve_extension_asset(self, extension_dir, asset_path):
+        path = files.get_abs_path(extension_dir, asset_path)
+        if not files.is_in_dir(path, extension_dir):
             return Response("Access denied", 403)
         return send_file(path)
 

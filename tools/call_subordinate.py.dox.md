@@ -12,11 +12,13 @@
 - `call_subordinate.py.dox.md` owns durable notes about responsibilities, contracts, side effects, and verification for that implementation.
 - Classes:
 - `Delegation` (`Tool`)
-  - `async execute(self, message=..., reset=..., **kwargs)`
+  - `async execute(self, message=..., reset=..., context_id=..., **kwargs)`
   - `get_log_object(self)`
 - Top-level functions:
 - `_subordinate_profile_labels(agent: Agent) -> dict[str, str]`
 - `_validate_subordinate_profile(agent: Agent, profile: str) -> str`
+- `get_or_create_subordinate(...) -> Agent`
+- `run_subordinate(...) -> str`
 
 ## Runtime Contracts
 
@@ -26,12 +28,20 @@
 - `Delegation` defines `execute(...)`.
 - Observed side-effect areas: filesystem writes, settings/state persistence.
 - `profile`/`agent_profile` values are validated against available profile keys before use; unknown profiles raise `RepairableException` so the agent can retry with a real profile.
-- Supplying a different profile for an existing subordinate without `reset=true` raises `RepairableException` instead of silently continuing the old subordinate.
+- Direct and parallel calls use the same creation, continuation, message, history, and persistence functions in this module.
+- Every fresh child is `Agent(parent.number + 1, ...)` in its own persisted child-chat context, so sibling A1 agents can each create their own A2 descendants without sharing streaming state.
+- `reset=true` creates a fresh child. `reset=false` continues the caller's default child or the exact child named by `context_id`.
+- Child context IDs are accepted only when their persisted parent context, parent agent number, and child depth match the caller.
+- Supplying a different profile for an existing child without creating a fresh child raises `RepairableException` instead of silently changing its profile.
+- Active parallel children cannot be continued concurrently; await or cancel their job first.
+- Child contexts inherit the caller's project and selected chat-model override, are saved before execution and again on exit, and remain reusable after model/API failures.
+- The direct tool result includes `context_id`; parallel job snapshots expose the same stable child ID separately from their per-invocation job ID.
+- Existing same-context linear subordinates remain reusable for saved-chat compatibility, but new children use child contexts and a private per-parent registry.
 - Imported dependency areas include: `agent`, `extensions.python.hist_add_tool_result`, `helpers`, `helpers.errors`, `helpers.tool`.
 
 ## Key Concepts
 
-- Important called helpers/classes observed in the source: `self.agent.get_data`, `projects.get_context_project_name`, `subagents.get_available_agents_dict`, `RepairableException`, `initialize_agent`, `subordinate.hist_add_user_message`, `subordinate.history.new_topic`, `Response`, `self.agent.context.log.log`, `Agent`, `sub.set_data`, `self.agent.set_data`, `UserMessage`, `subordinate.monologue`, `self.agent.read_prompt`, `str.lower.strip`, `str.lower`.
+- Important called helpers/classes observed in the source: `AgentContext.all`, `projects.get_context_project_name`, `projects.activate_project`, `subagents.get_available_agents_dict`, `RepairableException`, `initialize_agent`, `message_queue.log_user_message`, `persist_chat.save_tmp_chat`, `UserMessage`, `subordinate.monologue`, and `subordinate.history.new_topic`.
 - Keep request/response, tool, or helper semantics documented here at the same time as source changes.
 
 ## Work Guidance
@@ -46,6 +56,7 @@
 - Related tests observed by source search:
   - `tests/test_default_prompt_budget.py`
   - `tests/test_subagent_profiles.py`
+  - `tests/test_parallel_tool.py`
 
 ## Child DOX Index
 

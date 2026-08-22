@@ -26,11 +26,11 @@
 - Normalization accepts full agent-reply-shaped objects when `tool_name` and `tool_args` are present; non-contract planning fields such as `thoughts` or `headline` are ignored.
 - `tool_calls` should be an array, but normalization also accepts a valid JSON string encoding of that array to recover provider/model stringification.
 - Normalization rejects `document_query` and `response` inside `parallel`: document parsing and Q&A must run sequentially, while `response` must remain top-level so it can end the message loop.
-- `call_subordinate` jobs first enforce the parent profile's delegation policy
-  and validate the requested profile through the sequential delegation owner,
-  then run in isolated child chat contexts tagged with parent-chat metadata;
-  they must not be added to the scheduler task list and may use normal child-chat
-  tools, including `parallel`.
+- `call_subordinate` jobs first enforce the actual calling agent's delegation policy, then call the same creation and execution functions as direct delegation in `tools/call_subordinate.py`; this helper does not construct or prompt a second kind of subordinate.
+- Fresh parallel sibling calls create distinct `parent.number + 1` child agents. Their job snapshots expose stable `context_id` values that direct or parallel `reset=false` calls can continue after success or failure.
+- Jobs retain their actual parent agent so parallel calls made by A1 create A2 rather than falling back to a context's A0.
+- Subordinate child chats are tagged with job metadata, remain outside the scheduler task list, and may use normal child-chat tools including `parallel`.
+- Nested parallel jobs started by a parallel subordinate are registered as child `DeferredTask` instances so stopping the ancestor also stops its descendants.
 - Direct tool jobs run in isolated background contexts and are blocked from recursively invoking `parallel`.
 - Direct tool background context cleanup removes both the in-memory context and any transient chat folder left on disk.
 - Parent-visible child log items are created for each wrapped call so the WebUI can inspect concurrent children separately while the wrapper result remains model-history-only.

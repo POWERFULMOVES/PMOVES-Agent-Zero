@@ -428,7 +428,13 @@ class LiteLLMTransport:
     ) -> LLMResult | None:
         if parser.completed_response is None:
             return None
-        return self._llm_result_from_response(parser.completed_response, request)
+        response = _object_to_dict(parser.completed_response)
+        output = _as_list(response.get("output"))
+        if parser.function_calls and not any(
+            _get_value(item, "type") == "function_call" for item in output
+        ):
+            response["output"] = [*output, *parser.function_calls.values()]
+        return self._llm_result_from_response(response, request)
 
     def _stream_result_from_chat_parser(
         self, parser: "ChatCompletionsStreamParser"

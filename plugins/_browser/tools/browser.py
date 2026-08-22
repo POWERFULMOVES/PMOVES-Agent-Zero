@@ -10,6 +10,7 @@ from typing import Any
 from helpers import files
 from helpers.print_style import PrintStyle
 from helpers.tool import Response, Tool
+from plugins._browser.helpers.config import activate_browser_model
 from plugins._browser.helpers.selector import get_tool_runtime
 
 
@@ -74,6 +75,10 @@ class Browser(Tool):
             action = "clipboard"
         else:
             action = str(action or self.method or "state").strip().lower().replace("-", "_")
+        try:
+            activate_browser_model(self.agent)
+        except Exception as exc:
+            PrintStyle.warning(f"Browser model preset could not be activated: {exc}")
         try:
             runtime = await get_runtime(self.agent.context.id, agent=self.agent)
         except Exception as exc:

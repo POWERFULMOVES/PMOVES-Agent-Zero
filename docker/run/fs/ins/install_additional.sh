@@ -12,80 +12,58 @@ if ! command -v apt-get >/dev/null 2>&1; then
   exit 0
 fi
 
-XPRA_PACKAGES=(xpra xpra-x11 xpra-html5)
+KALI_SUITE="kali-last-snapshot"
+LIBREOFFICE_VERSION="4:26.2.4.2-1"
+XPRA_VERSION="6.5.2-r0-1"
+arch="$(dpkg --print-architecture)"
 
-install_xpra_repo() {
-  local os_id=""
-  local codename=""
-  local uri="https://xpra.org"
-  local suite="trixie"
-  local arch
+XPRA_HTML5_VERSION="19-r1-1"
+if [ "$arch" = "arm64" ]; then
+  XPRA_HTML5_VERSION="21-r1-1"
+fi
 
-  arch="$(dpkg --print-architecture 2>/dev/null || echo amd64)"
+LIBREOFFICE_PACKAGES=(
+  "libreoffice-core=$LIBREOFFICE_VERSION"
+  "libreoffice-writer=$LIBREOFFICE_VERSION"
+  "libreoffice-calc=$LIBREOFFICE_VERSION"
+  "libreoffice-impress=$LIBREOFFICE_VERSION"
+  "libreoffice-gtk3=$LIBREOFFICE_VERSION"
+  "python3-uno=$LIBREOFFICE_VERSION"
+)
+XPRA_PACKAGES=(
+  "xpra-common=$XPRA_VERSION"
+  "xpra-server=$XPRA_VERSION"
+  "xpra-client=$XPRA_VERSION"
+  "xpra-client-gtk3=$XPRA_VERSION"
+  "xpra-x11=$XPRA_VERSION"
+  "xpra-html5=$XPRA_HTML5_VERSION"
+)
 
-  if [ -r /etc/os-release ]; then
-    # shellcheck disable=SC1091
-    . /etc/os-release
-    os_id="${ID:-}"
-    codename="${VERSION_CODENAME:-}"
-  fi
+apt-get update
+ATK_VERSION="$(dpkg-query -W -f='${Version}' libatk1.0-0t64)"
+ATK_GIR_PACKAGE="/tmp/gir1.2-atk-1.0_${ATK_VERSION}_${arch}.deb"
+(cd /tmp && apt-get download "gir1.2-atk-1.0=$ATK_VERSION")
 
-  if [ "$os_id" = "kali" ]; then
-    uri="https://xpra.org/beta"
-    suite="sid"
-  elif [ "$codename" = "sid" ] || [ "$codename" = "forky" ]; then
-    uri="https://xpra.org/beta"
-    suite="$codename"
-  elif [ -n "$codename" ]; then
-    suite="$codename"
-  fi
+for source in /etc/apt/sources.list /etc/apt/sources.list.d/kali.sources; do
+  [ ! -f "$source" ] || sed -i "s/kali-rolling/$KALI_SUITE/g" "$source"
+done
 
-  apt-get update
-  DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ca-certificates wget
-  configure_xpra_repo "$uri" "$suite" "$arch"
-  apt-get update
-
-  if ! xpra_install_check; then
-    echo "xpra packages are not installable from ${uri} ${suite} for ${arch}; falling back to https://xpra.org trixie"
-    XPRA_PACKAGES=(xpra-server xpra-x11 xpra-html5)
-    configure_xpra_repo "https://xpra.org" "trixie" "$arch"
-    apt-get update
-    if ! xpra_install_check; then
-      cat /tmp/xpra-install-check.log
-      exit 1
-    fi
-  fi
-}
-
-xpra_install_check() {
-  DEBIAN_FRONTEND=noninteractive apt-get install -s --no-install-recommends "${XPRA_PACKAGES[@]}" >/tmp/xpra-install-check.log 2>&1
-}
-
-configure_xpra_repo() {
-  local uri="$1"
-  local suite="$2"
-  local arch="$3"
-
-  wget -O /usr/share/keyrings/xpra.asc https://xpra.org/xpra.asc
-  cat >/etc/apt/sources.list.d/xpra.sources <<EOF
+apt-get update
+DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ca-certificates wget
+wget -O /usr/share/keyrings/xpra.asc https://xpra.org/xpra.asc
+cat >/etc/apt/sources.list.d/xpra.sources <<EOF
 Types: deb
-URIs: ${uri}
-Suites: ${suite}
+URIs: https://xpra.org
+Suites: trixie
 Components: main
 Signed-By: /usr/share/keyrings/xpra.asc
-Architectures: ${arch}
+Architectures: $arch
 EOF
-}
-
-install_xpra_repo
 apt-get update
 DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-  libreoffice-core \
-  libreoffice-writer \
-  libreoffice-calc \
-  libreoffice-impress \
-  libreoffice-gtk3 \
-  python3-uno \
+  "$ATK_GIR_PACKAGE" \
+  gir1.2-gtk-3.0 \
+  "${LIBREOFFICE_PACKAGES[@]}" \
   "${XPRA_PACKAGES[@]}" \
   xfce4-session \
   xfwm4 \
@@ -97,8 +75,12 @@ DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
   libglib2.0-bin \
   xfce4-terminal \
   x11-xserver-utils \
+  x11-utils \
+  x11-apps \
   xdotool \
+  xclip \
   xauth \
+  xvfb \
   dbus-x11 \
   fonts-dejavu \
   fonts-liberation \
@@ -108,4 +90,5 @@ DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
   fonts-noto-cjk \
   fonts-noto-color-emoji
 
+rm -f "$ATK_GIR_PACKAGE"
 rm -rf /var/lib/apt/lists/*
