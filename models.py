@@ -1,7 +1,9 @@
 from dataclasses import dataclass, field
 from enum import Enum
+import json
 import logging
 import os
+import threading
 from typing import (
     Any,
     Awaitable,
@@ -835,6 +837,23 @@ class LiteLLMEmbeddingWrapper(Embeddings):
         return item.get("embedding") if isinstance(item, dict) else item.embedding  # type: ignore
 
 
+_LOCAL_EMBEDDING_MODELS: dict[tuple[str, str], SentenceTransformer] = {}
+_LOCAL_EMBEDDING_MODELS_LOCK = threading.Lock()
+
+
+def _get_local_embedding_model(
+    model: str, kwargs: dict[str, Any]
+) -> SentenceTransformer:
+    key = (model, json.dumps(kwargs, sort_keys=True, default=repr))
+    with _LOCAL_EMBEDDING_MODELS_LOCK:
+        cached = _LOCAL_EMBEDDING_MODELS.get(key)
+        if cached is None:
+            cached = SentenceTransformer(model, **kwargs)
+            _LOCAL_EMBEDDING_MODELS.clear()
+            _LOCAL_EMBEDDING_MODELS[key] = cached
+        return cached
+
+
 class LocalSentenceTransformerWrapper(Embeddings):
     """Local wrapper for sentence-transformers models to avoid HuggingFace API calls"""
 
@@ -863,7 +882,7 @@ class LocalSentenceTransformerWrapper(Embeddings):
         }
         st_kwargs = {k: v for k, v in (kwargs or {}).items() if k in st_allowed_keys}
 
-        self.model = SentenceTransformer(model, **st_kwargs)
+        self.model = _get_local_embedding_model(model, st_kwargs)
         self.model_name = model
         self.a0_model_conf = model_config
 

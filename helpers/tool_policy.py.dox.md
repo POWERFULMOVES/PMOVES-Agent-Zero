@@ -34,6 +34,8 @@
 - Missing policy inherits standard access. A custom policy records independent
   defaults for local/plugin tools and canonical MCP tools; explicit allowed or
   blocked IDs take precedence over either default.
+- Inherited prompt policy returns tool text unchanged without inventorying or
+  resolving individual tools; only custom policy pays the filtering cost.
 - The `response` capability is a framework-required invariant: profile policy
   cannot disable it, and the editor does not list it as a configurable tool.
 - `vision_load` remains owned by the active chat model's vision configuration;

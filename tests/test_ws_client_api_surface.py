@@ -39,3 +39,42 @@ def test_websocket_js_exports_minimal_namespaced_api_surface() -> None:
 
     assert "broadcast" not in exports
     assert "requestAll" not in exports
+
+
+def test_completed_state_push_cannot_overwrite_disconnected_mode() -> None:
+    source = (
+        PROJECT_ROOT / "webui" / "components" / "sync" / "sync-store.js"
+    ).read_text(encoding="utf-8")
+
+    apply_end = source.split("await applySnapshot(data.snapshot", 1)[1].split(
+        'this._setMode(SYNC_MODES.HEALTHY, "push applied");', 1
+    )[0]
+    assert "if (!stateSocket.isConnected()) return;" in apply_end
+
+
+def test_state_push_handlers_are_serialized() -> None:
+    source = (
+        PROJECT_ROOT / "webui" / "components" / "sync" / "sync-store.js"
+    ).read_text(encoding="utf-8")
+
+    subscription = source.split('stateSocket.on("state_push"', 1)[1].split(
+        'debug("[syncStore] subscribed to state_push")', 1
+    )[0]
+    assert "this._pushQueue = this._pushQueue" in subscription
+    assert ".then(() => this._handlePush(envelope))" in subscription
+
+
+def test_partial_snapshot_retains_sidebar_collections_and_extension_shape() -> None:
+    source = (PROJECT_ROOT / "webui" / "index.js").read_text(encoding="utf-8")
+    request_builder = source.split(
+        "export function buildStateRequestPayload", 1
+    )[1].split("export async function applySnapshot", 1)[0]
+
+    assert "collections_delta: true" in request_builder
+    assert "const hasCollections =" in source
+    assert "Array.isArray(snapshot.contexts) && Array.isArray(snapshot.tasks)" in source
+    assert "snapshot: extensionSnapshot" in source
+    assert "contexts: chatsStore.contexts" in source
+    assert "tasks: tasksStore.tasks" in source
+    assert "if (hasCollections)" in source
+    assert "snapshot.contexts || []" not in source

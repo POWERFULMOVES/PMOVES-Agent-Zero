@@ -65,6 +65,7 @@ class ParallelJob:
     log_id: str = field(default_factory=lambda: str(uuid.uuid4()))
     log_item: "LogItem | None" = field(default=None, repr=False)
     deferred_task: DeferredTask | None = field(default=None, repr=False)
+    parent_history: list[tuple[Any, int]] = field(default_factory=list, repr=False)
 
     def elapsed(self) -> float:
         end = self.completed_at or time.time()
@@ -170,6 +171,26 @@ def is_parallel_worker(agent: "Agent | None") -> bool:
     return _parallel_worker_kind(agent) == "tool"
 
 
+def queue_parallel_parent_history(
+    agent: "Agent",
+    *,
+    content: Any,
+    tokens: int = 0,
+) -> bool:
+    if not is_parallel_worker(agent):
+        return False
+    context = agent.context
+    parent_context_id = str(
+        context.get_data(PARALLEL_WORKER_PARENT_CONTEXT_KEY) or ""
+    )
+    job_id = str(context.get_data(PARALLEL_WORKER_JOB_KEY) or "")
+    job = _get_job(parent_context_id, job_id)
+    if not job or job.kind != "tool":
+        return False
+    job.parent_history.append((content, tokens))
+    return True
+
+
 def _jobs_for_context(context: "AgentContext") -> dict[str, ParallelJob]:
     jobs = context.get_data(PARALLEL_JOBS_KEY)
     if not isinstance(jobs, dict):
@@ -242,7 +263,6 @@ async def await_parallel_jobs(
         raise ValueError("No `job_ids` were provided to await.")
 
     deadline = time.time() + timeout
-    known_job_ids = set(job_ids)
     wait_timed_out_job_ids: set[str] = set()
     while True:
         await refresh_parallel_jobs(agent)
@@ -271,11 +291,7 @@ async def await_parallel_jobs(
             snapshots.append(snapshot)
 
     if collect:
-        for job_id in known_job_ids:
-            job = _jobs_for_context(agent.context).get(job_id)
-            if job and job.state in TERMINAL_STATES:
-                await cleanup_parallel_job(agent, job)
-                _jobs_for_context(agent.context).pop(job_id, None)
+        await collect_parallel_jobs(agent, job_ids)
 
     return snapshots
 
@@ -326,6 +342,25 @@ async def cleanup_parallel_job(agent: "Agent", job: ParallelJob) -> None:
         await _remove_context(job.worker_context_id)
 
 
+async def collect_parallel_jobs(
+    agent: "Agent",
+    job_ids: list[str],
+    *,
+    promote_parent_history: bool = False,
+) -> None:
+    jobs = _jobs_for_context(agent.context)
+    for job_id in dict.fromkeys(job_ids):
+        job = jobs.get(job_id)
+        if not job or job.state not in TERMINAL_STATES:
+            continue
+        if promote_parent_history:
+            for content, tokens in job.parent_history:
+                agent.hist_add_message(False, content=content, tokens=tokens)
+            job.parent_history.clear()
+        await cleanup_parallel_job(agent, job)
+        jobs.pop(job_id, None)
+
+
 async def build_parallel_jobs_extras(agent: "Agent") -> str:
     await refresh_parallel_jobs(agent)
     jobs = [
@@ -364,7 +399,7 @@ def format_started_jobs(jobs: list[ParallelJob]) -> str:
         "jobs": [_job_snapshot(job, include_result=False) for job in jobs],
         "instruction": "Use the parallel tool with job_ids to await or cancel these background jobs.",
     }
-    return json.dumps(payload, indent=2, ensure_ascii=False)
+    return json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
 
 
 def format_parallel_results(results: list[dict[str, Any]]) -> str:
@@ -393,7 +428,7 @@ def format_parallel_results(results: list[dict[str, Any]]) -> str:
             "Some jobs are still running. Call `parallel` with `action: \"await\"` "
             "and the listed `job_ids` to wait again, or `action: \"cancel\"` to stop them."
         )
-    return json.dumps(payload, indent=2, ensure_ascii=False)
+    return json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
 
 
 async def _run_parallel_job(parent_context_id: str, job_id: str) -> None:
@@ -477,10 +512,15 @@ async def _run_direct_tool_job(parent_context_id: str, job: ParallelJob) -> str:
         worker_context.set_data(PARALLEL_WORKER_PARENT_CONTEXT_KEY, parent_context_id)
         worker_context.set_data(PARALLEL_WORKER_JOB_KEY, job.id)
         worker_context.set_data(PARALLEL_WORKER_KIND_KEY, job.kind)
+        worker_context.set_data(
+            "chat_model_override",
+            parent_context.get_data("chat_model_override"),
+        )
         job.worker_context_id = worker_context.id
         _copy_project(parent_context, worker_context)
 
         worker_agent = worker_context.agent0
+        worker_agent.last_user_message = parent_context.agent0.last_user_message
         worker_agent.loop_data = LoopData()
         return await execute_tool_call(
             worker_agent,

@@ -8,7 +8,7 @@ from types import SimpleNamespace
 import pytest
 
 from extensions.python.system_prompt import _11_tools_prompt, _13_skills_prompt
-from helpers import mcp_handler, responses_tools, tool_policy
+from helpers import files, mcp_handler, responses_tools, tool_policy
 from helpers.errors import RepairableException
 from plugins._tool_access.extensions.python.tool_execute_before._10_enforce_tool_policy import (
     EnforceToolPolicy,
@@ -130,6 +130,35 @@ def test_provider_native_schemas_omit_blocked_local_tool(
     )
 
     assert [tool["name"] for tool in tools] == ["allowed"]
+
+
+def test_inherited_prompt_filter_skips_tool_inventory(monkeypatch, tmp_path: Path):
+    agent = _Agent(tmp_path)
+    prompt = "### shell\nRun a command."
+    policy_reads = 0
+
+    def inherited_policy(_agent):
+        nonlocal policy_reads
+        policy_reads += 1
+        return {
+            "mode": "inherit",
+            "default": "allow",
+            "mcp_default": "allow",
+            "allowed": [],
+            "blocked": [],
+        }
+
+    monkeypatch.setattr(tool_policy, "get_policy", inherited_policy)
+    monkeypatch.setattr(
+        tool_policy,
+        "_policy_tool_names",
+        lambda _agent: pytest.fail("inherited policy inventoried tools"),
+    )
+
+    assert tool_policy.filter_tool_prompt(
+        agent, "agent.system.tool.shell.md", prompt
+    ) == prompt
+    assert policy_reads == 1
 
 
 def test_required_response_survives_default_block(monkeypatch, tmp_path: Path) -> None:
@@ -500,6 +529,10 @@ async def test_vision_tool_follows_chat_config_not_profile_policy(
         lambda agent: {"vision": True},
     )
     monkeypatch.setattr(
+        "plugins._model_config.helpers.model_config.get_vision_model_config",
+        lambda agent: {},
+    )
+    monkeypatch.setattr(
         tool_policy,
         "get_policy",
         lambda agent: _custom_policy(
@@ -515,6 +548,77 @@ async def test_vision_tool_follows_chat_config_not_profile_policy(
     assert "vision_load" in prompt
     assert [schema["name"] for schema in schemas] == ["vision_load"]
     assert tool_policy.resolve_tool(agent, "vision_load").source == "runtime-config"
+
+
+@pytest.mark.asyncio
+async def test_active_vision_model_uses_canonical_vision_prompt(
+    monkeypatch, tmp_path: Path
+) -> None:
+    _write_prompt(tmp_path, "agent.system.tools.md", "TOOLS\n{{tools}}")
+    _write_prompt(
+        tmp_path,
+        "agent.system.tools_vision.md",
+        "### vision_load\ncanonical vision\nargs: `paths`, `query`",
+    )
+    monkeypatch.setattr(tool_policy.subagents, "get_paths", _prompt_paths(tmp_path))
+    monkeypatch.setattr(
+        "plugins._model_config.helpers.model_config.get_chat_model_config",
+        lambda agent: {"vision": False},
+    )
+    monkeypatch.setattr(
+        "plugins._model_config.helpers.model_config.get_vision_model_config",
+        lambda agent: {"provider": "test", "name": "vision"},
+    )
+    monkeypatch.setattr(responses_tools, "_mcp_tools", lambda agent: [])
+    agent = _Agent(tmp_path)
+
+    prompt = await _11_tools_prompt.build_prompt(agent)
+    schemas, _name_map = responses_tools.build_responses_function_tools(agent)
+
+    assert prompt.count("canonical vision") == 1
+    assert schemas[0]["name"] == "vision_load"
+    assert schemas[0]["description"] == "canonical vision"
+
+
+def test_vision_prompt_stays_route_agnostic_and_batches_paths() -> None:
+    source = (
+        Path(__file__).resolve().parents[1]
+        / "prompts"
+        / "agent.system.tools_vision.md"
+    ).read_text(encoding="utf-8")
+    schema = responses_tools._schema_from_prompt(source)
+
+    assert schema == {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": True,
+    }
+    assert "load all relevant images in one call" in source
+    assert "Input schema for tool_args" not in source
+    assert "Vision Model" not in source
+    assert "sidecar" not in source.lower()
+    assert "optional `query`" in source
+
+
+def test_vision_framework_prompt_renders_optional_query() -> None:
+    prompt_dir = str(Path(__file__).resolve().parents[1] / "prompts")
+
+    without_query = files.read_prompt_file(
+        "fw.vision_load.md",
+        _directories=[prompt_dir],
+        request="Review these screenshots.",
+        query="",
+    )
+    with_query = files.read_prompt_file(
+        "fw.vision_load.md",
+        _directories=[prompt_dir],
+        request="Review these screenshots.",
+        query="Compare the error banners.",
+    )
+
+    assert "Visual query:" not in without_query
+    assert "Current request:\nReview these screenshots." in with_query
+    assert "Visual query:\nCompare the error banners." in with_query
 
 
 def test_mcp_prompt_and_native_schema_omit_blocked_tool(

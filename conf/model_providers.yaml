@@ -94,6 +94,7 @@ chat:
     name: GitHub Copilot
     litellm_provider: github_copilot
     kwargs:
+      a0_api_mode: chat
       extra_headers:
         "Editor-Version": "vscode/1.85.1"
         "Copilot-Integration-Id": "vscode-chat"
@@ -203,6 +204,8 @@ chat:
     litellm_provider: openai
     models_list:
       endpoint_url: "https://api.openai.com/v1/models"
+    kwargs:
+      a0_api_mode: chat
   azure:
     name: OpenAI Azure
     litellm_provider: azure
@@ -210,6 +213,8 @@ chat:
       endpoint_url: "/openai/models"
       params:
         api-version: "2024-10-21"
+    kwargs:
+      a0_api_mode: chat
   bedrock:
     name: AWS Bedrock
     litellm_provider: bedrock

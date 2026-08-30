@@ -86,6 +86,22 @@ function isLocalEditableTarget(target) {
   return ["", "true", "plaintext-only"].includes(value);
 }
 
+function isAltTextInput(event, platform = "") {
+  const key = String(event?.key || "");
+  if (key.length !== 1 || !event?.altKey || event.metaKey) return false;
+  const targetPlatform = String(
+    platform
+      || globalThis.navigator?.userAgentData?.platform
+      || globalThis.navigator?.platform
+      || "",
+  );
+  return Boolean(
+    event.ctrlKey
+      || event.getModifierState?.("AltGraph")
+      || /mac/i.test(targetPlatform),
+  );
+}
+
 function nextAnimationFrame() {
   return new Promise((resolve) => {
     const schedule = globalThis.requestAnimationFrame || ((callback) => globalThis.setTimeout(callback, 16));
@@ -2908,10 +2924,11 @@ const model = {
     if (this.annotating) return;
     const contextId = this.normalizeContextId(this.activeBrowserContextId || this.contextId);
     if (!contextId || !this.activeBrowserId) return;
-    if (event.ctrlKey || event.metaKey || event.altKey) return;
+    const printable = event.key && event.key.length === 1;
+    const altText = isAltTextInput(event);
+    if ((event.ctrlKey || event.metaKey || event.altKey) && !altText) return;
     if (isLocalEditableTarget(event?.target)) return;
     event.preventDefault();
-    const printable = event.key && event.key.length === 1;
     await websocket.emit("browser_viewer_input", {
       context_id: contextId,
       browser_id: this.activeBrowserId,

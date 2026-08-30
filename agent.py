@@ -1,4 +1,4 @@
-import asyncio, json, random, re, string, threading
+import asyncio, json, random, re, string, threading, time
 
 from collections import OrderedDict
 from dataclasses import dataclass, field
@@ -41,6 +41,10 @@ from helpers.llm_result import (
 )
 from helpers.litellm_transport import ResponsesTransport
 from helpers.responses_tools import build_responses_function_tools, original_tool_name
+
+_RESPONSE_STREAM_UPDATE_CHARS = 128
+_RESPONSE_STREAM_UPDATE_SECONDS = 0.05
+
 
 class AgentContextType(Enum):
     USER = "user"
@@ -403,6 +407,9 @@ class Agent:
                     self.loop_data.iteration += 1
                     self.loop_data.params_temporary = {}  # clear temporary params
                     last_response_stream_full = ""
+                    last_response_stream_chars = 0
+                    last_response_stream_at = time.monotonic()
+                    response_stream_pending = False
 
                     # call message_loop_start extensions
                     await extension.call_extensions_async(
@@ -440,7 +447,8 @@ class Agent:
                             await self.handle_reasoning_stream(stream_data["full"])
 
                         async def stream_callback(chunk: str, full: str):
-                            nonlocal last_response_stream_full
+                            nonlocal last_response_stream_full, last_response_stream_chars
+                            nonlocal last_response_stream_at, response_stream_pending
                             await self.handle_intervention()
                             # output the agent response stream
                             if chunk == full:
@@ -455,6 +463,7 @@ class Agent:
                                     pass
                                 else:
                                     await self.handle_response_stream(full)
+                                    response_stream_pending = False
                                     return full.strip()
 
                             await extension.call_extensions_async(
@@ -466,9 +475,19 @@ class Agent:
                             # Stream masked chunk after extensions processed it
                             if stream_data.get("chunk"):
                                 printer.stream(stream_data["chunk"])
-                            # Use the potentially modified full text for downstream processing
-                            await self.handle_response_stream(stream_data["full"])
                             last_response_stream_full = stream_data["full"]
+                            response_stream_pending = True
+                            now = time.monotonic()
+                            if (
+                                len(full) - last_response_stream_chars
+                                >= _RESPONSE_STREAM_UPDATE_CHARS
+                                or now - last_response_stream_at
+                                >= _RESPONSE_STREAM_UPDATE_SECONDS
+                            ):
+                                await self.handle_response_stream(last_response_stream_full)
+                                last_response_stream_chars = len(full)
+                                last_response_stream_at = time.monotonic()
+                                response_stream_pending = False
 
                         # call main LLM
                         llm_result = await self.call_chat_model_turn(
@@ -478,6 +497,9 @@ class Agent:
                         )
                         agent_response = llm_result.response
                         await self.handle_intervention(agent_response)
+
+                        if response_stream_pending:
+                            await self.handle_response_stream(last_response_stream_full)
 
                         # Notify extensions to finalize their stream filters
                         await extension.call_extensions_async(
@@ -491,40 +513,27 @@ class Agent:
 
                         await self.handle_intervention(agent_response)
 
-                        if (
-                            self.loop_data.last_response == agent_response
-                        ):  # if assistant_response is the same as last message in history, let him know
-                            # Append the assistant's response to the history
-                            log_item = self.loop_data.params_temporary.get("log_item_generating")
-                            assistant_message = self.hist_add_ai_response(
-                                agent_response,
-                                id=log_item.id if log_item else "",
-                                llm_result=llm_result,
-                            )
-                            self._remember_llm_result_state(llm_result, assistant_message)
-                            # Append warning message to the history
-                            warning_msg = self.read_prompt("fw.msg_repeat.md")
-                            wmsg = self.hist_add_warning(message=warning_msg)
-                            PrintStyle(font_color="orange", padding=True).print(
-                                warning_msg
-                            )
-                            self.context.log.log(type="warning", content=warning_msg, id=wmsg.id)
+                        result_data = {"llm_result": llm_result}
+                        await extension.call_extensions_async(
+                            "message_loop_result",
+                            self,
+                            loop_data=self.loop_data,
+                            result_data=result_data,
+                        )
+                        if result_data.get("skip_default_processing"):
+                            continue
 
-                        else:  # otherwise proceed with tool
-                            # Append the assistant's response to the history
-                            log_item = self.loop_data.params_temporary.get("log_item_generating")
-                            assistant_message = self.hist_add_ai_response(
-                                agent_response,
-                                id=log_item.id if log_item else "",
-                                llm_result=llm_result,
-                            )
-                            self._remember_llm_result_state(llm_result, assistant_message)
-                            # process tools requested in agent message
-                            tools_result = await self.process_llm_result_tools(
-                                llm_result
-                            )
-                            if tools_result:  # final response of message loop available
-                                return tools_result  # break the execution if the task is done
+                        agent_response = llm_result.response
+                        log_item = self.loop_data.params_temporary.get("log_item_generating")
+                        assistant_message = self.hist_add_ai_response(
+                            agent_response,
+                            id=log_item.id if log_item else "",
+                            llm_result=llm_result,
+                        )
+                        self._remember_llm_result_state(llm_result, assistant_message)
+                        tools_result = await self.process_llm_result_tools(llm_result)
+                        if tools_result:  # final response of message loop available
+                            return tools_result  # break the execution if the task is done
 
                     # exceptions inside message loop:
                     except Exception as e:
@@ -626,7 +635,7 @@ class Agent:
             False,
             content=self.read_prompt(
                 prompt_file,
-                **{variable_name: dirty_json.stringify(values)},
+                **{variable_name: dirty_json.stringify(values, separators=(",", ":"))},
             ),
         ).output()
 

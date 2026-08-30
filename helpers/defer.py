@@ -101,6 +101,11 @@ class DeferredTask:
         self._start_task()
         return self
 
+    def add_done_callback(self, callback: Callable[[Future], Any]) -> None:
+        if not self._future:
+            raise RuntimeError("Task hasn't been started")
+        self._future.add_done_callback(callback)
+
     def __del__(self):
         self.kill()
 

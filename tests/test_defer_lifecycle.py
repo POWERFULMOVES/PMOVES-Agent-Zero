@@ -48,6 +48,42 @@ def test_completed_task_releases_call_references_and_children():
         task.kill(terminate_thread=True)
 
 
+def test_run_task_end_extension_marks_state_dirty_after_completion(monkeypatch):
+    from extensions.python._functions.agent.AgentContext.run_task.end import (
+        _10_mark_state_dirty as task_done_extension,
+    )
+
+    task = make_task()
+    callback_called = threading.Event()
+    observations: list[tuple[str | None, bool]] = []
+
+    def mark_dirty(*, reason=None):
+        observations.append((reason, bool(task.is_alive())))
+        callback_called.set()
+
+    monkeypatch.setattr(
+        task_done_extension,
+        "mark_dirty_all",
+        mark_dirty,
+    )
+
+    async def run():
+        return "done"
+
+    try:
+        with pytest.raises(RuntimeError, match="Task hasn't been started"):
+            task.add_done_callback(lambda _future: None)
+        task.start_task(run)
+        task_done_extension.MarkStateDirty(agent=None).execute(
+            data={"result": task}
+        )
+        assert task.result_sync(timeout=2) == "done"
+        assert callback_called.wait(2)
+        assert observations == [("agent.AgentContext.run_task_done", False)]
+    finally:
+        task.kill(terminate_thread=True)
+
+
 def test_kill_clears_stored_call_without_clearing_running_arguments():
     task = make_task()
     owner = Owner()

@@ -62,11 +62,15 @@
 
 ## Key Concepts
 
-- Important called helpers/classes observed in the source: `TypeVar`, `files.get_abs_path`, `dotenv.get_dotenv_value`, `opts.insert`, `str.strip`, `_is_valid_timezone`, `str.strip.lower`, `_normalize_timezone_setting`, `SettingsOutput`, `get_default_settings`, `_ensure_option_present`, `_resolve_runtime_timezone`, `get_default_secrets_manager`, `get_settings`, `normalize_settings`, `_load_sensitive_settings`, `settings.copy`, `_write_settings_file`, `reload_settings`, `set_settings`, `initialize_agent`.
+- Important called helpers/classes observed in the source: `TypeVar`, `files.get_abs_path`, `dotenv.get_dotenv_value`, `opts.insert`, `str.strip`, `_is_valid_timezone`, `str.strip.lower`, `_normalize_timezone_setting`, `SettingsOutput`, `get_default_settings`, `_ensure_option_present`, `_resolve_runtime_timezone`, `get_default_secrets_manager`, `get_settings`, `get_settings_for_prompt`, `normalize_settings`, `_load_sensitive_settings`, `deepcopy`, `settings.copy`, `_write_settings_file`, `reload_settings`, `set_settings`, `initialize_agent`.
 - Applying settings refreshes active context configs while preserving each subordinate agent's own profile.
 - Applying settings starts a deferred `MCPConfig.update(...)` with the current `mcp_servers` string when global MCP server settings change.
+- `get_settings()` retains normalize-on-read behavior. Prompt-building callers
+  explicitly use `get_settings_for_prompt()` to reuse one task-local snapshot
+  within each `Agent.prepare_prompt()` call.
+- Explicit reloads also refresh an active prompt snapshot.
 - `max_consecutive_unusable_responses` defaults to `5` and controls the cost circuit breaker for malformed or repeated main-model outputs.
-- `ui_control_visibility` stores validated mobile and desktop visibility flags for the project selector, clock, connection status, and right canvas rail; missing or malformed values fall back per device.
+- `ui_control_visibility` stores validated mobile and desktop visibility flags for the project selector, clock, connection status, context-window usage indicator, and right canvas rail; missing or malformed values fall back per device.
 - The Global default-profile selector lists only globally available profiles.
   A currently configured unavailable profile remains visible with an explicit
   unavailable label so settings can round-trip it truthfully, except that the

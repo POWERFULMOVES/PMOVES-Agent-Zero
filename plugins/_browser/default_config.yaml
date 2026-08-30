@@ -49,3 +49,9 @@ host_browser_selection: ""
 # Optional _model_config preset used by Browser-owned model helpers.
 # Empty uses the effective Main Model.
 model_preset: ""
+
+# XKB keyboard layout applied to the interactive Browser display so typed keys
+# match the physical keyboard. German Mac example: keyboard_layout: "de",
+# keyboard_variant: "mac" (Option+L then types "@"). Empty keeps US behavior.
+keyboard_layout: ""
+keyboard_variant: ""

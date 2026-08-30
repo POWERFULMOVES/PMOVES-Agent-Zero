@@ -105,6 +105,22 @@ _REMOTE_DEBUGGING_ERROR_TOKENS = (
 )
 
 
+def _stable_host_browser_selection(selection: Any, metadata: Any) -> str:
+    selected = str(selection or "").strip()
+    if not selected or not isinstance(metadata, dict):
+        return selected
+    candidates = list(metadata.get("available_browsers") or [])
+    candidates.append(metadata)
+    for candidate in candidates:
+        if not isinstance(candidate, dict):
+            continue
+        endpoint = str(candidate.get("cdp_endpoint") or "").strip()
+        browser_id = str(candidate.get("id") or candidate.get("browser_id") or "").strip()
+        if endpoint == selected and browser_id:
+            return browser_id
+    return selected
+
+
 class ConnectorBrowserRuntime:
     def __init__(self, context_id: str, agent: Any):
         self.context_id = str(context_id or "").strip()
@@ -279,6 +295,7 @@ class ConnectorBrowserRuntime:
         if not sid:
             statuses = host_browser_metadata_for_context(self.context_id)
             raise RuntimeError(self._host_browser_unavailable_message(statuses))
+        payload["browser_selection"] = self._host_browser_selection(sid)
 
         if self._needs_prepare(sid, payload):
             await self._send_browser_op(
@@ -290,7 +307,7 @@ class ConnectorBrowserRuntime:
                         "context_id": self.context_id,
                         "action": "ensure",
                         "profile_mode": self._host_browser_profile_mode(),
-                        "browser_selection": self._host_browser_selection(),
+                        "browser_selection": self._host_browser_selection(sid),
                     },
                 ),
             )
@@ -303,9 +320,19 @@ class ConnectorBrowserRuntime:
         mode = str(config.get(HOST_BROWSER_PROFILE_MODE_KEY) or "existing").strip().lower()
         return "agent" if mode == "agent" else "existing"
 
-    def _host_browser_selection(self) -> str:
+    def _host_browser_selection(self, sid: str = "") -> str:
         config = get_browser_config(self.agent)
-        return str(config.get(HOST_BROWSER_SELECTION_KEY) or "").strip()
+        selection = str(config.get(HOST_BROWSER_SELECTION_KEY) or "").strip()
+        if sid:
+            return _stable_host_browser_selection(
+                selection,
+                host_browser_metadata_for_sid(sid),
+            )
+        for metadata in host_browser_metadata_for_context(self.context_id):
+            stable = _stable_host_browser_selection(selection, metadata)
+            if stable != selection:
+                return stable
+        return selection
 
     def _with_content_helper(self, sid: str, payload: dict[str, Any]) -> dict[str, Any]:
         return self._with_browser_helpers(sid, payload)

@@ -21,6 +21,7 @@ def _agent():
     prompts = {
         "fw.msg_misformat.md": "misformatted",
         "fw.msg_repeat.md": "repeated",
+        "fw.msg_empty_response.md": "empty response",
     }
 
     def read_prompt(name, **kwargs):
@@ -53,7 +54,7 @@ def test_stops_at_configured_failure_limit(monkeypatch):
     assert _run(extension, agent, "misformatted")["exception"] is None
 
     agent.loop_data.iteration = 1
-    assert _run(extension, agent, "repeated")["exception"] is None
+    assert _run(extension, agent, "empty response")["exception"] is None
 
     agent.loop_data.iteration = 2
     data = _run(extension, agent, "repeated")

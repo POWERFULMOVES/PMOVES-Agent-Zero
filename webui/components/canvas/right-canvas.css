@@ -344,7 +344,7 @@ body.right-canvas-mobile-mode .right-canvas-rail {
   position: fixed;
   top: 50%;
   right: max(0px, env(safe-area-inset-right));
-  display: flex !important;
+  display: flex;
   transform: translateY(-50%);
   pointer-events: auto;
 }

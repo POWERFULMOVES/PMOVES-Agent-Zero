@@ -1,7 +1,7 @@
 from helpers.extension import Extension
 from helpers import plugins, files, runtime
 from helpers import projects
-from helpers.settings import get_settings
+from helpers.settings import get_settings_for_prompt
 from agent import Agent, LoopData
 
 from plugins._promptinclude.helpers.scanner import scan_promptinclude_files, ScanResult
@@ -61,7 +61,7 @@ def _resolve_workdir(agent: Agent) -> str:
         if runtime.is_development():
             folder = files.normalize_a0_path(folder)
         return folder
-    return get_settings()["workdir_path"]
+    return get_settings_for_prompt()["workdir_path"]
 
 
 def _format_includes(agent: Agent, result: ScanResult) -> str:

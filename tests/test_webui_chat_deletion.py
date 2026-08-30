@@ -57,6 +57,7 @@ function assert(condition, message) {{
 
 function reset(contexts, selected) {{
   model.contexts = contexts.map((context) => ({{ ...context }}));
+  model.contextsJson = "";
   model.selected = selected;
   model.selectedContext = model.contexts.find((context) => context.id === selected);
   model.deletedContextIds = {{}};
@@ -68,6 +69,44 @@ const chats = [
   {{ id: "b", created_at: 20 }},
   {{ id: "c", created_at: 10 }},
 ];
+
+reset(chats, "");
+model.applyContexts(chats);
+const unchangedContexts = model.contexts;
+model.applyContexts(chats.map((context) => ({{ ...context }})));
+assert(
+  model.contexts === unchangedContexts,
+  "unchanged snapshots must preserve the Alpine contexts array",
+);
+const unchangedFirstRow = model.contexts[0];
+model.applyContexts([{{ ...chats[0], name: "Renamed" }}, ...chats.slice(1)]);
+assert(
+  model.contexts === unchangedContexts &&
+    model.contexts[0] === unchangedFirstRow &&
+    model.contexts[0].name === "Renamed",
+  "changed context metadata must update its existing row in place",
+);
+model.applyContexts([...chats, {{ id: "d", created_at: 40 }}]);
+assert(
+  model.contexts !== unchangedContexts && model.contexts[0].id === "d",
+  "structural context changes must replace and reorder the contexts array",
+);
+
+const tree = [
+  {{ id: "parent", created_at: 20 }},
+  {{ id: "child", parent_context_id: "parent", created_at: 10 }},
+];
+reset(tree, "");
+model.applyContexts(tree);
+const unchangedTree = model.contexts;
+model.selected = "parent";
+model.expandedParents = {{}};
+model.applyContexts(tree.map((context) => ({{ ...context }})));
+assert(model.contexts === unchangedTree, "unchanged chat trees must preserve identity");
+assert(
+  model.expandedParents.parent === true,
+  "selection synchronization must still run for unchanged contexts",
+);
 
 reset(chats, "b");
 globalThis.__context = "a";

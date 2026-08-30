@@ -38,7 +38,7 @@ class IncludeWorkdirExtras(Extension):
 
             file_structure = projects.get_file_structure(project_name)
         else:
-            set = settings.get_settings()
+            set = settings.get_settings_for_prompt()
             enabled = bool(set["workdir_show"])
 
             if not enabled:

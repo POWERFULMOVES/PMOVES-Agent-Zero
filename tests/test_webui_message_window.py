@@ -77,10 +77,21 @@ assert(
 );
 
 const sharedIdGroup = new MessageWindow({{ initialLimit: 60 }});
-sharedIdGroup.reset([
+const sharedIdKeys = sharedIdGroup.merge([
   {{ no: 1, id: "shared-run-id", type: "agent", content: "final generation" }},
   {{ no: 2, id: "shared-run-id", type: "response", content: "final response" }},
 ]);
+assert(
+  sharedIdKeys.has("id:shared-run-id:type:response"),
+  "merge must report a newly added step",
+);
+const updatedSharedIdKeys = sharedIdGroup.merge([
+  {{ no: 2, id: "shared-run-id", type: "response", content: "updated response" }},
+]);
+assert(
+  updatedSharedIdKeys.size === 0,
+  "merge must not report an existing record update as newly added",
+);
 assert(sharedIdGroup.size === 2, "a shared id must not merge GEN and response records");
 assert(
   sharedIdGroup.visibleMessages().map((entry) => entry.type).join(",") ===
@@ -329,6 +340,8 @@ def test_process_groups_are_atomic_and_page_steps_in_fifties():
     assert '"code_exe",' in MESSAGE_WINDOW_JS.read_text(encoding="utf-8")
     assert "getUnitKeys: getMessageRenderUnitKeys" in messages
     assert "getProcessGroupRenderMessages(windowMessages)" in messages
+    assert "const addedMessageKeys = _messageWindow.merge" in messages
+    assert "addedMessageKeys.has(getMessageCacheKey(message))" in messages
     assert 'button.className = "process-group-show-more"' in messages
     assert "current + PROCESS_GROUP_STEP_PAGE_SIZE" in messages
     assert "group.dataset.fullStartTimestamp" in messages

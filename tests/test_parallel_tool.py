@@ -348,6 +348,50 @@ async def test_parallel_remove_context_deletes_persisted_worker_chat(monkeypatch
 
 
 @pytest.mark.asyncio
+async def test_direct_parallel_worker_inherits_chat_model_override(monkeypatch) -> None:
+    from agent import AgentConfig, AgentContext
+
+    parent_id = "ctx-parallel-model-override"
+    AgentContext.remove(parent_id)
+    parent = AgentContext(
+        AgentConfig(mcp_servers="", profile="agent0"),
+        id=parent_id,
+        set_current=False,
+    )
+    override = {"preset_name": "Text only"}
+    parent.set_data("chat_model_override", override)
+    current_user_message = object()
+    parent.agent0.last_user_message = current_user_message
+    observed = {}
+
+    async def fake_execute_tool_call(agent, *_args, **_kwargs):
+        observed["override"] = agent.context.get_data("chat_model_override")
+        observed["last_user_message"] = agent.last_user_message
+        return "done"
+
+    async def remove_context(context_id):
+        AgentContext.remove(context_id)
+
+    monkeypatch.setattr(parallel_tools, "execute_tool_call", fake_execute_tool_call)
+    monkeypatch.setattr(parallel_tools, "_remove_context", remove_context)
+    job = parallel_tools.ParallelJob(
+        id="vision-load-override",
+        parent_context_id=parent_id,
+        index=0,
+        tool_name="vision_load",
+        tool_args={"paths": ["/tmp/example.png"]},
+        kind="tool",
+    )
+
+    try:
+        assert await parallel_tools._run_direct_tool_job(parent_id, job) == "done"
+        assert observed["override"] == override
+        assert observed["last_user_message"] is current_user_message
+    finally:
+        AgentContext.remove(parent_id)
+
+
+@pytest.mark.asyncio
 async def test_parallel_recursion_guard_allows_subordinate_children_but_blocks_tool_workers() -> None:
     from extensions.python.tool_execute_before._20_block_parallel_recursion import (
         BlockParallelRecursion,
@@ -1003,6 +1047,61 @@ async def test_parallel_tool_keeps_wrapper_out_of_visible_log() -> None:
 
 
 @pytest.mark.asyncio
+async def test_parallel_collect_promotes_history_after_wrapper_result() -> None:
+    from tools.parallel import ParallelTool
+
+    class HistoryAgent(_FakeAgent):
+        def __init__(self) -> None:
+            super().__init__()
+            self.history_events = []
+
+        def hist_add_tool_result(self, tool_name, tool_result, **kwargs):
+            self.history_events.append(("tool", tool_name, tool_result, kwargs))
+
+        def hist_add_message(self, ai, content, tokens=0, **kwargs):
+            self.history_events.append(("message", ai, content, tokens, kwargs))
+
+    agent = HistoryAgent()
+    job = parallel_tools.ParallelJob(
+        id="vision-ready",
+        parent_context_id=agent.context.id,
+        index=0,
+        tool_name="vision_load",
+        tool_args={"paths": ["/image.png"]},
+        kind="tool",
+        state="success",
+        result="Loaded images (1)",
+        parent_history=[("raw-image-message", 1500)],
+    )
+    agent.context.set_data(parallel_tools.PARALLEL_JOBS_KEY, {job.id: job})
+    tool = ParallelTool(
+        agent,  # type: ignore[arg-type]
+        "parallel",
+        None,
+        {"action": "collect", "job_ids": [job.id]},
+        "",
+        None,
+    )
+
+    response = await tool.execute(**tool.args)
+
+    assert job.id in agent.context.get_data(parallel_tools.PARALLEL_JOBS_KEY)
+    assert agent.history_events == []
+
+    await tool.after_execution(response)
+
+    assert agent.history_events[0][0] == "tool"
+    assert agent.history_events[1] == (
+        "message",
+        False,
+        "raw-image-message",
+        1500,
+        {},
+    )
+    assert job.id not in agent.context.get_data(parallel_tools.PARALLEL_JOBS_KEY)
+
+
+@pytest.mark.asyncio
 async def test_parallel_child_contexts_are_chats_not_tasks(monkeypatch) -> None:
     from agent import AgentContext
     from initialize import initialize_agent
@@ -1055,9 +1154,9 @@ def test_chats_sidebar_projects_parallel_children_as_indented_accordion() -> Non
     )
 
     assert "parent_context_id" in store
-    assert "const nextExpandedParents = { ...this.expandedParents };" in store
-    assert "nextExpandedParents[selectedId] === undefined" in store
-    assert "nextExpandedParents[selectedId] = true;" in store
+    assert "this.expandedParents[selectedId] === undefined" in store
+    assert "...this.expandedParents," in store
+    assert "[selectedId]: true," in store
     assert "topLevelContexts()" in html
     assert "childContexts(context.id)" in html
     assert "chat-child-container" in html
@@ -1071,3 +1170,11 @@ def test_chats_sidebar_projects_parallel_children_as_indented_accordion() -> Non
     assert "left: 2px" in html
     assert "padding-left: 24px" in html
     assert "color: var(--color-text-muted)" in html
+
+
+def test_parallel_result_json_is_compact() -> None:
+    result = parallel_tools.format_parallel_results(
+        [{"job_id": "wait-1", "tool_name": "wait", "state": "success"}]
+    )
+
+    assert result == '{"status":"success","jobs":[{"job_id":"wait-1","tool_name":"wait","state":"success"}]}'
