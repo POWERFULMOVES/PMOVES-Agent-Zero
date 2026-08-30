@@ -2,6 +2,7 @@ import asyncio
 import concurrent.futures
 import json
 import re
+import subprocess
 import sys
 import threading
 import zipfile
@@ -36,8 +37,13 @@ class _TestAgentContextType:
 
 
 class _TestResponse(SimpleNamespace):
-    def __init__(self, message="", break_loop=False, **kwargs):
-        super().__init__(message=message, break_loop=break_loop, **kwargs)
+    def __init__(self, message="", break_loop=False, additional=None, **kwargs):
+        super().__init__(
+            message=message,
+            break_loop=break_loop,
+            additional=additional,
+            **kwargs,
+        )
 
 
 class _TestTool:
@@ -57,6 +63,15 @@ class _TestTool:
         self.args = args or {}
         self.message = message
         self.loop_data = loop_data
+
+    async def after_execution(self, response, **kwargs):
+        self.agent.hist_add_tool_result(
+            self.name,
+            response.message.strip(),
+            id=self.log.id,
+            **(response.additional or {}),
+        )
+        self.log.update(content=response.message.strip())
 
 
 class _TestWsHandler:
@@ -96,6 +111,8 @@ _model_config_stub = ModuleType("plugins._model_config.helpers.model_config")
 _model_config_stub.get_presets = lambda: []
 _model_config_stub.get_preset_by_name = lambda name: None
 _model_config_stub.get_chat_model_config = lambda agent=None: {}
+_model_config_stub.get_vision_model_config = lambda agent=None: {}
+_model_config_stub.build_vision_model = lambda agent=None: None
 sys.modules.setdefault("plugins._model_config.helpers.model_config", _model_config_stub)
 
 
@@ -192,8 +209,56 @@ def test_browser_config_normalizes_extension_paths(tmp_path):
         "proxy_bypass": "",
         "proxy_username": "",
         "proxy_password": "",
+        "keyboard_layout": "",
+        "keyboard_variant": "",
         "model_preset": "",
     }
+
+
+def test_browser_config_normalizes_keyboard_layout():
+    config = normalize_browser_config(
+        {
+            "keyboard_layout": "  DE  ",
+            "keyboard_variant": "  Mac  ",
+        }
+    )
+
+    assert config["keyboard_layout"] == "de"
+    assert config["keyboard_variant"] == "mac"
+
+    cleared = normalize_browser_config(
+        {
+            "keyboard_layout": "",
+            "keyboard_variant": "mac",
+        }
+    )
+
+    assert cleared["keyboard_layout"] == ""
+    assert cleared["keyboard_variant"] == ""
+
+    unsafe = normalize_browser_config(
+        {
+            "keyboard_layout": "de; rm -rf /",
+            "keyboard_variant": "mac & echo pwned",
+        }
+    )
+
+    for token in (unsafe["keyboard_layout"], unsafe["keyboard_variant"]):
+        assert token == token.lower()
+        for forbidden in (" ", ";", "&", "|", "$", "`", "'", '"'):
+            assert forbidden not in token
+
+
+def test_browser_keyboard_layout_restarts_runtime():
+    from plugins._browser.helpers.config import browser_runtime_config
+
+    base = browser_runtime_config({"keyboard_layout": "de", "keyboard_variant": "mac"})
+
+    assert base["keyboard_layout"] == "de"
+    assert base["keyboard_variant"] == "mac"
+
+    changed = browser_runtime_config({"keyboard_layout": "us", "keyboard_variant": "mac"})
+    assert changed != base
 
 
 def test_browser_config_normalizes_model_preset():
@@ -259,6 +324,56 @@ def test_browser_config_normalizes_host_browser_selection():
         normalize_browser_config({"runtime_backend": "host_when_available"})["runtime_backend"]
         == "host_required"
     )
+
+
+def test_browser_config_store_migrates_advertised_endpoint_to_stable_id():
+    path = PROJECT_ROOT / "plugins" / "_browser" / "webui" / "browser-config-store.js"
+    source = path.read_text(encoding="utf-8")
+    source = re.sub(r"^import .*;\n", "", source, flags=re.M)
+    source = source.replace("export const store = createStore", "const store = createStore")
+    endpoint = "ws://localhost:9222/devtools/browser/old-guid"
+    browser_status = {
+        "connectors": [
+            {
+                "browser_id": "chrome-cdp",
+                "cdp_endpoint": endpoint,
+                "available_browsers": [
+                    {
+                        "id": "chrome-cdp",
+                        "family": "chrome-cdp",
+                        "label": "Chrome (allowed)",
+                        "cdp_endpoint": endpoint,
+                    },
+                    {
+                        "id": "chrome:default",
+                        "family": "chrome",
+                        "label": "Chrome profile",
+                        "cdp_endpoint": "",
+                    },
+                ],
+            }
+        ]
+    }
+    script = (
+        "const browserStatus = "
+        + json.dumps(browser_status)
+        + ";\n"
+        + "const createStore = (_name, value) => value;\n"
+        + "const callJsonApi = async () => ({ host_browser: browserStatus });\n"
+        + "const showConfirmDialog = async () => false;\n"
+        + source
+        + f"\nstore.config = ensureConfig({{ host_browser_selection: {json.dumps(endpoint)} }});\n"
+        + "await store.loadHostBrowserStatus();\n"
+        + "if (store.config.host_browser_selection !== 'chrome-cdp') throw new Error('legacy endpoint was not migrated');\n"
+        + "const values = store.hostBrowserOptions().map((option) => option.value);\n"
+        + "if (!values.includes('chrome-cdp')) throw new Error('stable browser id is missing');\n"
+        + f"if (values.includes({json.dumps(endpoint)})) throw new Error('volatile endpoint was advertised');\n"
+        + "if (values.includes('chrome:default')) throw new Error('local profiles leaked into the dropdown');\n"
+        + "const custom = 'ws://localhost:9333/devtools/browser/custom';\n"
+        + "if (stableHostBrowserSelection(custom, browserStatus) !== custom) throw new Error('custom endpoint changed');\n"
+    )
+
+    subprocess.run(["node", "--input-type=module", "-e", script], check=True, text=True)
 
 
 def test_browser_config_normalizes_max_open_tabs():
@@ -1858,6 +1973,28 @@ def test_browser_visual_mode_bridges_clipboard_shortcuts():
     assert 'runtime.call(\n                    "clipboard"' in ws_browser
 
 
+def test_browser_visual_mode_only_forwards_text_producing_alt_keys():
+    browser_store = (
+        PROJECT_ROOT / "plugins" / "_browser" / "webui" / "browser-store.js"
+    ).read_text(encoding="utf-8")
+    start = browser_store.index("function isAltTextInput")
+    end = browser_store.index("\n}\n", start) + 3
+    helper = browser_store[start:end]
+    script = helper + """
+const check = (condition, message) => {
+  if (!condition) throw new Error(message);
+};
+check(isAltTextInput({ key: "@", altKey: true, ctrlKey: true }, "Windows"), "AltGr text was blocked");
+check(isAltTextInput({ key: "€", altKey: true, getModifierState: (name) => name === "AltGraph" }, "Linux"), "AltGraph text was blocked");
+check(isAltTextInput({ key: "@", altKey: true }, "MacIntel"), "Option text was blocked");
+check(!isAltTextInput({ key: "f", altKey: true }, "Windows"), "Windows Alt shortcut became text");
+check(!isAltTextInput({ key: "d", altKey: true }, "Linux"), "Linux Alt shortcut became text");
+check(!isAltTextInput({ key: "@", altKey: true, metaKey: true }, "MacIntel"), "Command shortcut became text");
+"""
+
+    subprocess.run(["node", "--input-type=module", "-e", script], check=True, text=True)
+
+
 def test_browser_runtime_and_content_helper_expose_annotation_target():
     runtime = (
         PROJECT_ROOT / "plugins" / "_browser" / "helpers" / "runtime.py"
@@ -2397,6 +2534,67 @@ def test_browser_startup_migration_prepares_current_playwright_binary():
     assert "virtual_desktop_routes.install_route_hooks()" in extension
     assert "hooks.prepare_playwright_cache()" in extension
     assert "PrintStyle.warning" in extension
+
+
+
+
+def test_browser_interactive_view_keyboard_options(monkeypatch):
+    import plugins._browser.helpers.interactive_view as iv_module
+
+    view = BrowserInteractiveView("ctx-kb")
+
+    # no layout -> no xpra keyboard args
+    monkeypatch.setattr(
+        iv_module, "keyboard_options", lambda: {"layout": "", "variant": ""}
+    )
+    assert view._keyboard_xpra_args() == []
+
+    # layout + variant -> pinned server layout, sync disabled
+    monkeypatch.setattr(
+        iv_module,
+        "keyboard_options",
+        lambda: {"layout": "de", "variant": "mac"},
+    )
+    assert view._keyboard_xpra_args() == [
+        "--keyboard-sync=no",
+        "--keyboard-layout", "de",
+        "--keyboard-variant", "mac",
+    ]
+
+
+def test_browser_interactive_view_applies_keyboard_layout(monkeypatch):
+    commands = []
+
+    def fake_run(command, **kwargs):
+        commands.append(list(command))
+        return SimpleNamespace(returncode=0)
+
+    monkeypatch.setattr(browser_interactive_view_module.subprocess, "run", fake_run)
+    monkeypatch.setattr(
+        browser_interactive_view_module.shutil,
+        "which",
+        lambda name: "/usr/bin/setxkbmap" if name == "setxkbmap" else None,
+    )
+    monkeypatch.setattr(
+        browser_interactive_view_module,
+        "keyboard_options",
+        lambda: {"layout": "de", "variant": "mac"},
+    )
+
+    view = BrowserInteractiveView("ctx-kb-apply")
+    view.display = 42
+    view._apply_keyboard_layout()
+
+    assert commands == [["/usr/bin/setxkbmap", "-display", ":42", "-layout", "de", "-variant", "mac"]]
+
+    # no configured layout -> no setxkbmap call
+    monkeypatch.setattr(
+        browser_interactive_view_module,
+        "keyboard_options",
+        lambda: {"layout": "", "variant": ""},
+    )
+    view._apply_keyboard_layout()
+    assert len(commands) == 1
 
 
 def test_browser_interactive_views_use_isolated_loopback_sessions(monkeypatch, tmp_path):
@@ -4297,11 +4495,8 @@ async def test_vision_load_materializes_ephemeral_browser_refs(monkeypatch, tmp_
 
     monkeypatch.setattr(vision_load_module.chat_media.files, "get_abs_path", fake_get_abs_path)
     monkeypatch.setattr(vision_load_module.chat_media.files, "normalize_a0_path", fake_normalize_a0_path)
-    monkeypatch.setattr(
-        vision_load_module.plugins,
-        "get_plugin_config",
-        lambda *args, **kwargs: {"chat_model": {"max_embeds": 10}},
-    )
+    monkeypatch.setattr(vision_load_module, "get_chat_model_config", lambda _agent: {"vision": True, "max_embeds": 10})
+    monkeypatch.setattr(vision_load_module, "get_vision_model_config", lambda _agent: {})
 
     tool_results = []
     messages = []
@@ -4338,7 +4533,7 @@ async def test_vision_load_materializes_ephemeral_browser_refs(monkeypatch, tmp_
     assert stored_ref.startswith("/a0/usr/chats/ctx-vision/screenshots/browser/browser-shot-")
     stored_path = tmp_path / stored_ref.removeprefix("/a0/")
     assert stored_path.read_bytes() == __import__("base64").b64decode(SMALL_JPEG_10X10)
-    assert updates[-1]["result"] == "1 images loaded, 0 skipped"
+    assert updates[-1]["content"] == response.message
 
 
 @pytest.mark.anyio

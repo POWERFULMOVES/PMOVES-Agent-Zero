@@ -2,12 +2,12 @@ import { createStore } from "/js/AlpineStore.js";
 import { ttsService } from "/js/tts-service.js";
 import { applyModeSteps } from "/components/messages/process-group/process-group-dom.js";
 
-const UI_VISIBILITY_DEFAULTS = Object.freeze({
+const UI_VISIBILITY_DEFAULTS = {
   projectSelector: { mobile: true, desktop: true },
   time: { mobile: false, desktop: true },
   connectionStatus: { mobile: true, desktop: true },
   rightCanvasRail: { mobile: true, desktop: true },
-});
+};
 
 function normalizeUiVisibility(value = {}) {
   return Object.fromEntries(
@@ -92,6 +92,19 @@ const model = {
 
   _uiVisibility: normalizeUiVisibility(globalThis.runtimeInfo?.uiControlVisibility),
   _isMobileViewport: false,
+
+  registerUiControlVisibility(control, defaults = {}) {
+    const id = String(control || "").trim();
+    if (!id) return;
+    UI_VISIBILITY_DEFAULTS[id] = {
+      mobile: defaults.mobile !== false,
+      desktop: defaults.desktop !== false,
+    };
+    this._uiVisibility = normalizeUiVisibility({
+      ...(globalThis.runtimeInfo?.uiControlVisibility || {}),
+      ...(this._uiVisibility || {}),
+    });
+  },
 
   uiVisibilitySnapshot() {
     return normalizeUiVisibility(this._uiVisibility);

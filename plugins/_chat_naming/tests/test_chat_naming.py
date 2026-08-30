@@ -4,7 +4,7 @@ import pytest
 
 from agent import AgentContextType
 from plugins._chat_naming.commands import rename_command
-from plugins._chat_naming.extensions.python.monologue_start import _60_rename_chat as rename_chat
+from plugins._chat_naming.extensions.python.monologue_end import _60_rename_chat as rename_chat
 from plugins._chat_naming.helpers import naming
 
 

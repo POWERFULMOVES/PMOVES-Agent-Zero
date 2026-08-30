@@ -124,6 +124,7 @@ class LLMResult:
         *,
         response: str,
         reasoning: str = "",
+        usage: dict[str, Any] | None = None,
         input_items: list[dict[str, Any]] | None = None,
         output_items: list[dict[str, Any]] | None = None,
         provider_model_key: str = "",
@@ -160,6 +161,7 @@ class LLMResult:
             provider_model_key=provider_model_key,
             mode="chat_completions",
             state="off",
+            usage=object_to_dict(usage or {}),
             capability=dict(capability or {}),
         )
         if not result.response and result.function_calls:
@@ -194,9 +196,10 @@ class LLMResult:
         if not calls:
             return ""
         if len(calls) == 1:
-            return json.dumps(calls[0])
+            return json.dumps(calls[0], ensure_ascii=False)
         return json.dumps(
-            {"tool_name": "parallel_tool_calls", "tool_args": {"calls": calls}}
+            {"tool_name": "parallel_tool_calls", "tool_args": {"calls": calls}},
+            ensure_ascii=False,
         )
 
     def to_dict(self) -> dict[str, Any]:

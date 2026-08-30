@@ -76,6 +76,10 @@ textarea:focus {
   -webkit-text-security: disc;
 }
 
+.masked-text-input::placeholder {
+  -webkit-text-security: none;
+}
+
 .light-mode input[type="text"]:focus,
 .light-mode input[type="number"]:focus,
 .light-mode input[type="password"]:focus, 

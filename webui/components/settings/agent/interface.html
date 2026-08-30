@@ -51,6 +51,7 @@
                 </div>
               </div>
             </template>
+            <x-extension id="interface-controls-end"></x-extension>
           </div>
         </div>
       </template>
@@ -78,6 +79,12 @@
 
     .ui-visibility-row:last-child {
       border-bottom: 0;
+    }
+
+    .ui-visibility-list > x-extension,
+    .ui-visibility-list > x-extension > x-component,
+    .ui-visibility-list > x-extension > x-component > div[x-data] {
+      display: contents;
     }
 
     .ui-visibility-control {

@@ -12,6 +12,7 @@ flaredantic==0.1.5
 GitPython==3.1.43
 giturlparse==0.14.0
 inputimeout==1.0.4
+json_repair==0.63.4
 kokoro>=0.9.2
 simpleeval==1.0.3
 langchain-core==0.3.49

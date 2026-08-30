@@ -114,9 +114,15 @@ def _local_tool_prompts(agent: Any) -> list[tuple[str, str]]:
 
 def _vision_tool_prompt(agent: Any) -> str:
     try:
-        from plugins._model_config.helpers.model_config import get_chat_model_config
+        from plugins._model_config.helpers.model_config import (
+            get_chat_model_config,
+            get_vision_model_config,
+        )
 
-        if not get_chat_model_config(agent).get("vision", False):
+        if not (
+            get_vision_model_config(agent)
+            or get_chat_model_config(agent).get("vision", False)
+        ):
             return ""
         return agent.read_prompt("agent.system.tools_vision.md")
     except Exception:

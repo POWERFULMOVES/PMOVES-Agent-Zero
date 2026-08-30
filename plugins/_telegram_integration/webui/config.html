@@ -85,7 +85,7 @@
                             <div class="field-description">Paste the token you got from @BotFather.</div>
                           </div>
                           <div class="field-control">
-                            <input type="password" x-model="bot.token"
+                            <input type="text" class="masked-text-input" autocomplete="off" x-model="bot.token"
                               placeholder="123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11" />
                           </div>
                         </div>
@@ -274,7 +274,7 @@
                           <div class="field-description">Optional shared secret for webhook verification.</div>
                         </div>
                         <div class="field-control">
-                          <input type="password" x-model="bot.webhook_secret" />
+                          <input type="text" class="masked-text-input" autocomplete="off" x-model="bot.webhook_secret" />
                         </div>
                       </div>
 

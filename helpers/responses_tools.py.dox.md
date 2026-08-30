@@ -12,7 +12,7 @@
 
 ## Local Contracts
 
-- Build local function tools from enabled `agent.system.tool.*.md` prompt files and include `vision_load` only when the active chat model enables the matching vision prompt.
+- Build local function tools from enabled `agent.system.tool.*.md` prompt files and include `vision_load` when either Main native vision or the effective preset's Vision Model enables the canonical vision prompt.
 - Discover local prompt files through `helpers.subagents.get_paths`; this module
   owns the Responses-specific prompt-name compatibility rules.
 - Local prompt-derived function names use existing bullet declarations that pair a backticked name with `arg` or `args` for multi-tool prompt files, otherwise prefer explicit `"tool_name"` examples, then the first prompt heading, and finally the prompt filename.
@@ -25,8 +25,8 @@
 - Preserve original Agent Zero tool names through the native Responses name map.
 - Keep MCP tool schemas merged after local prompt-derived tools.
 - Apply `helpers.tool_policy` before emitting local or MCP schemas; a blocked
-  capability is absent from provider-native tool definitions. Vision remains
-  controlled solely by the active chat model configuration.
+  capability is absent from provider-native tool definitions. Vision routing
+  is controlled by the effective model preset rather than Agent Editor.
 - Connector remote tools are advertised only when `_a0_connector` runtime metadata says the matching connected CLI capability is currently available.
 
 ## Work Guidance

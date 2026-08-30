@@ -9,6 +9,12 @@ from extensions.python._functions.agent.Agent.hist_add_ai_response.end._10_log_p
 from extensions.python.response_stream._10_log_from_stream import (
     LogFromStream as StreamLog,
 )
+from extensions.python.reasoning_stream._10_log_from_stream import (
+    LogFromStream as ReasoningLog,
+)
+from extensions.python.response_stream_end._15_log_from_stream_end import (
+    LogFromStream as StreamLogEnd,
+)
 from extensions.python.response_stream._20_live_response import LiveResponse
 from helpers.dirty_json import DirtyJson
 from helpers.log import Log
@@ -21,6 +27,47 @@ def _agent_with_generating_log():
         loop_data=SimpleNamespace(params_temporary={"log_item_generating": item})
     )
     return agent, item
+
+
+def test_log_keyword_updates_share_kvp_value_limit():
+    item = Log().log(type="agent", heading="A0: Reasoning")
+
+    item.update(reasoning="r" * 6_000, finished=True)
+
+    assert len(item.kvps["reasoning"]) <= 5_000
+    assert "Characters hidden" in item.kvps["reasoning"]
+    assert item.kvps["finished"] is True
+
+
+def test_live_log_updates_omit_unchanged_collections(monkeypatch):
+    import helpers.log as log_module
+
+    full_dirty: list[str | None] = []
+    context_dirty: list[tuple[str, str | None, bool]] = []
+    monkeypatch.setattr(
+        log_module,
+        "_MARK_DIRTY_ALL",
+        lambda *, reason=None: full_dirty.append(reason),
+    )
+    monkeypatch.setattr(
+        log_module,
+        "_MARK_DIRTY_FOR_CONTEXT",
+        lambda context_id, *, reason=None, include_collections=True: context_dirty.append(
+            (context_id, reason, include_collections)
+        ),
+    )
+
+    log = Log()
+    log.context = SimpleNamespace(id="ctx", streaming_agent=None)
+    item = log.log(type="agent", heading="Calling LLM")
+    item.update(content="stream update")
+    log.set_progress("Receiving")
+
+    assert full_dirty == ["log.Log._notify_state_monitor"]
+    assert context_dirty == [
+        ("ctx", "log.Log._update_item", False),
+        ("ctx", "log.Log.set_progress", False),
+    ]
 
 
 def test_responses_plain_text_completion_finishes_generating_log_as_response():
@@ -172,3 +219,29 @@ async def test_stream_log_tolerates_partial_tool_arguments(
 
     item = loop_data.params_temporary["log_item_generating"]
     assert item.kvps["step"] == expected_step
+
+
+@pytest.mark.asyncio
+async def test_stream_log_uses_native_reasoning_when_thoughts_are_absent():
+    log = Log()
+    loop_data = LoopData()
+    agent = SimpleNamespace(
+        context=SimpleNamespace(log=log),
+        agent_name="A0",
+    )
+
+    await ReasoningLog(agent=agent).execute(
+        loop_data=loop_data,
+        text="Native reasoning summary",
+    )
+    await StreamLog(agent=agent).execute(
+        loop_data=loop_data,
+        text='{"tool_name":"response","tool_args":{"text":"Done"}}',
+        parsed={"tool_name": "response", "tool_args": {"text": "Done"}},
+    )
+    await StreamLogEnd(agent=agent).execute(loop_data=loop_data)
+
+    item = loop_data.params_temporary["log_item_generating"]
+    assert item.heading == "A0: Using response"
+    assert item.kvps["thoughts"] == ["Native reasoning summary"]
+    assert item.kvps["reasoning"] == "Native reasoning summary"

@@ -20,6 +20,21 @@ DEFAULT_HEIGHT = 768
 START_TIMEOUT_SECONDS = 15.0
 
 
+def keyboard_options() -> dict[str, str]:
+    """Resolve the configured XKB keyboard layout for browser displays."""
+    from plugins._browser.helpers.config import (
+        KEYBOARD_LAYOUT_KEY,
+        KEYBOARD_VARIANT_KEY,
+        get_browser_config,
+    )
+
+    config = get_browser_config()
+    return {
+        "layout": str(config.get(KEYBOARD_LAYOUT_KEY, "") or "").strip(),
+        "variant": str(config.get(KEYBOARD_VARIANT_KEY, "") or "").strip(),
+    }
+
+
 def collect_status() -> dict[str, Any]:
     binaries = {
         name: shutil.which(name) or ""
@@ -114,6 +129,7 @@ class BrowserInteractiveView:
 
             self._xvfb = process
             self.display = int(display_number)
+            self._apply_keyboard_layout()
             self.resize(self.width, self.height)
             return self.display_name
 
@@ -190,6 +206,43 @@ class BrowserInteractiveView:
             self._stop_locked()
         shutil.rmtree(self.state_dir, ignore_errors=True)
 
+    def _apply_keyboard_layout(self) -> None:
+        """Apply the configured XKB layout to this private display."""
+        if self.display is None:
+            return
+        options = keyboard_options()
+        if not options["layout"]:
+            return
+        setxkbmap = shutil.which("setxkbmap")
+        if not setxkbmap:
+            return
+        command = [setxkbmap, "-display", self.display_name, "-layout", options["layout"]]
+        if options["variant"]:
+            command.extend(["-variant", options["variant"]])
+        try:
+            subprocess.run(
+                command,
+                check=False,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=5,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+
+    def _keyboard_xpra_args(self) -> list[str]:
+        options = keyboard_options()
+        if not options["layout"]:
+            return []
+        args = [
+            "--keyboard-sync=no",
+            "--keyboard-layout", options["layout"],
+        ]
+        if options["variant"]:
+            args.extend(["--keyboard-variant", options["variant"]])
+        return args
+
     def _start_xpra(self, xpra: str) -> None:
         self.port = self._free_port()
         runtime_dir = self.state_dir / "runtime"
@@ -227,6 +280,7 @@ class BrowserInteractiveView:
                 "--encoding=auto",
                 "--quality=90",
                 "--speed=90",
+                *self._keyboard_xpra_args(),
                 f"--bind-tcp=127.0.0.1:{self.port}",
                 f"--socket-dir={socket_dir}",
                 f"--log-dir={self.state_dir}",

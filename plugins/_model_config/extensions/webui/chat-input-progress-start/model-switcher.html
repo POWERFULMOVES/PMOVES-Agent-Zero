@@ -65,6 +65,16 @@
                         </span>
                       </div>
                     </template>
+                    <template x-if="preset.vision?.name && (!preset.chat?.vision || preset.vision?.override_main)">
+                      <div class="model-switcher-model-row">
+                        <span class="model-switcher-model-label">Vision</span>
+                        <span class="model-switcher-model-value">
+                          <span x-text="preset.vision.provider" style="opacity:0.5;"></span>
+                          <span style="opacity:0.3; margin:0 3px;">/</span>
+                          <span x-text="preset.vision.name"></span>
+                        </span>
+                      </div>
+                    </template>
                     <template x-if="preset.utility?.name">
                       <div class="model-switcher-model-row">
                         <span class="model-switcher-model-label">Utility</span>
@@ -177,6 +187,8 @@
             </div>
           </div>
         </template>
+
+        <x-extension id="model-context-strip-end"></x-extension>
       </div>
     </div>
   </template>
@@ -195,6 +207,11 @@
     gap: 8px;
     min-width: 0;
     flex-wrap: wrap;
+  }
+  .model-context-strip > x-extension,
+  .model-context-strip > x-extension > x-component,
+  .model-context-strip > x-extension > x-component > div[x-data] {
+    display: contents;
   }
   .agent-profile-avatar {
     width: 1.35rem;

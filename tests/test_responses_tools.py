@@ -292,3 +292,16 @@ durable memory operations
     assert responses_tools._tool_names_from_prompt(
         prompt, fallback="memory"
     ) == ["memory_load"]
+
+
+def test_bundled_memory_prompt_exposes_every_memory_tool():
+    prompt = (
+        PROJECT_ROOT / "plugins/_memory/prompts/agent.system.tool.memory.md"
+    ).read_text(encoding="utf-8")
+
+    assert responses_tools._tool_names_from_prompt(prompt, fallback="memory") == [
+        "memory_load",
+        "memory_save",
+        "memory_delete",
+        "memory_forget",
+    ]

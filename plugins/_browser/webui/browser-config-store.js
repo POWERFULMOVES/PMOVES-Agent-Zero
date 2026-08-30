@@ -41,6 +41,8 @@ function ensureConfig(config) {
   config.proxy_bypass = String(config.proxy_bypass || "").trim();
   config.proxy_username = String(config.proxy_username || "");
   config.proxy_password = String(config.proxy_password || "");
+  config.keyboard_layout = normalizeXkbToken(config.keyboard_layout);
+  config.keyboard_variant = normalizeXkbToken(config.keyboard_variant);
   config.host_browser_privacy_policy = normalizeChoice(
     config.host_browser_privacy_policy,
     HOST_PRIVACY_POLICIES,
@@ -66,6 +68,14 @@ function normalizeInt(value, fallback, minimum, maximum) {
   const number = Number.parseInt(value, 10);
   if (!Number.isFinite(number)) return fallback;
   return Math.max(minimum, Math.min(maximum, number));
+}
+
+function normalizeXkbToken(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]/g, "")
+    .slice(0, 32);
 }
 
 function normalizeRuntimeBackend(value) {
@@ -103,6 +113,24 @@ function normalizeCustomHostBrowserEndpoint(value) {
 
 function isCustomHostBrowserEndpoint(value) {
   return Boolean(normalizeCustomHostBrowserEndpoint(value));
+}
+
+function stableHostBrowserSelection(value, status) {
+  const selection = normalizeHostBrowserSelection(value);
+  if (!selection) return "";
+  const connectors = Array.isArray(status?.connectors) ? status.connectors : [];
+  for (const connector of connectors) {
+    const candidates = [
+      ...(Array.isArray(connector?.available_browsers) ? connector.available_browsers : []),
+      connector,
+    ];
+    for (const candidate of candidates) {
+      const endpoint = normalizeCustomHostBrowserEndpoint(candidate?.cdp_endpoint);
+      const browserId = normalizeHostBrowserSelection(candidate?.id || candidate?.browser_id);
+      if (endpoint && endpoint === selection && browserId) return browserId;
+    }
+  }
+  return selection;
 }
 
 function normalizeBoolean(value, fallback = true) {
@@ -255,14 +283,20 @@ export const store = createStore("browserConfig", {
         ? connector.available_browsers
         : [];
       for (const browser of advertised) {
-        const value = normalizeCustomHostBrowserEndpoint(browser?.cdp_endpoint || browser?.id);
+        const endpoint = normalizeCustomHostBrowserEndpoint(browser?.cdp_endpoint);
+        const value = endpoint
+          ? normalizeHostBrowserSelection(browser?.id) || endpoint
+          : "";
         if (!value || seen.has(value)) continue;
         seen.add(value);
         const label = browser?.label || hostBrowserFamilyLabel(browser?.family || value);
         const status = browser?.status ? ` - ${hostBrowserStatusLabel(browser.status)}` : "";
         options.push({ value, label: `${label}${status}` });
       }
-      const fallbackValue = normalizeCustomHostBrowserEndpoint(connector?.cdp_endpoint || connector?.browser_id);
+      const fallbackEndpoint = normalizeCustomHostBrowserEndpoint(connector?.cdp_endpoint);
+      const fallbackValue = fallbackEndpoint
+        ? normalizeHostBrowserSelection(connector?.browser_id) || fallbackEndpoint
+        : "";
       if (fallbackValue && !seen.has(fallbackValue)) {
         seen.add(fallbackValue);
         const label = connector?.browser_label || hostBrowserFamilyLabel(connector?.browser_family || fallbackValue);
@@ -338,6 +372,18 @@ export const store = createStore("browserConfig", {
     try {
       const response = await callJsonApi(BROWSER_STATUS_API, {});
       this.hostBrowserStatus = response?.host_browser || { connectors: [] };
+      const safeConfig = ensureConfig(this.config);
+      if (safeConfig) {
+        const stable = stableHostBrowserSelection(
+          safeConfig.host_browser_selection,
+          this.hostBrowserStatus,
+        );
+        if (stable !== safeConfig.host_browser_selection) {
+          safeConfig.host_browser_selection = stable;
+          this.hostBrowserCustomEndpoint = "";
+          this.hostBrowserCustomMode = false;
+        }
+      }
     } catch (_error) {
       this.hostBrowserStatus = { connectors: [] };
     } finally {

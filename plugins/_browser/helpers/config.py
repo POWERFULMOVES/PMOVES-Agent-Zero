@@ -22,6 +22,8 @@ PROXY_SERVER_KEY = "proxy_server"
 PROXY_BYPASS_KEY = "proxy_bypass"
 PROXY_USERNAME_KEY = "proxy_username"
 PROXY_PASSWORD_KEY = "proxy_password"
+KEYBOARD_LAYOUT_KEY = "keyboard_layout"
+KEYBOARD_VARIANT_KEY = "keyboard_variant"
 RUNTIME_BACKENDS = {"container", "host_required"}
 BROWSER_TAB_SCOPES = {"per_context", "shared"}
 HOST_BROWSER_PRIVACY_POLICIES = {"enforce_local", "warn", "allow"}
@@ -100,6 +102,12 @@ def _normalize_int(value: Any, *, default: int, minimum: int, maximum: int) -> i
     return max(minimum, min(maximum, number))
 
 
+def _normalize_xkb_token(value: Any) -> str:
+    return "".join(
+        ch for ch in str(value or "").strip().lower() if ch.isalnum() or ch in {"_", "-"}
+    )[:32]
+
+
 def _normalize_choice(value: Any, *, allowed: set[str], default: str) -> str:
     normalized = str(value or "").strip().lower().replace("-", "_")
     if normalized in allowed:
@@ -125,6 +133,10 @@ def _model_config_summary(config: dict[str, Any] | None) -> str:
 def normalize_browser_config(settings: dict[str, Any] | None) -> dict[str, Any]:
     raw = settings if isinstance(settings, dict) else {}
     extension_paths = _normalize_extension_paths(raw.get("extension_paths", []))
+    keyboard_layout = _normalize_xkb_token(raw.get(KEYBOARD_LAYOUT_KEY, ""))
+    keyboard_variant = (
+        _normalize_xkb_token(raw.get(KEYBOARD_VARIANT_KEY, "")) if keyboard_layout else ""
+    )
     return {
         "extension_paths": extension_paths,
         DEFAULT_HOMEPAGE_KEY: _normalize_default_homepage(
@@ -165,6 +177,8 @@ def normalize_browser_config(settings: dict[str, Any] | None) -> dict[str, Any]:
         PROXY_BYPASS_KEY: str(raw.get(PROXY_BYPASS_KEY, "") or "").strip()[:4096],
         PROXY_USERNAME_KEY: str(raw.get(PROXY_USERNAME_KEY, "") or "")[:1024],
         PROXY_PASSWORD_KEY: str(raw.get(PROXY_PASSWORD_KEY, "") or "")[:4096],
+        KEYBOARD_LAYOUT_KEY: keyboard_layout,
+        KEYBOARD_VARIANT_KEY: keyboard_variant,
         MODEL_PRESET_KEY: _normalize_model_preset(raw.get(MODEL_PRESET_KEY, "")),
     }
 
@@ -177,6 +191,8 @@ def browser_runtime_config(settings: dict[str, Any] | None) -> dict[str, Any]:
         PROXY_BYPASS_KEY: config[PROXY_BYPASS_KEY],
         PROXY_USERNAME_KEY: config[PROXY_USERNAME_KEY],
         PROXY_PASSWORD_KEY: config[PROXY_PASSWORD_KEY],
+        KEYBOARD_LAYOUT_KEY: config[KEYBOARD_LAYOUT_KEY],
+        KEYBOARD_VARIANT_KEY: config[KEYBOARD_VARIANT_KEY],
     }
 
 

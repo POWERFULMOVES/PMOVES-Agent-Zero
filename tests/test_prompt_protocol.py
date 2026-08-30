@@ -62,6 +62,7 @@ async def test_prepare_prompt_places_protocol_before_history_and_extras(monkeypa
     assert isinstance(prompt[3], HumanMessage)
     assert str(prompt[3].content).startswith("[EXTRAS]")
     assert "Today." in str(prompt[3].content)
+    assert '{"current_datetime":"Today."' in str(prompt[3].content)
 
     serialized_history = agent.history.serialize()
     assert "Project rule." not in serialized_history

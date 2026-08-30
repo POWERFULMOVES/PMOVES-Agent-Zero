@@ -209,6 +209,9 @@ def ensure_tool_allowed(
 
 
 def filter_tool_prompt(agent: Any, prompt_file: str, prompt: str) -> str:
+    if get_policy(agent)["mode"] != "custom":
+        return prompt
+
     known_names = _policy_tool_names(agent)
     names = _prompt_tool_names(prompt_file, prompt, known_names)
     if names and not any(resolve_tool(agent, name).allowed for name in names):

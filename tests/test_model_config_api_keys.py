@@ -89,6 +89,34 @@ def test_chat_model_configured_requires_identity_and_key(monkeypatch):
     )
 
 
+def test_missing_api_key_checks_only_the_active_vision_model(monkeypatch):
+    from plugins._model_config.helpers import model_config
+
+    config = {
+        "chat_model": {"provider": "ollama", "name": "text-main", "vision": True},
+        "vision_model": {"provider": "openai", "name": "vision"},
+        "utility_model": {"provider": "ollama", "name": "utility"},
+        "embedding_model": {
+            "provider": "huggingface",
+            "name": "sentence-transformers/all-MiniLM-L6-v2",
+        },
+    }
+    monkeypatch.setattr(model_config, "get_effective_config", lambda _agent=None: config)
+    monkeypatch.setattr(
+        model_config,
+        "get_embedding_model_config",
+        lambda _agent=None: config["embedding_model"],
+    )
+    monkeypatch.setattr(model_config, "has_provider_api_key", lambda *args: False)
+
+    assert model_config.get_missing_api_key_providers() == []
+
+    config["chat_model"]["vision"] = False
+    assert model_config.get_missing_api_key_providers() == [
+        {"model_type": "Vision Model", "provider": "openai"}
+    ]
+
+
 @pytest.mark.asyncio
 async def test_missing_api_key_banner_exposes_only_effective_missing_providers(monkeypatch):
     from plugins._model_config.helpers import model_config
@@ -149,7 +177,7 @@ def test_model_config_frontend_tracks_provider_api_key_edits():
     assert "/plugins/_model_config/missing_api_key_status" not in model_gate_content
     assert '@input="$store.modelConfig.setApiKeyValue(_prov, $el.value)"' in config_content
     assert "apiKeyMode: 'none'" not in preset_modal_content
-    assert preset_modal_content.count("apiKeyMode: 'store'") == 3
+    assert preset_modal_content.count("apiKeyMode: 'store'") == 4
     assert "$store.modelConfig.resetApiKeyDrafts();" in preset_modal_content
     assert "await $store.modelConfig.refreshApiKeyStatus();" in preset_modal_content
     assert "await store.persistAllDirtyApiKeys();" in store_content
@@ -503,39 +531,19 @@ def test_provider_api_mode_defaults_use_intended_transport():
         ).read_text(encoding="utf-8")
     )
 
-    chat_providers = (
-        "anthropic",
-        "cometapi",
-        "deepseek",
-        "google",
-        "groq",
-        "huggingface",
-        "mistral",
-        "moonshot",
-        "nebius",
-        "nvidia_nim",
-        "bedrock",
-        "openrouter",
-        "sambanova",
-        "xai",
-        "zai",
-        "zai_coding",
-    )
-    responses_providers = ("azure", "github_copilot", "openai")
+    for provider in provider_config["chat"].values():
+        assert provider.get("kwargs", {}).get("a0_api_mode", "chat") == "chat"
 
-    for provider in chat_providers:
-        assert provider_config["chat"][provider]["kwargs"]["a0_api_mode"] == "chat"
+    responses_providers = {
+        provider
+        for provider, config in oauth_provider_config["chat"].items()
+        if config.get("kwargs", {}).get("a0_api_mode") == "responses"
+    }
+    assert responses_providers == {"codex_oauth", "xai_grok_oauth"}
 
-    for provider in responses_providers:
-        assert "a0_api_mode" not in provider_config["chat"][provider].get("kwargs", {})
-
-    assert (
-        oauth_provider_config["chat"]["gemini_api_oauth"]["kwargs"]["a0_api_mode"]
-        == "chat"
-    )
-
-    for provider in ("codex_oauth", "github_copilot_oauth", "xai_grok_oauth"):
-        assert "a0_api_mode" not in oauth_provider_config["chat"][provider]["kwargs"]
+    for provider, config in oauth_provider_config["chat"].items():
+        if provider not in responses_providers:
+            assert config.get("kwargs", {}).get("a0_api_mode", "chat") == "chat"
 
 
 def test_missing_api_key_banner_does_not_include_auto_modal_metadata(monkeypatch):
@@ -721,6 +729,52 @@ def test_local_provider_runtime_defaults_and_overrides(monkeypatch):
     )
     assert custom_vllm_chat.kwargs["api_base"] == "http://127.0.0.1:8001/v1"
     assert custom_vllm_chat.kwargs["api_key"] == "real-local-key"
+
+
+def test_openai_compatible_embedding_keeps_gateway_model_string(monkeypatch):
+    """Gateway model ids must reach LiteLLM with an explicit `openai/` provider.
+
+    An OpenAI-compatible gateway owns its own model namespace, so ids such as
+    `nvidia/...` or `auto/embedding` are model names, not provider prefixes.
+    Without the prefix LiteLLM re-parses the first segment as a provider and
+    either raises "LLM Provider NOT provided" or routes to the wrong provider,
+    mangling the model id before the gateway ever sees it.
+    """
+    monkeypatch.setattr(models, "get_api_key", lambda provider: "None")
+
+    gateway = "https://gateway.example/v1"
+    for model in (
+        "nvidia/llama-nemotron-embed-vl-1b-v2:free",
+        "openrouter/openai/text-embedding-3-small",
+        "auto/embedding",
+    ):
+        embedding = models.get_embedding_model(
+            "other", model, api_base=gateway, api_key="gateway-key"
+        )
+        assert embedding.model_name == f"openai/{model}"
+        assert embedding.kwargs["api_base"] == gateway
+
+    # The bundled OpenRouter embedding provider is affected the same way: it
+    # resolves to litellm_provider `openai` against OpenRouter's api_base, so an
+    # OpenRouter-style id has to survive intact. Previously `openai/<model>` was
+    # handed to LiteLLM bare, which consumed the `openai/` segment and forwarded
+    # only `<model>` to OpenRouter.
+    for model in (
+        "openai/text-embedding-3-small",
+        "nvidia/llama-nemotron-embed-vl-1b-v2:free",
+    ):
+        openrouter_embedding = models.get_embedding_model("openrouter", model)
+        assert openrouter_embedding.model_name == f"openai/{model}"
+        assert openrouter_embedding.kwargs["api_base"] == "https://openrouter.ai/api/v1"
+
+    # Plain OpenAI behaviour is unchanged: LiteLLM strips the `openai/` prefix
+    # and forwards the bare model id, exactly as it did without a prefix.
+    openai_embedding = models.get_embedding_model("openai", "text-embedding-3-small")
+    assert openai_embedding.model_name == "openai/text-embedding-3-small"
+
+    # Providers that do not resolve to `openai` keep their existing prefix.
+    ollama_embedding = models.get_embedding_model("ollama", "nomic-embed-text")
+    assert ollama_embedding.model_name == "ollama/nomic-embed-text"
 
 
 def test_embedding_config_repairs_sentence_transformer_aliases(monkeypatch):

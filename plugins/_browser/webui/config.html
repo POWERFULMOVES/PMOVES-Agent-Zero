@@ -243,6 +243,37 @@
             </span>
           </label>
 
+          <label class="browser-config-field">
+            <span class="browser-config-field-label">Keyboard layout</span>
+            <input
+              type="text"
+              x-model="$store.browserConfig.config.keyboard_layout"
+              placeholder="de, fr, us, ..."
+              autocomplete="off"
+            />
+            <span class="browser-config-field-help">
+              XKB layout of the interactive Browser window, e.g. de for a German keyboard. Match your physical keyboard so characters like @, umlauts, and brackets land on the printed keys. Empty keeps US.
+              <a href="https://man.archlinux.org/man/xkeyboard-config.7#LAYOUTS" target="_blank" rel="noreferrer">Full layout list</a>. Changing it restarts the internal browser on save.
+            </span>
+          </label>
+
+          <label
+            class="browser-config-field"
+            x-show="$store.browserConfig.config.keyboard_layout"
+          >
+            <span class="browser-config-field-label">Keyboard variant</span>
+            <input
+              type="text"
+              x-model="$store.browserConfig.config.keyboard_variant"
+              placeholder="mac, nodeadkeys, colemak, ..."
+              autocomplete="off"
+            />
+            <span class="browser-config-field-help">
+              XKB variant for the layout above. German Mac keyboards use mac, so Option+L types @.
+              <a href="https://man.archlinux.org/man/xkeyboard-config.7#LAYOUTS" target="_blank" rel="noreferrer">Variants per layout</a>. Changing it restarts the internal browser on save.
+            </span>
+          </label>
+
           <label class="browser-config-switch-row">
             <span class="browser-config-switch-copy">
               <span class="browser-config-field-label">Autofocus active page</span>

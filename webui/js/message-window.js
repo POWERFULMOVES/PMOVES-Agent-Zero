@@ -178,6 +178,7 @@ export class MessageWindow {
     const previousStartKey = this._records[this.start]?.key || null;
     const previousEndKey = this._records[this.end - 1]?.key || null;
     const wasAtTail = followTail && this.end >= this._records.length;
+    const addedKeys = new Set();
     let requiresSort = false;
 
     for (const message of Array.isArray(messages) ? messages : []) {
@@ -202,6 +203,7 @@ export class MessageWindow {
         this._recordsByKey.set(key, record);
         this._indexByKey.set(key, this._records.length);
         this._records.push(record);
+        addedKeys.add(key);
       }
     }
 
@@ -226,6 +228,7 @@ export class MessageWindow {
       this.end = previousEnd >= 0 ? previousEnd + 1 : this.end;
       this._clampBounds();
     }
+    return addedKeys;
   }
 
   showTail() {

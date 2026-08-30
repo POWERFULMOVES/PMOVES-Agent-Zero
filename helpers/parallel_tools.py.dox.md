@@ -32,11 +32,13 @@
 - Subordinate child chats are tagged with job metadata, remain outside the scheduler task list, and may use normal child-chat tools including `parallel`.
 - Nested parallel jobs started by a parallel subordinate are registered as child `DeferredTask` instances so stopping the ancestor also stops its descendants.
 - Direct tool jobs run in isolated background contexts and are blocked from recursively invoking `parallel`.
+- Direct tool jobs inherit the parent's active per-chat model override and current user message.
 - Direct tool background context cleanup removes both the in-memory context and any transient chat folder left on disk.
 - Parent-visible child log items are created for each wrapped call so the WebUI can inspect concurrent children separately while the wrapper result remains model-history-only.
 - Child tool logs mirror normal tool-call visible args; job ids remain available through wrapper results and prompt extras rather than visible process-step args.
 - Wrapped tool child logs use each tool's native `get_log_object()` output when available, preserving special log rendering (for example: `code_execution_tool` uses `code_exe`, `wait` uses `progress`, MCP tools use `mcp`, and regular tools use `tool`).
 - Direct parallel worker execution reuses the parent-visible child log item so tool `before_execution()` cannot create a second generic worker log or lose the native badge type.
+- Direct tools may explicitly queue model-visible history for their parent. Terminal collection records the outer `parallel` result first, promotes queued messages in job order, and only then removes disposable worker state; background jobs retain queued history until they are collected.
 - Job IDs are stable handles for later await, collect, or cancel operations.
 - Prompt extras must stay bounded and expose only job IDs, tool names, status, and compact result/error summaries.
 
@@ -46,6 +48,7 @@
 - `wait=True` starts jobs and awaits them before returning until all requested jobs finish or the wait timeout is reached; the timeout stops waiting but does not cancel running jobs.
 - `collect` returns already-finished job results without waiting; `await` waits for requested job IDs.
 - Canceled jobs should be marked terminal and should stop their background `DeferredTask` when cancellation is possible.
+- `queue_parallel_parent_history(...)` accepts messages only from registered direct tool workers. `collect_parallel_jobs(...)` optionally promotes those messages while collecting terminal jobs; arbitrary worker history is never copied.
 
 ## Work Guidance
 

@@ -17,6 +17,7 @@ from plugins._browser.helpers import connector_runtime as connector_runtime_modu
 from plugins._browser.helpers.connector_runtime import (
     ConnectorBrowserRuntime,
     _agent_uses_local_chat_model,
+    _stable_host_browser_selection,
 )
 
 
@@ -65,6 +66,50 @@ def test_host_browser_metadata_selection_is_context_scoped():
         assert rows[0]["browser_family"] == "chrome"
         assert rows[0]["enabled"] is True
         assert rows[0]["content_helper_sha256"] == "abc123"
+    finally:
+        ws_runtime.unregister_sid(sid)
+
+
+def test_connector_runtime_uses_stable_id_for_advertised_legacy_endpoint(monkeypatch):
+    sid = "sid-host-browser-stable"
+    context_id = "ctx-host-browser-stable"
+    endpoint = "ws://localhost:9222/devtools/browser/old-guid"
+    metadata = {
+        "supported": True,
+        "enabled": True,
+        "status": "ready",
+        "browser_family": "chrome-cdp",
+        "browser_id": "chrome-cdp",
+        "cdp_endpoint": endpoint,
+        "available_browsers": [
+            {
+                "id": "chrome-cdp",
+                "family": "chrome-cdp",
+                "label": "Chrome (allowed)",
+                "cdp_endpoint": endpoint,
+            }
+        ],
+        "features": ["ensure", "open"],
+    }
+    monkeypatch.setattr(
+        connector_runtime_module,
+        "get_browser_config",
+        lambda agent=None: {
+            "host_browser_profile_mode": "existing",
+            "host_browser_selection": endpoint,
+        },
+    )
+    ws_runtime.register_sid(sid)
+    ws_runtime.subscribe_sid_to_context(sid, context_id)
+    try:
+        ws_runtime.store_sid_host_browser_metadata(sid, metadata)
+        runtime = ConnectorBrowserRuntime(context_id, _agent(context_id))
+
+        assert runtime._payload_for_call("open", "example.com")["browser_selection"] == "chrome-cdp"
+        assert _stable_host_browser_selection(
+            "ws://localhost:9333/devtools/browser/custom",
+            metadata,
+        ) == "ws://localhost:9333/devtools/browser/custom"
     finally:
         ws_runtime.unregister_sid(sid)
 
