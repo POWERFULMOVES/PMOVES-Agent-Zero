@@ -61,6 +61,32 @@ def _mcp_get(item: Any, key: str, default: Any = None) -> Any:
     return getattr(item, key, default)
 
 
+def filter_declared_args(
+    tools: List[dict], tool_name: str, input_data: Dict[str, Any]
+) -> tuple[Dict[str, Any], List[str]]:
+    """Drop arguments the tool's declared input schema does not name.
+
+    Models following the advertised schema sometimes emit undeclared optional
+    keys (observed in the wild: 'action' into postgrestRequest, 'tags' into
+    session_recall); strict servers reject the whole call over them. Returns
+    (filtered_args, dropped_keys). Tools without a properties map pass through
+    unfiltered — no schema, nothing to filter against.
+    """
+    schema = None
+    for tool in tools or []:
+        if _mcp_get(tool, "name") == tool_name:
+            schema = _mcp_get(tool, "input_schema") or {}
+            break
+    props = schema.get("properties") if isinstance(schema, dict) else None
+    if not isinstance(props, dict) or not props:
+        return input_data, []
+    allowed = set(props.keys())
+    dropped = [key for key in input_data if key not in allowed]
+    if not dropped:
+        return input_data, []
+    return {k: v for k, v in input_data.items() if k in allowed}, dropped
+
+
 def normalize_name(name: str) -> str:
     # Lowercase and strip whitespace
     name = name.strip().lower()
@@ -1473,6 +1499,15 @@ class MCPClientBase(ABC):
                 )
             PrintStyle(font_color="green").print(
                 f"MCPClientBase ({self.server.name}): Tool '{tool_name}' found after updating tools."
+            )
+
+        input_data, dropped_args = filter_declared_args(
+            self.tools, tool_name, input_data
+        )
+        if dropped_args:
+            PrintStyle(font_color="orange").print(
+                f"MCPClientBase ({self.server.name}): dropping undeclared args for "
+                f"'{tool_name}': {', '.join(sorted(dropped_args))}"
             )
 
         current_settings = settings.get_settings()
