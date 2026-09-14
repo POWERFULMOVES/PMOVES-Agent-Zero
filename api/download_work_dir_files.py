@@ -19,10 +19,10 @@ class DownloadFiles(ApiHandler):
         if request.method == "GET":
             try:
                 return take_download_response(request.args.get("token", ""))
-            except FileNotFoundError as error:
-                return Response(json.dumps({"error": str(error)}), status=404, mimetype="application/json")
-            except PermissionError as error:
-                return Response(json.dumps({"error": str(error)}), status=403, mimetype="application/json")
+            except FileNotFoundError:
+                return Response(json.dumps({"error": "download not found"}), status=404, mimetype="application/json")
+            except PermissionError:
+                return Response(json.dumps({"error": "download link expired or unauthorized"}), status=403, mimetype="application/json")
         paths = input.get("paths", [])
         try:
             if runtime.is_development():
@@ -40,7 +40,7 @@ class DownloadFiles(ApiHandler):
                 response, name = await prepare_files_response(paths, input.get("currentPath", ""))
             token = register_files_download(response, paths)
             return {"download_url": "/api/download_work_dir_files?token=" + token, "name": name}
-        except FileLimitExceeded as error:
-            return Response(json.dumps({"error": str(error)}), status=413, mimetype="application/json")
-        except (ValueError, FileNotFoundError, PermissionError) as error:
-            return Response(json.dumps({"error": str(error)}), status=400, mimetype="application/json")
+        except FileLimitExceeded:
+            return Response(json.dumps({"error": "download exceeds the size limit"}), status=413, mimetype="application/json")
+        except (ValueError, FileNotFoundError, PermissionError):
+            return Response(json.dumps({"error": "invalid download request"}), status=400, mimetype="application/json")
