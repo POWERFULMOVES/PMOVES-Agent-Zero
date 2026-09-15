@@ -19,8 +19,8 @@ class UploadWorkDirFiles(ApiHandler):
         uploaded_files = request.files.getlist("files[]")
         try:
             successful, failed = await upload_files(uploaded_files, current_path)
-        except FileLimitExceeded as error:
-            return Response(json.dumps({"error": str(error)}), status=413, mimetype="application/json")
+        except FileLimitExceeded:
+            return Response(json.dumps({"error": "upload exceeds the size limit"}), status=413, mimetype="application/json")
 
         if not successful and failed:
             return {"error": "Files could not be uploaded. Check destination permissions and free disk space.",

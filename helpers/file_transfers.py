@@ -1,5 +1,6 @@
 """Bounded streaming and atomic publication shared by file operations."""
 import hashlib
+import hmac
 import os
 from pathlib import Path
 import stat
@@ -20,7 +21,7 @@ class TransferWriter:
     def __init__(self, destination, limit=None):
         self.destination, self.limit = destination, limit
         self.size = 0
-        self.digest = hashlib.sha256()
+        self.digest = hmac.new(os.urandom(32), digestmod=hashlib.sha256)
 
     def write(self, chunk):
         if self.limit is not None and self.size + len(chunk) > self.limit:
