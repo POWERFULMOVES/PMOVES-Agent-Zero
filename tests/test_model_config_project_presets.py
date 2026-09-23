@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 import threading
 import types
@@ -275,6 +276,82 @@ def test_global_presets_require_immutable_default_and_save_behavior(monkeypatch,
         model_config.save_presets([])
 
     assert model_config.reset_presets()[0]["name"] == "Default"
+
+
+def test_global_presets_parse_once_until_a_source_file_changes(monkeypatch, tmp_path):
+    _prepare_a0_tree(monkeypatch, tmp_path)
+
+    from plugins._model_config.helpers import model_config
+
+    calls = []
+    load = model_config._load_global_presets
+    monkeypatch.setattr(
+        model_config, "_load_global_presets", lambda **kwargs: calls.append(1) or load(**kwargs)
+    )
+
+    model_config.get_presets()[0]["name"] = "mutated"
+    assert model_config.get_presets()[0]["name"] == "Default"
+    assert len(calls) == 1
+
+    model_config.save_presets(
+        [
+            model_config.get_presets()[0],
+            {"name": "Added", "chat": {"provider": "openai", "name": "gpt-test"}},
+        ]
+    )
+    assert [p["name"] for p in model_config.get_presets()] == ["Default", "Added"]
+    assert len(calls) == 2
+
+    # out-of-band edits invalidate through the file signature
+    path = tmp_path / "usr" / "plugins" / "_model_config" / "presets.yaml"
+    path.write_text(path.read_text(encoding="utf-8").replace("Added", "Edited"), encoding="utf-8")
+    os.utime(path, ns=(1, 1))
+    assert [p["name"] for p in model_config.get_presets()] == ["Default", "Edited"]
+    assert len(calls) == 3
+
+
+@pytest.mark.parametrize("source", ["presets", "fallback", "legacy"])
+def test_global_presets_recover_after_source_read_failure(monkeypatch, tmp_path, source):
+    _prepare_a0_tree(monkeypatch, tmp_path)
+
+    from helpers import cache, files
+    from plugins._model_config.helpers import model_config
+
+    user_dir = tmp_path / "usr" / "plugins" / "_model_config"
+    user_dir.mkdir()
+    paths = {
+        "presets": user_dir / "presets.yaml",
+        "fallback": tmp_path / "plugins" / "_model_config" / "mode_presets_fallback.yaml",
+        "legacy": user_dir / "config.json",
+    }
+    paths["presets"].write_text(
+        "- name: Default\n- name: Custom\n  chat: {provider: openai, name: custom-chat}\n",
+        encoding="utf-8",
+    )
+    paths["legacy"].write_text(
+        json.dumps({"utility_model": {"provider": "openai", "name": "legacy-utility"}}),
+        encoding="utf-8",
+    )
+    expected = model_config.get_presets()
+    assert expected[0]["chat"]["name"] == "default-chat"
+    assert expected[0]["utility"]["name"] == "legacy-utility"
+    assert expected[1]["name"] == "Custom"
+    cache.clear(model_config.PRESETS_CACHE_AREA)
+
+    reader_name = "read_file_json" if source == "legacy" else "read_file"
+    read = getattr(files, reader_name)
+
+    def fail_read(path, *args, **kwargs):
+        if Path(path) == paths[source]:
+            raise PermissionError("temporary read failure")
+        return read(path, *args, **kwargs)
+
+    with monkeypatch.context() as failing:
+        failing.setattr(files, reader_name, fail_read)
+        assert model_config.get_presets() != expected
+
+    # Recovery must not require editing the files or clearing the cache.
+    assert model_config.get_presets() == expected
 
 
 def test_project_scope_selects_global_presets_only(monkeypatch, tmp_path):

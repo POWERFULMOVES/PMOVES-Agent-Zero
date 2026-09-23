@@ -4,6 +4,7 @@ from helpers.errors import RepairableException
 from helpers.tool import Tool, Response
 from initialize import initialize_agent
 from extensions.python.hist_add_tool_result import _90_save_tool_call_file as save_tool_call_file
+from plugins._model_config.helpers.model_config import DEFAULT_PRESET_NAME, get_configured_preset_name
 
 
 SUBORDINATES_DATA_KEY = "_subordinates"
@@ -152,6 +153,10 @@ def get_or_create_subordinate(
                 f"Subordinate context '{subordinate.context.id}' is still running. "
                 "Await or cancel its parallel job before continuing it."
             )
+        label = str(name or "").strip()
+        if label and subordinate.context is not parent.context:
+            subordinate.context.name = label
+            subordinate.context.set_output_data(CHILD_PARENT_CONTEXT_LABEL_KEY, label)
         return subordinate
 
     override_settings = {"agent_profile": requested_profile} if requested_profile else None
@@ -168,7 +173,7 @@ def get_or_create_subordinate(
     if project:
         projects.activate_project(context.id, project, mark_dirty=False)
     model_override = parent.context.get_data("chat_model_override")
-    if model_override:
+    if model_override and get_configured_preset_name(subordinate) == DEFAULT_PRESET_NAME:
         context.set_data("chat_model_override", model_override)
 
     _register_subordinate(parent, subordinate, slot)

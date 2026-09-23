@@ -44,6 +44,131 @@ class _AsyncEventStream:
         self.closed = True
 
 
+@pytest.mark.asyncio
+async def test_commentary_streams_as_thoughts_without_changing_native_result(monkeypatch):
+    message = {"type": "message", "id": "msg_progress", "role": "assistant",
+               "phase": "commentary", "content": []}
+    call = {"type": "function_call", "id": "fc_progress", "call_id": "call_progress",
+            "name": "lookup", "arguments": '{"q":"a0"}'}
+    message_done = {**message, "content": [{"type": "output_text", "text": 'Reading "a0" now.'}]}
+    stream = _AsyncEventStream([
+        {"type": "response.output_item.added", "output_index": 0, "item": message},
+        {"type": "response.output_text.delta", "item_id": message["id"], "delta": 'Reading "a0"'},
+        {"type": "response.output_text.delta", "item_id": message["id"], "delta": " now."},
+        {"type": "response.output_item.done", "output_index": 0, "item": message_done},
+        {"type": "response.output_item.added", "output_index": 1, "item": {**call, "arguments": ""}},
+        {"type": "response.function_call_arguments.delta", "item_id": call["id"], "delta": '{"q":'},
+        {"type": "response.function_call_arguments.delta", "item_id": call["id"], "delta": '"a0"}'},
+        {"type": "response.function_call_arguments.done", "item_id": call["id"], "arguments": call["arguments"]},
+        {"type": "response.completed", "response": {"id": "resp_progress", "output": [message_done, call]}},
+    ])
+
+    async def fake_responses(**kwargs):
+        return stream
+
+    async def no_limiter(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr(litellm_transport, "aresponses", fake_responses)
+    monkeypatch.setattr(models, "apply_rate_limiter", no_limiter)
+    wrapper = models.LiteLLMChatWrapper(model="test", provider="openai", model_config=None,
+                                      a0_api_mode="responses")
+    previews = []
+
+    async def preview(chunk, full):
+        previews.append((stream.index, chunk, full))
+        return full if extract_tools.extract_tool_request(full) else None
+
+    result = await wrapper.unified_turn(messages=[HumanMessage(content="hi")], response_callback=preview)
+    assert [json.loads(row[2])["thoughts"] for row in previews[:2]] == [['Reading "a0"'], ['Reading "a0" now.']]
+    assert [row[1] for row in previews[:2]] == ['Reading "a0"', ' now.']
+    assert previews[0][0] == 2 and previews[1][0] == 3
+    assert json.loads(previews[-1][2]) == {"thoughts": ['Reading "a0" now.'], "tool_name": "lookup", "tool_args": {"q": "a0"}}
+    assert stream.index == 9 and not stream.closed
+    assert [item.to_dict() for item in result.output_items] == [message_done, call]
+    assert json.loads(result.function_calls_text()) == {"tool_name": "lookup", "tool_args": {"q": "a0"}}
+
+
+@pytest.mark.parametrize("phase", [None, "final_answer"])
+def test_non_commentary_stream_text_has_no_thoughts_preview(phase):
+    parser = litellm_transport.ResponsesEventParser()
+    parser.parse({"type": "response.output_item.added", "output_index": 0,
+                  "item": {"type": "message", "id": "msg_final", "phase": phase}})
+    assert parser.parse({"type": "response.output_text.delta", "item_id": "msg_final", "delta": "Done"}) == {
+        "response_delta": "Done", "reasoning_delta": "",
+    }
+
+
+@pytest.mark.asyncio
+async def test_legacy_callback_still_receives_accumulated_model_text(monkeypatch):
+    stream = _AsyncEventStream([
+        {"type": "response.output_item.added", "item": {"id": "progress", "type": "message", "phase": "commentary"}},
+        {"type": "response.output_text.delta", "item_id": "progress", "delta": "Reading now."},
+    ])
+
+    async def fake_responses(**kwargs):
+        return stream
+
+    async def no_limiter(*args, **kwargs):
+        return None
+
+    async def stop_after_chunk(chunk, full):
+        assert full == chunk == "Reading now."
+        return full
+
+    monkeypatch.setattr(litellm_transport, "aresponses", fake_responses)
+    monkeypatch.setattr(models, "apply_rate_limiter", no_limiter)
+    wrapper = models.LiteLLMChatWrapper(model="test", provider="openai", model_config=None,
+                                      a0_api_mode="responses")
+    response, _ = await wrapper.unified_call(user_message="hi", response_callback=stop_after_chunk)
+    assert response == "Reading now."
+
+
+def test_commentary_preview_keeps_multiple_native_calls_in_one_envelope():
+    parser = litellm_transport.ResponsesEventParser()
+    parser.parse({"type": "response.output_item.added", "item": {"id": "progress", "type": "message", "phase": "commentary"}})
+    parser.parse({"type": "response.output_text.delta", "item_id": "progress", "delta": "Reading both files."})
+    for index in (1, 2):
+        call = {"id": f"fc_{index}", "call_id": f"call_{index}", "type": "function_call", "name": "lookup", "arguments": ""}
+        parser.parse({"type": "response.output_item.added", "output_index": index, "item": call})
+        parser.parse({"type": "response.function_call_arguments.delta", "item_id": call["id"], "delta": '{"q":'})
+        if index == 2:
+            partial = parser.parse({"type": "response.function_call_arguments.delta", "item_id": call["id"], "delta": '"second"'})
+            assert json.loads(partial["response_preview"])["tool_name"] == "parallel_tool_calls"
+        parsed = parser.parse({"type": "response.function_call_arguments.done", "item_id": call["id"], "arguments": json.dumps({"q": index})})
+    assert json.loads(parsed["response_preview"]) == {
+        "thoughts": ["Reading both files."], "tool_name": "parallel_tool_calls",
+        "tool_args": {"calls": [{"tool_name": "lookup", "tool_args": {"q": index}} for index in (1, 2)]},
+    }
+
+
+def test_native_generation_thoughts_preserve_result_and_mask_log(monkeypatch):
+    from types import SimpleNamespace
+    from extensions.python.message_loop_result._40_native_thoughts import NativeThoughts
+
+    result = LLMResult.from_response({"output": [
+        {"type": "message", "phase": "commentary", "content": [
+            {"type": "output_text", "text": "Reading sample-secret"}]},
+        {"type": "reasoning", "encrypted_content": "opaque"},
+        {"type": "function_call", "name": "lookup", "call_id": "call_a", "arguments": '{"q":"a0"}'},
+    ]})
+    original = json.dumps(result.to_dict(), sort_keys=True)
+    monkeypatch.setattr("helpers.log.get_secrets_manager", lambda context: SimpleNamespace(
+        mask_values=lambda text: text.replace("sample-secret", "[MASKED]")))
+    log = Log()
+    item = log.log(type="agent", kvps={"reasoning": "existing summary"})
+    loop = LoopData()
+    loop.params_temporary["log_item_generating"] = item
+    agent = SimpleNamespace(agent_name="A0")
+    NativeThoughts(agent).execute({"llm_result": result}, loop)
+    assert item.kvps["thoughts"] == ["Reading [MASKED]"]
+    assert "headline" not in item.kvps
+    assert item.heading == "A0: Using lookup"
+    assert item.kvps["reasoning"] == "existing summary"
+    assert json.loads(item.content) == {"thoughts": ["Reading [MASKED]"], "tool_name": "lookup", "tool_args": {"q": "a0"}}
+    assert json.dumps(result.to_dict(), sort_keys=True) == original
+
+
 def test_responses_function_call_text_preserves_non_ascii_tool_args():
     result = LLMResult.from_response(
         {
@@ -649,6 +774,45 @@ def test_collect_response_ids_from_agent_state_and_history_metadata():
         "resp_old",
         "resp_history",
     ]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("api_mode, builds_tools", [("chat", False), ("responses", True)])
+async def test_agent_builds_native_tools_only_for_responses_turns(
+    monkeypatch, api_mode, builds_tools
+):
+    import agent as agent_module
+
+    tools = [{"type": "function", "name": "lookup", "parameters": {"type": "object"}}]
+    calls = []
+    monkeypatch.setattr(
+        agent_module,
+        "build_responses_function_tools",
+        lambda agent: calls.append(agent) or (tools, {"lookup": "lookup"}),
+    )
+
+    async def no_extensions(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr(extension, "call_extensions_async", no_extensions)
+    turn_kwargs = {}
+
+    class Model:
+        kwargs = {"a0_api_mode": api_mode}
+
+        async def unified_turn(self, **kwargs):
+            turn_kwargs.update(kwargs)
+            return LLMResult.from_chat(response="ok")
+
+    agent = object.__new__(Agent)
+    agent.data = {}
+    agent.loop_data = LoopData()
+    agent.get_chat_model = lambda: Model()
+
+    await Agent.call_chat_model_turn(agent, messages=[HumanMessage(content="hi")])
+
+    assert bool(calls) is builds_tools
+    assert turn_kwargs["a0_responses_function_tools"] == (tools if builds_tools else [])
 
 
 @pytest.mark.asyncio

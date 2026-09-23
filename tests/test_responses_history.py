@@ -4,12 +4,15 @@ import json
 import pytest
 
 from helpers import responses_history as history
-from helpers.llm_result import LLMResult
+from helpers.llm_result import LLMResult, ResponseItem
 from helpers.litellm_transport import LiteLLMTransport, clear_transport_capability_cache
 
 
 TOOLS = [{"type": "function", "name": "lookup", "parameters": {"type": "object", "properties": {}}}]
 BASE = [{"role": "system", "content": "Rules"}, {"role": "user", "content": "Question"}]
+COMMENTARY = {"type": "message", "id": "msg_progress", "role": "assistant",
+              "phase": "commentary", "status": "completed",
+              "content": [{"type": "output_text", "text": "The result points to a parsing issue."}]}
 
 
 @pytest.fixture(autouse=True)
@@ -72,6 +75,46 @@ def test_native_replay_uses_visible_results_and_retains_current_extras():
     assert "responses_history_context" not in request
     assert records == original
     assert prompt == prompt_for(records)
+
+
+def test_commentary_replay_preserves_phase_native_items_and_generic_history():
+    result = completed_call(transport(BASE, BASE))
+    result.output_items.insert(1, ResponseItem.from_any(deepcopy(COMMENTARY)))
+    records = records_for(result)
+    original = deepcopy(records)
+    prompt = prompt_for(records)
+    replay = transport(prompt, prompt, records)
+    request = replay._responses_request(stream=False)
+    assert request["input"][2:5] == [item.to_dict() for item in result.output_items]
+    assert request["input"][5]["call_id"] == "call_1"
+    assert request["input"][5]["output"] == render(records[1])
+    assert request["input"][6] == {"role": "user", "content": "Current extras"}
+    assert records == original and prompt == prompt_for(records)
+    assert replay._chat_request(stream=False)["messages"] == prompt
+
+
+@pytest.mark.parametrize("change", ["unmarked", "final", "role", "incomplete", "empty", "refusal", "secret"])
+def test_ineligible_commentary_keeps_prepared_history(change):
+    result = completed_call(transport(BASE, BASE))
+    item = deepcopy(COMMENTARY)
+    mask = lambda text: text
+    if change == "unmarked":
+        item.pop("phase")
+    elif change == "final":
+        item["phase"] = "final_answer"
+    elif change == "role":
+        item["role"] = "user"
+    elif change == "incomplete":
+        item["status"] = "incomplete"
+    elif change == "empty":
+        item["content"] = []
+    elif change == "refusal":
+        item["content"].append({"type": "refusal", "refusal": "Not a progress update"})
+    elif change == "secret":
+        mask = lambda text: text.replace("parsing", "MASKED")
+    result.output_items.insert(1, ResponseItem.from_any(item))
+    records = records_for(result)
+    assert history.prepare_groups(records, render, mask) == []
 
 
 def test_prepared_context_lifecycle_and_post_hook_changes(monkeypatch):

@@ -18,6 +18,12 @@ browser_tab_scope: "per_context"
 # Raise this only for deliberate parallel browsing workflows.
 max_open_tabs: 32
 
+# JavaScript evaluate deadline in seconds, including result/state collection.
+# Accepts finite values from 0.1 to 60; invalid values are rejected.
+# Interrupts in place first. Unresolved async execution may require reloading
+# the affected tab, which can lose unsaved page edits.
+evaluate_timeout_seconds: 30
+
 # Runtime used by the agent-facing browser tool:
 # - container: use Agent Zero's Docker/server Playwright browser.
 # - host_required: use a host browser through Launcher or A0 CLI and prepare it on first use when possible.

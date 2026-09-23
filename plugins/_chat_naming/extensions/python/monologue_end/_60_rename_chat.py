@@ -12,6 +12,8 @@ class RenameChat(Extension):
             return
         if self.agent.context.type != AgentContextType.USER:
             return
+        if self.agent.context.get_output_data("parent_context_id"):
+            return
 
         config = naming.get_config(self.agent)
         if not config["automatic_naming"]:

@@ -38,6 +38,7 @@ function ensureConfig(config) {
   config.autofocus_active_page = normalizeBoolean(config.autofocus_active_page, true);
   config.browser_tab_scope = normalizeChoice(config.browser_tab_scope, BROWSER_TAB_SCOPES, "per_context");
   config.max_open_tabs = normalizeInt(config.max_open_tabs, DEFAULT_MAX_OPEN_TABS, MIN_MAX_OPEN_TABS, HARD_MAX_OPEN_TABS);
+  config.evaluate_timeout_seconds ??= 30;
   config.runtime_backend = normalizeRuntimeBackend(config.runtime_backend);
   config.proxy_server = String(config.proxy_server || "").trim();
   config.proxy_bypass = String(config.proxy_bypass || "").trim();

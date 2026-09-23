@@ -481,11 +481,13 @@ def _stream_upstream_sse(upstream):
     headers = codex.response_headers(upstream)
     headers.setdefault("Content-Type", "text/event-stream")
     headers.setdefault("Cache-Control", "no-cache")
-    return Response(
+    response = Response(
         stream_with_context(upstream.iter_content(chunk_size=8192)),
         status=upstream.status_code,
         headers=headers,
     )
+    response.call_on_close(upstream.close)
+    return response
 
 
 def _chat_usage(usage: Any) -> dict[str, Any]:

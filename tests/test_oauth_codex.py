@@ -462,7 +462,7 @@ def test_request_codex_sends_current_codex_headers_from_body(
         )
         return FakeResponse()
 
-    monkeypatch.setattr(codex.requests, "request", fake_request)
+    monkeypatch.setattr(codex._UPSTREAM_SESSION, "request", fake_request)
 
     response = codex.request_codex(
         "/responses",
@@ -1240,6 +1240,44 @@ def test_codex_chat_nonstream_maps_usage_and_terminal_state(monkeypatch, status,
             assert data['choices'][0]['finish_reason'] == expected_reason
             assert data['usage'] == {'prompt_tokens':2048,'completion_tokens':10,'prompt_tokens_details':{'cached_tokens':1024}}
             assert 'total_tokens' not in data['usage']
+
+
+@pytest.mark.parametrize("ending", ["unread", "cancelled", "completed", "error"])
+def test_oauth_native_stream_closes_upstream_with_response(ending):
+    from flask import Flask
+    from unittest.mock import Mock
+
+    chunks = [b"data: first\n\n", b"data: second\n\n"]
+
+    def iter_content(chunk_size):
+        yield chunks[0]
+        if ending == "error":
+            raise RuntimeError("upstream disconnected")
+        yield chunks[1]
+
+    upstream = SimpleNamespace(
+        status_code=200,
+        headers={"Content-Type": "text/event-stream", "x-request-id": "test-request"},
+        iter_content=iter_content,
+        close=Mock(),
+    )
+    with Flask(__name__).test_request_context("/"):
+        response = routes._stream_upstream_sse(upstream)
+        try:
+            assert response.status_code == 200
+            assert response.headers["x-request-id"] == "test-request"
+            assert response.headers["Cache-Control"] == "no-cache"
+            iterator = iter(response.response)
+            if ending == "cancelled":
+                assert next(iterator) == chunks[0]
+            elif ending == "completed":
+                assert list(iterator) == chunks
+            elif ending == "error":
+                with pytest.raises(RuntimeError, match="upstream disconnected"):
+                    list(iterator)
+        finally:
+            response.close()
+    upstream.close.assert_called_once()
 
 
 def test_codex_chat_stream_closes_upstream_when_consumer_stops():

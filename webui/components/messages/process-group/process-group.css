@@ -700,6 +700,8 @@
   color: #c9d1d9;
   white-space: pre;
   font-family: monospace;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
   /* max-width: fit-content; */
   /* overflow: auto; */
   /* -webkit-overflow-scrolling: touch; */

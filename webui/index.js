@@ -391,8 +391,9 @@ export async function applySnapshot(snapshot, options = {}) {
     willUpdateMessages: lastLogVersion != snapshot.log_version,
     skip: false,
   };
+  const applyingContext = context;
   await callJsExtensions("apply_snapshot_before", snapCtx);
-  if (snapCtx.skip) return { updated: false };
+  if (snapCtx.skip || context !== applyingContext) return { updated: false };
 
   // If the chat has been reset, reset cursors and request a resync from the caller.
   // Note: on first snapshot after a context switch, lastLogGuid is intentionally empty,
@@ -418,6 +419,7 @@ export async function applySnapshot(snapshot, options = {}) {
       msgs.resetMessageRenderState();
     }
     await setMessages(modelGateStore.mergeSyntheticMessages(snapshot.logs, context));
+    if (context !== applyingContext) return { updated: false };
     afterMessagesUpdate(snapshot.logs);
   }
 

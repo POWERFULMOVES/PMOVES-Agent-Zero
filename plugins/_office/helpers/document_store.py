@@ -13,7 +13,7 @@ import uuid
 import zipfile
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 from xml.sax.saxutils import escape
 
 from helpers import files
@@ -342,6 +342,7 @@ def rename_document(
     content: str | None = None,
     context_id: str = "",
     file_browser: bool = False,
+    rename_open_document: Callable[[Path, Path], bool] | None = None,
 ) -> dict[str, Any]:
     resolved = normalize_path(path, context_id=context_id, file_browser=file_browser)
     ext = resolved.suffix.lstrip(".").lower()
@@ -375,8 +376,21 @@ def rename_document(
 
         if changed_path and data is None:
             resolved.parent.mkdir(parents=True, exist_ok=True)
-            source.rename(resolved)
+            renamed_open = rename_open_document and rename_open_document(source, resolved)
+            if renamed_open:
+                metadata = source.stat()
+                current = resolved.stat()
+                if (current.st_uid, current.st_gid) != (metadata.st_uid, metadata.st_gid):
+                    os.chown(resolved, metadata.st_uid, metadata.st_gid)
+                os.chmod(resolved, stat.S_IMODE(metadata.st_mode))
+            else:
+                source.rename(resolved)
             final_data = resolved.read_bytes()
+            content_changed = final_data != previous
+            if content_changed:
+                _record_version(conn, file_id, source_resolved, item_version(doc), previous)
+            if renamed_open:
+                source.unlink()
         elif data is not None:
             if content_changed:
                 _record_version(conn, file_id, source_resolved, item_version(doc), previous)
@@ -387,7 +401,7 @@ def rename_document(
         else:
             final_data = previous
 
-        stat = resolved.stat()
+        file_stat = resolved.stat()
         next_version = int(doc["version"]) + 1 if content_changed else int(doc["version"])
         conn.execute(
             """
@@ -399,7 +413,7 @@ def rename_document(
                 str(resolved),
                 resolved.name,
                 ext,
-                stat.st_size,
+                file_stat.st_size,
                 next_version,
                 sha256_bytes(final_data),
                 now_iso(),

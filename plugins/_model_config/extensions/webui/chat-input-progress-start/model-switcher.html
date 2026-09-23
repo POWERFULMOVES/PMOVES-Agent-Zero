@@ -5,7 +5,7 @@
 
 <div x-data>
 <template x-if="$store.modelConfig">
-<div x-data="{ showDropdown: false, showProfileDropdown: false }"
+<div class="model-switcher-root" x-data="{ showDropdown: false, showProfileDropdown: false }"
      x-init="
        await Promise.all([
          $store.modelConfig.refreshSwitcher($store.chats?.selected || ''),
@@ -15,7 +15,7 @@
      ">
   <template x-if="($store.modelConfig.switcherAllowed && !$store.modelConfig.switcherLoading) || $store.chats?.selectedContext?.agent_profile">
     <div class="model-switcher-container">
-      <div class="model-context-strip">
+      <div class="model-context-strip" x-overflow>
         <template x-if="$store.modelConfig.switcherAllowed && !$store.modelConfig.switcherLoading">
           <div class="model-switcher-anchor" @click.outside="showDropdown = false">
             <button class="btn-icon-action model-switcher-btn"
@@ -120,7 +120,7 @@
             <button class="btn-icon-action agent-profile-btn"
                     title="Active agent profile"
                     @click="showProfileDropdown = !showProfileDropdown; showDropdown = false">
-              <span class="agent-profile-avatar"
+              <span class="agent-profile-avatar" aria-hidden="true" data-overflow-icon
                     :style="`background:${$store.modelConfig.getAgentProfileVisual($store.chats.selectedContext.agent_profile, $store.chats.selectedContext.agent_profile_label).color}`">
                 <img x-show="$store.modelConfig.getAgentProfileVisual($store.chats.selectedContext.agent_profile, $store.chats.selectedContext.agent_profile_label).url"
                      :src="$store.modelConfig.getAgentProfileVisual($store.chats.selectedContext.agent_profile, $store.chats.selectedContext.agent_profile_label).url"
@@ -197,12 +197,18 @@
 </div>
 
 <style>
+  .model-switcher-root {
+    flex: 1;
+    min-width: 0;
+  }
   .model-switcher-container {
     position: relative;
     z-index: 10;
   }
   .model-context-strip {
     display: flex;
+    width: fit-content;
+    max-width: 100%;
     align-items: center;
     gap: 8px;
     min-width: 0;

@@ -242,7 +242,7 @@ def get_plugin_name_from_path(path: str | Path) -> str:
 
 
 def get_plugins_list():
-    if cached := cache.get(PLUGINS_LIST_CACHE_AREA, ""):
+    if (cached := cache.get(PLUGINS_LIST_CACHE_AREA, "")) is not None:
         return cached
 
     result: list[str] = []
@@ -445,9 +445,11 @@ def get_plugin_paths(*subpaths: str) -> List[str]:
 
 
 def get_enabled_plugin_paths(agent: Agent | None, *subpaths: str) -> List[str]:
-    if cached := cache.get(
-        ENABLED_PLUGINS_PATHS_CACHE_AREA, cache.determine_cache_key(agent, *subpaths)
-    ):
+    if (
+        cached := cache.get(
+            ENABLED_PLUGINS_PATHS_CACHE_AREA, cache.determine_cache_key(agent, *subpaths)
+        )
+    ) is not None:
         return cached
 
     enabled = get_enabled_plugins(agent)
@@ -476,9 +478,11 @@ def get_enabled_plugin_paths(agent: Agent | None, *subpaths: str) -> List[str]:
 
 
 def get_enabled_plugins(agent: Agent | None):
-    if cached := cache.get(
-        ENABLED_PLUGINS_LIST_CACHE_AREA, cache.determine_cache_key(agent)
-    ):
+    if (
+        cached := cache.get(
+            ENABLED_PLUGINS_LIST_CACHE_AREA, cache.determine_cache_key(agent)
+        )
+    ) is not None:
         return cached
 
     plugins = get_plugins_list()

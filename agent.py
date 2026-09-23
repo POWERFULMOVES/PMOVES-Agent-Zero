@@ -40,7 +40,7 @@ from helpers.llm_result import (
     metadata_from_llm_result,
     result_from_metadata,
 )
-from helpers.litellm_transport import ResponsesTransport
+from helpers.litellm_transport import ResponsesTransport, TransportMode
 from helpers.responses_tools import build_responses_function_tools, original_tool_name
 
 _RESPONSE_STREAM_UPDATE_CHARS = 128
@@ -940,7 +940,13 @@ class Agent:
         model_kwargs = getattr(model, "kwargs", {}) if model else {}
         if isinstance(model_kwargs, dict) and model_kwargs.get("responses_delete_on_chat_delete") is False:
             self.set_data("responses_delete_on_chat_delete", False)
-        response_tools, name_map = build_responses_function_tools(self)
+        # native function tools are only sent through the Responses API
+        api_mode = model_kwargs.get("a0_api_mode") if isinstance(model_kwargs, dict) else None
+        response_tools, name_map = (
+            build_responses_function_tools(self)
+            if TransportMode.from_value(api_mode) is TransportMode.RESPONSES
+            else ([], {})
+        )
         self.set_data(Agent.DATA_NAME_RESPONSES_TOOL_NAME_MAP, name_map)
 
         call_data = {

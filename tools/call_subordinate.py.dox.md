@@ -29,13 +29,16 @@
 - Observed side-effect areas: filesystem writes, settings/state persistence.
 - `profile`/`agent_profile` values are validated against available profile keys before use; unknown profiles raise `RepairableException` so the agent can retry with a real profile.
 - Direct and parallel calls use the same creation, continuation, message, history, and persistence functions in this module.
+- A non-empty `name` updates both the child context name and sidebar label on creation or continuation. Omission preserves an existing name; legacy same-context children must not rename the parent chat.
 - Every fresh child is `Agent(parent.number + 1, ...)` in its own persisted child-chat context, so sibling A1 agents can each create their own A2 descendants without sharing streaming state.
 - `reset=true` creates a fresh child. `reset=false` continues the caller's default child or the exact child named by `context_id`.
 - Child context IDs are accepted only when their persisted parent context, parent agent number, and child depth match the caller.
 - Supplying a different profile for an existing child without creating a fresh child raises `RepairableException` instead of silently changing its profile.
 - Active parallel children cannot be continued concurrently; await or cancel their job first.
-- Child contexts inherit the caller's project and selected chat-model override, are saved before execution and again on exit, and remain reusable after model/API failures.
+- Child contexts inherit the caller's project. After project activation, copy the caller's chat-model override only when the child's resolved scoped preset is `Default` (including missing/invalid selections); non-default scoped presets keep their configured models. Continuing an existing child preserves its chat override.
+- Child contexts are saved before execution and again on exit, and remain reusable after model/API failures.
 - The direct tool result includes `context_id`; parallel job snapshots expose the same stable child ID separately from their per-invocation job ID.
+- Legacy args `agent_id` for `context_id` and `agent_profile` for `profile` still resolve; prompts document only canonical names.
 - Existing same-context linear subordinates remain reusable for saved-chat compatibility, but new children use child contexts and a private per-parent registry.
 - Imported dependency areas include: `agent`, `extensions.python.hist_add_tool_result`, `helpers`, `helpers.errors`, `helpers.tool`.
 
@@ -53,6 +56,7 @@
 ## Verification
 
 - Run targeted tool and prompt-contract tests for changed behavior; smoke-test agent execution when no focused test exists.
+- `test_subordinate_preserves_scoped_model_preset` exercises real scoped config files and project activation with absent, default, custom, and invalid presets plus named/raw chat overrides; continued children retain their own override.
 - Related tests observed by source search:
   - `tests/test_default_prompt_budget.py`
   - `tests/test_subagent_profiles.py`

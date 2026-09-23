@@ -237,6 +237,7 @@ const model = {
   _openPromise: null,
   _openSignature: "",
   _connectSequence: 0,
+  _contextSequence: 0,
   _viewerToken: "",
   _subscribedViewerTransport: BROWSER_VIEWER_TRANSPORT_INTERACTIVE,
   _contextCreatePromise: null,
@@ -335,8 +336,8 @@ const model = {
     return this.autofocusActivePage !== false;
   },
 
-  handleSelectedContextChange(contextId = "") {
-    const selectedContextId = this.normalizeContextId(contextId || this.resolveContextId());
+  handleSelectedContextChange(contextId = this.resolveContextId()) {
+    const selectedContextId = this.normalizeContextId(contextId);
     if (selectedContextId === this._lastSelectedContextId) return;
     this._lastSelectedContextId = selectedContextId;
     if (!this._surfaceMounted) return;
@@ -354,12 +355,14 @@ const model = {
       return;
     }
     this._sessionRefreshContextId = requestedContextId;
+    const contextSequence = this._contextSequence;
     this._sessionRefreshPromise = (async () => {
       const response = await websocket.request(
         "browser_viewer_sessions",
         { context_id: requestedContextId },
         { timeoutMs: 10000 },
       );
+      if (contextSequence !== this._contextSequence) return;
       const data = firstOk(response);
       this.applyTabScope(data);
       this.applyBrowserListing(data.browsers || [], data.context_id || "", {
@@ -377,41 +380,48 @@ const model = {
     }
   },
 
-  async syncViewerToSelectedContext(contextId = "") {
-    const selectedContextId = this.normalizeContextId(contextId || this.resolveContextId());
-    if (!selectedContextId) return;
-    await this.refreshBrowserSessions(selectedContextId);
-    if (!this._surfaceMounted || !this.isVisibleBrowserSurface()) return;
-
-    const targetBrowserId = this.firstBrowserInContext(selectedContextId)?.id || null;
-    if (
-      this.normalizeContextId(this.contextId) === selectedContextId
-      && (
-        !targetBrowserId
-        || this.sameBrowserTab(targetBrowserId, selectedContextId, this.activeBrowserId, this.activeBrowserContextId)
-      )
-    ) {
-      return;
-    }
-
-    this.loading = true;
-    this.error = "";
-    this.resetRenderedFrame();
+  async syncViewerToSelectedContext(contextId = this.resolveContextId()) {
+    const selectedContextId = this.normalizeContextId(contextId);
+    if (selectedContextId === this.contextId && this.connected) return;
+    const previousContextId = this.contextId;
+    const surfaceSequence = ++this._surfaceOpenSequence;
+    this._contextSequence += 1;
+    this._connectSequence += 1;
+    this._viewerToken = "";
+    this.contextId = selectedContextId;
+    this.connected = false;
+    this.setActiveBrowserId(null);
     this.resetViewportTracking();
-    this._surfaceSwitching = Boolean(targetBrowserId);
-    this.switchingBrowserId = targetBrowserId;
+    this.loading = Boolean(selectedContextId);
+    this.commandInFlight = false;
+    this._commandInFlightCount = 0;
+    this.error = "";
     try {
+      if (previousContextId && previousContextId !== selectedContextId) {
+        await websocket.emit("browser_viewer_unsubscribe", { context_id: previousContextId });
+      }
+      if (!selectedContextId || !this.isCurrentSurfaceOpen(surfaceSequence)) return;
+      await this.refreshBrowserSessions(selectedContextId);
+      if (!this.isCurrentSurfaceOpen(surfaceSequence) || !this.isVisibleBrowserSurface()) return;
+      const targetBrowserId = this.firstBrowserInContext(selectedContextId)?.id || null;
       await this.connectViewer({
         browserId: targetBrowserId,
         contextId: selectedContextId,
         initialViewport: this.currentViewportSize(),
       });
-      await this.syncViewportAfterSurfaceOpen(this._surfaceOpenSequence);
+      if (!this.isCurrentSurfaceOpen(surfaceSequence)) return;
+      await this.syncViewportAfterSurfaceOpen(surfaceSequence);
     } catch (error) {
-      this.error = error instanceof Error ? error.message : String(error);
+      if (this.isCurrentSurfaceOpen(surfaceSequence)) {
+        this.switchingBrowserId = null;
+        this._surfaceSwitching = false;
+        this.error = error instanceof Error ? error.message : String(error);
+      }
     } finally {
-      this.loading = false;
-      this._surfaceSwitching = false;
+      if (this.isCurrentSurfaceOpen(surfaceSequence)) {
+        this.loading = false;
+        this._surfaceSwitching = false;
+      }
     }
   },
 
@@ -484,6 +494,7 @@ const model = {
       throw new Error(response?.error || "Could not create a chat for Browser.");
     }
 
+    this._lastSelectedContextId = contextId;
     setContext(contextId);
     chatsStore.setSelected?.(contextId);
 
@@ -746,6 +757,7 @@ const model = {
     }
     const surfaceSequence = this._surfaceOpenSequence + 1;
     this._surfaceOpenSequence = surfaceSequence;
+    this._lastSelectedContextId = this.normalizeContextId(this.resolveContextId());
     this.prepareSurfaceOpen(nextMode, requestedBrowserId, requestedContextId);
     if (nextMode === "modal") {
       this.setupFloatingModal(element);
@@ -753,7 +765,7 @@ const model = {
       this.setupCanvasSurface(element);
     }
     try {
-      if (!targetContextId && !this.activeBrowserContextId && !this.contextId) {
+      if (!targetContextId) {
         targetContextId = await this.ensureContextId();
       }
       if (!this.isCurrentSurfaceOpen(surfaceSequence)) return;
@@ -772,6 +784,8 @@ const model = {
       await this.syncViewportAfterSurfaceOpen(surfaceSequence);
     } catch (error) {
       if (this.isCurrentSurfaceOpen(surfaceSequence)) {
+        this.switchingBrowserId = null;
+        this._surfaceSwitching = false;
         this.error = error instanceof Error ? error.message : String(error);
       }
     } finally {
@@ -1143,8 +1157,13 @@ const model = {
   },
 
   async connectViewer(options = {}) {
+    const sequence = ++this._connectSequence;
+    const viewerToken = makeViewerToken();
+    this._viewerToken = viewerToken;
     let contextId = "";
-    const requestedBrowserId = this.normalizeBrowserId(options.browserId ?? this.activeBrowserId);
+    const requestedBrowserId = this.normalizeBrowserId(
+      options.browserId === undefined ? this.activeBrowserId : options.browserId,
+    );
     const requestedContextId = this.normalizeContextId(
       options.contextId
       ?? options.context_id
@@ -1155,6 +1174,7 @@ const model = {
     try {
       contextId = requestedContextId || await this.ensureContextId();
     } catch (error) {
+      if (sequence !== this._connectSequence) return;
       this.connected = false;
       this.switchingBrowserId = null;
       this._surfaceSwitching = false;
@@ -1167,26 +1187,22 @@ const model = {
       this._surfaceSwitching = false;
       return;
     }
+    if (sequence !== this._connectSequence) return;
     const previousContextId = this.normalizeContextId(this.contextId);
     if (previousContextId && previousContextId !== contextId) {
       try {
         await websocket.emit("browser_viewer_unsubscribe", { context_id: previousContextId });
       } catch {}
     }
+    if (sequence !== this._connectSequence) return;
     this.contextId = contextId;
-    const sequence = this._connectSequence + 1;
-    const viewerToken = makeViewerToken();
-    this._connectSequence = sequence;
-    this._viewerToken = viewerToken;
     this.error = "";
-    await this._bindSocketEvents();
-    if (sequence !== this._connectSequence || viewerToken !== this._viewerToken) {
-      return;
-    }
     const initialViewport = options.initialViewport || this.currentViewportSize();
-    let response;
+    let data;
     try {
-      response = await websocket.request(
+      await this._bindSocketEvents();
+      if (sequence !== this._connectSequence || viewerToken !== this._viewerToken) return;
+      const response = await websocket.request(
         "browser_viewer_subscribe",
         {
           context_id: contextId,
@@ -1206,8 +1222,10 @@ const model = {
             : BROWSER_SUBSCRIBE_TIMEOUT_MS,
         },
       );
+      data = firstOk(response);
     } catch (error) {
       if (sequence === this._connectSequence && viewerToken === this._viewerToken) {
+        this.connected = false;
         this.switchingBrowserId = null;
         this._surfaceSwitching = false;
         throw error;
@@ -1217,7 +1235,6 @@ const model = {
     if (sequence !== this._connectSequence || viewerToken !== this._viewerToken) {
       return;
     }
-    const data = firstOk(response);
     this.applyTabScope(data);
     this.applyBrowserListing(data.browsers || [], contextId, {
       replaceAll: Boolean(data.all_browsers),
@@ -1231,9 +1248,10 @@ const model = {
     }
     this._subscribedViewerTransport = this.viewerTransport;
     this.setActiveBrowserId(
-      data.active_browser_id || requestedBrowserId || this.activeBrowserId || null,
+      data.active_browser_id ?? null,
       data.active_browser_context_id || contextId,
     );
+    this.applyActiveFrameState(this.browserById(this.activeBrowserId, this.activeBrowserContextId));
     this.applySnapshot(data.snapshot);
     this.connected = true;
     this.browserInstallExpected = false;
@@ -1579,10 +1597,12 @@ const model = {
     const previousActiveBrowserId = this.activeBrowserId;
     const previousActiveContextId = this.activeBrowserContextId;
     const commandName = String(command || "").toLowerCase();
+    const contextSequence = this._contextSequence;
     try {
       const targetContextId = commandName === "open"
         ? await this.contextIdForNewBrowser()
         : this.normalizeContextId(extra.context_id || extra.contextId) || await this.contextIdForActiveBrowser();
+      if (contextSequence !== this._contextSequence) return;
       const targetBrowserId = this.normalizeBrowserId(extra.browser_id ?? this.activeBrowserId);
       this.contextId = targetContextId;
       const response = await websocket.request(
@@ -1597,6 +1617,7 @@ const model = {
         },
         { timeoutMs: BROWSER_COMMAND_TIMEOUT_MS },
       );
+      if (contextSequence !== this._contextSequence) return;
       const data = firstOk(response);
       this.applyTabScope(data);
       this.applyBrowserListing(data.browsers || [], targetContextId, {
@@ -1660,9 +1681,11 @@ const model = {
         await this.restartCanvasStreamAfterPageChange();
       }
     } catch (error) {
-      this.error = error instanceof Error ? error.message : String(error);
+      if (contextSequence === this._contextSequence) {
+        this.error = error instanceof Error ? error.message : String(error);
+      }
     } finally {
-      this.finishCommand();
+      if (contextSequence === this._contextSequence) this.finishCommand();
     }
   },
 
@@ -1928,6 +1951,9 @@ const model = {
           return true;
         });
     this.browsers = [...retained, ...incoming];
+    if (this.activeBrowserId && !this.browserById(this.activeBrowserId, this.activeBrowserContextId)) {
+      this.setActiveBrowserId(null);
+    }
   },
 
   stateFromCommandResult(result = {}) {
@@ -2026,6 +2052,14 @@ const model = {
     this.activeBrowserId = exists ? numeric : null;
     this.activeBrowserContextId = this.activeBrowserId ? normalizedContextId : "";
     this.contextId = this.activeBrowserContextId || this.contextId;
+    if (!this.activeBrowserId) {
+      this.address = "";
+      this.addressFocused = false;
+      this.frameState = null;
+      this.switchingBrowserId = null;
+      this._surfaceSwitching = false;
+      this.resetRenderedFrame();
+    }
     if (this.activeBrowserId !== previous || this.activeBrowserContextId !== previousContextId) {
       this._lastViewportKey = "";
       this._lastViewport = null;
@@ -3027,6 +3061,7 @@ const model = {
       return;
     }
     this._surfaceOpenSequence += 1;
+    this._contextSequence += 1;
     this._openPromise = null;
     this._openSignature = "";
     this._connectSequence += 1;

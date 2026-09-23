@@ -111,7 +111,11 @@ sys.modules.setdefault(
 )
 sys.modules.setdefault("helpers.tool", SimpleNamespace(Response=_TestResponse, Tool=_TestTool))
 sys.modules.setdefault("helpers.ws", SimpleNamespace(WsHandler=_TestWsHandler))
-sys.modules.setdefault("helpers.ws_manager", SimpleNamespace(WsResult=_TestWsResult))
+sys.modules.setdefault("helpers.ws_manager", SimpleNamespace(
+    WsResult=_TestWsResult,
+    WsPayloadTooLargeError=ValueError,
+    get_shared_ws_manager=lambda: _TestWsManager(),
+))
 _model_config_stub = ModuleType("plugins._model_config.helpers.model_config")
 _model_config_stub.get_presets = lambda: []
 _model_config_stub.get_preset_by_name = lambda name: None
@@ -206,6 +210,7 @@ def test_browser_config_normalizes_extension_paths(tmp_path):
         "autofocus_active_page": True,
         "browser_tab_scope": "per_context",
         "max_open_tabs": 32,
+        "evaluate_timeout_seconds": 30.0,
         "runtime_backend": "container",
         "host_browser_privacy_policy": "allow",
         "host_browser_profile_mode": "existing",
@@ -659,6 +664,40 @@ def test_browser_hook_installs_patchright_for_existing_self_updated_runtime(monk
     browser_hooks_module._ensure_patchright_dependency()
 
     assert current is True
+
+
+@pytest.mark.parametrize("socks_installed", [False, True])
+def test_browser_install_ensures_httpx_socks_support(monkeypatch, socks_installed):
+    installed = socks_installed
+    calls = []
+
+    def find_spec(name):
+        assert name == "socksio"
+        return object() if installed else None
+
+    def install(command, *, cwd):
+        nonlocal installed
+        assert command == [
+            "/usr/local/bin/uv", "pip", "install", "--python", sys.executable,
+            "httpx[socks]",
+        ]
+        assert cwd == str(PROJECT_ROOT / "plugins" / "_browser")
+        calls.append(command)
+        installed = True
+
+    def prepare():
+        assert installed
+        return {"binary": "chromium"}
+
+    monkeypatch.setattr(browser_hooks_module.importlib.util, "find_spec", find_spec)
+    monkeypatch.setattr(browser_hooks_module.shutil, "which", lambda name: "/usr/local/bin/uv")
+    monkeypatch.setattr(browser_hooks_module.subprocess, "check_call", install)
+    monkeypatch.setattr(browser_hooks_module, "prepare_playwright_cache", prepare)
+
+    assert browser_hooks_module.install() == {"binary": "chromium"}
+    assert len(calls) == (0 if socks_installed else 1)
+    assert browser_hooks_module.install() == {"binary": "chromium"}
+    assert len(calls) == (0 if socks_installed else 1)
 
 
 def _write_playwright_binary(cache_dir: Path) -> Path:
@@ -1661,6 +1700,109 @@ for (const [transport, oldUrl, nextUrl, stale, busy] of [
     subprocess.run(["node", "--input-type=module", "-e", script], check=True, text=True)
 
 
+def test_browser_viewer_clears_empty_context_and_ignores_late_responses():
+    source = (PROJECT_ROOT / "plugins/_browser/webui/browser-store.js").read_text(encoding="utf-8")
+    source = source[source.index("const EXTENSIONS_ROOT"):source.index("export const store")]
+    script = """
+import assert from 'node:assert/strict';
+const ok = data => ({ results: [{ ok: true, data }] });
+const empty = context_id => ({ context_id, active_browser_id: null, browsers: [],
+  viewer_transport: 'snapshot', interactive_view: null });
+const deferred = () => { let resolve; const promise = new Promise(r => resolve = r); return {promise, resolve}; };
+let request = async () => ok(empty('empty'));
+const websocket = { request: (...args) => request(...args), emit: async () => {} };
+const chatsStore = { selected: 'old' };
+""" + source + """
+Object.assign(model, {
+  loading: false, _surfaceMounted: true,
+  contextId: 'old', activeBrowserContextId: 'old', activeBrowserId: 1,
+  browsers: [{ id: 1, context_id: 'old', currentUrl: 'https://old.example' }],
+  address: 'https://old.example', addressFocused: true,
+  frameState: { id: 1, currentUrl: 'https://old.example' },
+  switchingBrowserId: 1, _surfaceSwitching: true,
+  _bindSocketEvents: async () => {},
+  currentViewportSize: () => ({ width: 900, height: 600 }),
+  isVisibleBrowserSurface: () => true,
+  syncViewportAfterSurfaceOpen: async () => {},
+});
+// Empty subscriptions are authoritative, even if the previous tab still exists elsewhere.
+await model.connectViewer({ browserId: null, contextId: 'empty' });
+assert.equal(model.activeBrowserId, null);
+assert.equal(model.address, '');
+assert.equal(model.frameState, null);
+assert.equal(model.isBusy(), false);
+
+// A structured server failure must release the same spinner as a transport failure.
+for (const transportFailure of [false, true]) {
+  Object.assign(model, { switchingBrowserId: 1, _surfaceSwitching: true });
+  request = async () => {
+    if (transportFailure) throw new Error('offline');
+    return { results: [{ ok: false, error: { error: 'offline' } }] };
+  };
+  await assert.rejects(model.connectViewer({ contextId: 'empty' }), /offline/);
+  assert.equal(model.isBusy(), false);
+  assert.equal(model.connected, false);
+}
+
+// Two pending context refreshes finish out of order. Only the latest may subscribe.
+const slow = deferred();
+const fast = deferred();
+const subscriptions = [];
+model.refreshBrowserSessions = async id => {
+  if (id === 'slow') await slow.promise;
+  if (id === 'fast') await fast.promise;
+};
+request = async (event, data) => {
+  subscriptions.push(data.context_id);
+  return ok(empty(data.context_id));
+};
+const switchingSlow = model.syncViewerToSelectedContext('slow');
+await Promise.resolve();
+const switchingFast = model.syncViewerToSelectedContext('fast');
+await Promise.resolve();
+slow.resolve();
+await switchingSlow;
+assert.equal(model.loading, true);
+fast.resolve();
+await switchingFast;
+assert.deepEqual(subscriptions, ['fast']);
+assert.equal(model.contextId, 'fast');
+assert.equal(model.isBusy(), false);
+
+// Leaving a chat also invalidates an already pending viewer response.
+const pending = deferred();
+request = async () => pending.promise;
+const connecting = model.connectViewer({ browserId: 1, contextId: 'old' });
+await Promise.resolve();
+await Promise.resolve();
+await model.syncViewerToSelectedContext('');
+pending.resolve(ok({ active_browser_id: 1, browsers: model.browsers,
+  viewer_transport: 'interactive', interactive_view: { available: true, url: '/old-viewer' } }));
+await connecting;
+assert.equal(model.contextId, '');
+assert.equal(model.activeBrowserId, null);
+assert.equal(model.address, '');
+assert.equal(model.interactiveViewUrl, '');
+assert.equal(model.isBusy(), false);
+
+// A late open-command result cannot take the user back to their previous chat.
+const commandReply = deferred();
+request = async () => commandReply.promise;
+model.contextIdForNewBrowser = async () => 'old';
+const opening = model.command('open');
+await Promise.resolve();
+await model.syncViewerToSelectedContext('');
+commandReply.resolve(ok({ result: { id: 1, context_id: 'old', currentUrl: 'https://old.example' },
+  browsers: [{ id: 1, context_id: 'old' }] }));
+await opening;
+assert.equal(model.contextId, '');
+assert.equal(model.address, '');
+assert.equal(model.activeBrowserId, null);
+assert.equal(model.isBusy(), false);
+"""
+    subprocess.run(["node", "--input-type=module", "-e", script], check=True, text=True)
+
+
 def test_browser_viewer_uses_tabs_for_session_switching():
     main_html = (PROJECT_ROOT / "plugins" / "_browser" / "webui" / "browser-panel.html").read_text(
         encoding="utf-8"
@@ -2588,7 +2730,8 @@ def test_browser_docker_pins_python_313_compatible_desktop_packages():
         PROJECT_ROOT / "docker" / "run" / "fs" / "ins" / "install_additional.sh"
     ).read_text(encoding="utf-8")
 
-    assert 'KALI_SUITE="kali-last-snapshot"' in install_additional
+    assert 'https://snapshot.debian.org/archive/debian/20260624T000000Z/' in install_additional
+    assert 'Dir::Etc::sourceparts=-' in install_additional
     assert 'LIBREOFFICE_VERSION="4:26.2.4.2-1"' in install_additional
     assert 'XPRA_VERSION="6.5.2-r0-1"' in install_additional
     assert 'XPRA_HTML5_VERSION="19-r1-1"' in install_additional
@@ -2607,7 +2750,7 @@ def test_browser_docker_pins_python_313_compatible_desktop_packages():
     assert '"xpra-server=$XPRA_VERSION"' in install_additional
     assert '"xpra-html5=$XPRA_HTML5_VERSION"' in install_additional
     assert "apt-get download" not in install_additional
-    assert install_additional.index('s/kali-rolling/$KALI_SUITE') < install_additional.index("apt-get update")
+    assert install_additional.index('cat >/etc/apt/a0-desktop.list') < install_additional.index('apt-get "${APT_OPTIONS[@]}" update')
     assert "https://xpra.org/beta" not in install_additional
 
 

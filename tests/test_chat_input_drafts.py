@@ -86,6 +86,17 @@ globalThis.sendMessage = async () => {{ sent = model.message; }};
 await model.sendMessage();
 assert(sent === "welcome prompt", "creating a chat erased the Welcome prompt");
 assert(sessionStorage.getItem("a0:chat-draft:chat-new") === "welcome prompt", "first prompt did not follow its new chat");
+
+const editor = {{
+  style: {{ height: "240px" }},
+  get scrollHeight() {{ throw new Error("composer sizing must not freeze a transient layout"); }},
+}};
+model._editorEl = editor;
+model.adjustTextareaHeight();
+assert(editor.style.height === "auto", "composer retained its measured height");
+model.adjustTextareaHeight();
+assert(editor.style.height === "auto", "repeated sizing froze the composer height");
+model.unmountEditor(editor);
 """
 
     subprocess.run(["node", "--input-type=module", "-e", script], check=True, text=True)

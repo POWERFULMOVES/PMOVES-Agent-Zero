@@ -15,10 +15,16 @@ This plugin connects one or more Telegram bots to Agent Zero. Each bot runs inde
   - Managed by a `job_loop` extension that starts, restarts, or stops bots whenever plugin settings change.
   - Supports both long-polling and webhook delivery modes. Webhook mode requires a random secret of 32–256 letters, digits, underscores or hyphens; generate one with `python -c 'import secrets; print(secrets.token_urlsafe(32))'`. Existing webhook configurations without a valid secret must be updated before starting the bot.
   - The webhook endpoint rejects polling bots and requires a matching `X-Telegram-Bot-Api-Secret-Token` header before dispatch.
+  - Bot names are generated automatically if left empty. Each bot needs a unique name; saving a new token or webhook connection restarts that bot on the next maintenance tick (up to about a minute).
 - **Per-user chat sessions**
   - Each Telegram user gets a dedicated `AgentContext`, persisted across restarts via a JSON state file.
   - `/start` creates a context; `/new` starts fresh; `/clear` resets the current context.
   - `/commands` shows the shared integration command menu (`/help` is an alias).
+  - `/commands` also provides a paginated menu of Agent Zero's built-in, enabled-plugin, global, and active-project commands. Custom commands use the same templates, scripts, and scope precedence as the WebUI, including prefix and postfix syntax.
+  - `/stop`, `/goal`, and `/rename` execute their existing Agent Zero commands. `/compact` offers confirmation before summarizing, preserving the existing conversation backup. `/copy` sends the transcript as a text file; `/attach` explains Telegram's native attachment control.
+  - `/models` and `/presets` open the model preset picker; `/chats` opens the session picker, and `/chat <id>` switches sessions. `/browser` offers runtime buttons.
+  - `/plugins` provides paginated instance-wide plugin toggles. `/permissions` edits the current profile's tool permissions, including Allow/Block/Default per tool, separate Tools/MCP defaults, and inherited policy. Always-required tools and the Telegram connection remain protected. Computer Use permissions stay with A0 Launcher/CLI.
+  - Telegram's native command menu includes global commands at bot startup. Hyphenated commands also accept an underscore spelling, such as `/computer_use`; use `/commands` for freshly added or project-specific commands.
   - `/status` shows project, model, agent profile, and queue state.
   - `/project <name>` switches the active project for the current chat.
   - `/model <preset>` switches the active model preset for the current chat (`/config` remains an alias).
@@ -87,8 +93,8 @@ This plugin connects one or more Telegram bots to Agent Zero. Each bot runs inde
 ## Configuration Scope
 
 - **Settings section**: `external`
-- **Per-project config**: `false`
-- **Per-agent config**: `false`
+- **Per-project config**: `true`
+- **Per-agent config**: `true`
 
 ## Plugin Metadata
 
