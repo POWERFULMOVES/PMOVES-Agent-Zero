@@ -544,6 +544,102 @@ def test_document_rename_saves_dirty_markdown_and_removes_original(office_state)
     assert renamed.read_text(encoding="utf-8") == "# Clean Rename\n\nFresh text"
 
 
+def test_native_office_rename_preserves_unsaved_content_and_metadata(office_state):
+    import stat
+
+    doc = document_store.create_document("document", "Native Rename", "odt", "Saved text")
+    source = Path(doc["path"])
+    source.chmod(0o640)
+    original = source.read_bytes()
+    metadata = source.stat()
+    target = source.with_name("Renamed.odt")
+    dirty = document_store.odt_bytes("Native Rename", "Unsaved Writer text")
+
+    def native_rename(old, new):
+        assert old == source and new == target
+        assert old.read_bytes() == original and not new.exists()
+        new.write_bytes(dirty)
+        return True
+
+    updated = document_store.rename_document(doc["file_id"], target, rename_open_document=native_rename)
+
+    assert not source.exists()
+    assert target.read_bytes() == dirty
+    assert stat.S_IMODE(target.stat().st_mode) == 0o640
+    assert (target.stat().st_uid, target.stat().st_gid) == (metadata.st_uid, metadata.st_gid)
+    assert updated["file_id"] == doc["file_id"]
+    assert updated["version"] == doc["version"] + 1
+    assert updated["sha256"] == document_store.sha256_bytes(dirty)
+
+
+def test_native_office_rename_rejects_collisions_and_keeps_source_on_failure(office_state):
+    doc = document_store.create_document("document", "Failed Rename", "odt", "Original")
+    source = Path(doc["path"])
+    original = source.read_bytes()
+    target = source.with_name("Taken.odt")
+    target.write_bytes(b"collision sentinel")
+
+    def fail_rename(old, new):
+        raise RuntimeError("Native rename failed")
+
+    with pytest.raises(FileExistsError):
+        document_store.rename_document(doc["file_id"], target, rename_open_document=fail_rename)
+    assert target.read_bytes() == b"collision sentinel"
+    target.unlink()
+    with pytest.raises(RuntimeError, match="Native rename failed"):
+        document_store.rename_document(doc["file_id"], target, rename_open_document=fail_rename)
+    assert source.read_bytes() == original
+    assert not target.exists()
+    assert document_store.get_document(doc["file_id"])["path"] == str(source)
+
+    updated = document_store.rename_document(doc["file_id"], target, rename_open_document=lambda *_: False)
+    assert updated["path"] == str(target)
+    assert target.read_bytes() == original
+    assert not source.exists()
+
+
+def test_native_office_bridge_matches_full_url_and_disallows_overwrite(tmp_path, monkeypatch):
+    from plugins._desktop.helpers import rename_office_document
+
+    source = tmp_path / "source" / "Same name.odt"
+    target = source.with_name("Renamed.odt")
+    calls = []
+    other = types.SimpleNamespace(
+        getURL=lambda: (tmp_path / "other" / source.name).as_uri(),
+        storeAsURL=lambda *_: pytest.fail("Renamed a different document with the same basename"),
+    )
+    document = types.SimpleNamespace(
+        getURL=lambda: source.as_uri(),
+        getArgs=lambda: (types.SimpleNamespace(Name="FilterName", Value="Office Open XML Text"),
+                         types.SimpleNamespace(Name="URL", Value=source.as_uri())),
+        storeAsURL=lambda url, properties: calls.append((url, [(p.Name, p.Value) for p in properties])),
+    )
+    items = [other, document]
+    enumeration = types.SimpleNamespace(hasMoreElements=lambda: bool(items), nextElement=lambda: items.pop(0))
+    desktop = types.SimpleNamespace(getComponents=lambda: types.SimpleNamespace(createEnumeration=lambda: enumeration))
+    context = types.SimpleNamespace()
+    resolver = types.SimpleNamespace(resolve=lambda url: context)
+    context.ServiceManager = types.SimpleNamespace(createInstanceWithContext=lambda name, _: resolver if name.endswith("UnoUrlResolver") else desktop)
+    monkeypatch.setitem(sys.modules, "uno", types.SimpleNamespace(
+        getComponentContext=lambda: context,
+        createUnoStruct=lambda _: types.SimpleNamespace(),
+    ))
+    commands = []
+
+    def launch(command, **kwargs):
+        commands.append(command)
+        return types.SimpleNamespace(poll=lambda: 0, wait=lambda timeout: 0)
+
+    monkeypatch.setattr(rename_office_document.subprocess, "Popen", launch)
+    assert rename_office_document.rename_document("soffice", tmp_path / "profile", source, target)
+    assert calls == [(target.as_uri(), [("FilterName", "Office Open XML Text"), ("Overwrite", False)])]
+    assert any(arg.startswith("--accept=pipe,name=") for arg in commands[0])
+
+    items[:] = [other]
+    assert not rename_office_document.rename_document("soffice", tmp_path / "profile", source, target)
+    assert len(calls) == 1
+
+
 def test_text_session_save_as_creates_new_file_without_mutating_original(office_state):
     manager = editor_markdown_sessions.MarkdownSessionManager()
     doc = document_store.create_document("document", "Original Note", "md", "# Original Note\n")

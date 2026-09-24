@@ -216,7 +216,7 @@ function isEditorSocketData(data) {
 }
 
 const model = {
-  fileTree: createFileTree((file) => store.openTreeEntry(file)),
+  fileTree: createFileTree((file) => store.openTreeEntry(file), () => fileBrowserStore.preferences.treeRoot),
 
   async openTreeEntry(file) {
     if (file.is_dir || this.loading || this.saving) return;
@@ -402,7 +402,7 @@ const model = {
   },
 
   previewHtml() {
-    if (!this.isTextDocument()) return "";
+    if (!this.canPreview() || !this.isPreviewMode()) return "";
     return renderEditorPreviewMarkdown(this.currentPage().markdown || "", this.editorText);
   },
 

@@ -95,6 +95,21 @@ def _contains_secret(value: Any, mask: Callable[[str], str]) -> bool:
     return False
 
 
+def _replayable_output(item: dict) -> bool:
+    if item.get("type") == "function_call":
+        return _json_object(item.get("arguments")) is not None
+    if item.get("type") == "reasoning":
+        return isinstance(item.get("encrypted_content"), str) and bool(item["encrypted_content"])
+    content = item.get("content")
+    return (
+        item.get("type") == "message" and item.get("role") == "assistant"
+        and item.get("phase") == "commentary" and item.get("status") in (None, "completed")
+        and isinstance(content, list) and bool(content)
+        and all(isinstance(block, dict) and block.get("type") == "output_text"
+                and isinstance(block.get("text"), str) for block in content)
+    )
+
+
 def prepare_groups(
     records: list[dict], render: Callable[[dict], Any], mask: Callable[[str], str]
 ) -> list[dict]:
@@ -110,18 +125,7 @@ def prepare_groups(
         if not prefix_hash or not calls:
             continue
         output = [item.to_dict() for item in result.output_items]
-        if any(item.get("type") not in {"function_call", "reasoning"} for item in output):
-            continue
-        if any(
-            item.get("type") == "reasoning"
-            and (not isinstance(item.get("encrypted_content"), str) or not item["encrypted_content"])
-            for item in output
-        ):
-            continue
-        if any(
-            _json_object(item.get("arguments")) is None
-            for item in output if item.get("type") == "function_call"
-        ):
+        if not all(_replayable_output(item) for item in output):
             continue
         try:
             if _contains_secret(output, mask) or _contains_secret([call.arguments for call in calls], mask):

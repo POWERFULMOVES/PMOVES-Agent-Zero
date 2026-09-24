@@ -12,7 +12,7 @@ import signal
 import threading
 import time
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -25,10 +25,13 @@ from plugins._browser.helpers.config import (
     DEFAULT_BROWSER_TAB_SCOPE,
     DEFAULT_HOMEPAGE_KEY,
     DEFAULT_MAX_OPEN_TABS,
+    DEFAULT_EVALUATE_TIMEOUT_SECONDS,
+    EVALUATE_TIMEOUT_KEY,
     MAX_OPEN_TABS_KEY,
     TAB_SCOPE_KEY,
     build_browser_launch_config,
     get_browser_config,
+    normalize_evaluate_timeout,
 )
 from plugins._browser.helpers.interactive_view import BrowserInteractiveView
 from plugins._browser.helpers.url import normalize_url
@@ -46,6 +49,8 @@ CHROME_SINGLETON_FILES = ("SingletonLock", "SingletonCookie", "SingletonSocket")
 SCREENCAST_MAX_WIDTH = 4096
 SCREENCAST_MAX_HEIGHT = 4096
 VIEWPORT_SIZE_TOLERANCE = 4
+EVALUATE_RECOVERY_TIMEOUT_SECONDS = 5.0
+EVALUATE_TERMINATION_GRACE_SECONDS = 0.25
 CLIPBOARD_BRIDGE_SCRIPT = r"""
 (payload) => {
   const action = String(payload?.action || "").trim().toLowerCase();
@@ -375,6 +380,7 @@ class BrowserPage:
     id: int
     page: Any
     context_id: str = ""
+    evaluate_lock: asyncio.Lock = field(default_factory=asyncio.Lock, repr=False)
 
 
 class _BrowserScreencast:
@@ -618,6 +624,28 @@ class _BrowserScreencast:
                 return
 
 
+async def run_browser_calls(calls: list[dict[str, Any]], dispatch: Any) -> list[dict[str, Any]]:
+    if not isinstance(calls, list) or not calls:
+        raise ValueError("multi requires a non-empty list of calls")
+    groups: dict[Any, list[tuple[int, dict[str, Any]]]] = {}
+    for idx, call in enumerate(calls):
+        if not isinstance(call, dict):
+            raise ValueError(f"calls[{idx}] is not an object")
+        groups.setdefault(_BrowserRuntimeCore._multi_group_key(call), []).append((idx, call))
+
+    results: list[dict[str, Any]] = [{"ok": False, "error": "missing"} for _ in calls]
+
+    async def run_group(group: list[tuple[int, dict[str, Any]]]) -> None:
+        for idx, call in group:
+            try:
+                results[idx] = {"ok": True, "result": await dispatch(call)}
+            except Exception as exc:
+                results[idx] = {"ok": False, "error": str(exc)}
+
+    await asyncio.gather(*(run_group(group) for group in groups.values()))
+    return results
+
+
 class BrowserRuntime:
     def __init__(self, context_id: str):
         self.context_id = str(context_id)
@@ -638,7 +666,11 @@ class BrowserRuntime:
         if self._closed and method != "close":
             raise RuntimeError("Browser runtime is closed.")
 
+        running_task = None
+
         async def runner():
+            nonlocal running_task
+            running_task = asyncio.current_task()
             token = self._core.request_context_id.set(str(context_id or self.context_id))
             try:
                 fn = getattr(self._core, method)
@@ -646,7 +678,26 @@ class BrowserRuntime:
             finally:
                 self._core.request_context_id.reset(token)
 
-        return await self._worker.execute_inside(runner)
+        future = self._worker.event_loop_thread.run_coroutine(runner())
+        result = asyncio.wrap_future(future)
+        try:
+            return await asyncio.shield(result)
+        except asyncio.CancelledError:
+            async def cancel_and_wait():
+                if running_task is not None:
+                    running_task.cancel()
+                    await asyncio.gather(running_task, return_exceptions=True)
+
+            cleanup = asyncio.wrap_future(
+                self._worker.event_loop_thread.run_coroutine(cancel_and_wait())
+            )
+            while not cleanup.done():
+                try:
+                    await asyncio.shield(cleanup)
+                except asyncio.CancelledError:
+                    pass
+            await asyncio.gather(result, return_exceptions=True)
+            raise
 
     async def close(self, delete_profile: bool = False) -> None:
         if self._closed:
@@ -1336,27 +1387,7 @@ class _BrowserRuntimeCore:
         }
 
     async def multi(self, calls: list[dict[str, Any]]) -> list[dict[str, Any]]:
-        if not isinstance(calls, list) or not calls:
-            raise ValueError("multi requires a non-empty list of calls")
-        groups: dict[Any, list[tuple[int, dict[str, Any]]]] = {}
-        for idx, call in enumerate(calls):
-            if not isinstance(call, dict):
-                raise ValueError(f"calls[{idx}] is not an object")
-            key = self._multi_group_key(call)
-            groups.setdefault(key, []).append((idx, call))
-
-        results: list[dict[str, Any] | None] = [None] * len(calls)
-
-        async def run_group(group: list[tuple[int, dict[str, Any]]]) -> None:
-            for idx, call in group:
-                try:
-                    out = await self._dispatch_call(call)
-                    results[idx] = {"ok": True, "result": out}
-                except Exception as exc:
-                    results[idx] = {"ok": False, "error": str(exc)}
-
-        await asyncio.gather(*(run_group(g) for g in groups.values()))
-        return [r if r is not None else {"ok": False, "error": "missing"} for r in results]
+        return await run_browser_calls(calls, self._dispatch_call)
 
     async def _dispatch_call(self, call: dict[str, Any]) -> Any:
         action = str(call.get("action") or "").strip().lower().replace("-", "_")
@@ -1696,12 +1727,117 @@ class _BrowserRuntimeCore:
         return result or {}
 
     async def evaluate(self, browser_id: int | str | None, script: str) -> dict[str, Any]:
+        if not isinstance(script, str) or not script.strip():
+            raise ValueError("evaluate requires a non-empty 'script' string")
+        from agent import AgentContext
+
+        context = AgentContext.get(self.current_context_id)
+        config = get_browser_config(agent=context.agent0 if context else None)
+        timeout = normalize_evaluate_timeout(
+            config.get(EVALUATE_TIMEOUT_KEY, DEFAULT_EVALUATE_TIMEOUT_SECONDS)
+        )
         await self.ensure_started()
         resolved_id = self._resolve_browser_id(browser_id)
-        page = self._page(resolved_id)
-        result = await page.evaluate(str(script or "undefined"), isolated_context=False)
-        self._maybe_promote(resolved_id)
-        return {"result": result, "state": await self._state(resolved_id)}
+        browser_page = self.pages[resolved_id]
+        async with browser_page.evaluate_lock:
+            return await self._evaluate_page(browser_page, script, timeout)
+
+    async def _evaluate_page(
+        self, browser_page: BrowserPage, script: str, timeout: float
+    ) -> dict[str, Any]:
+        page = browser_page.page
+        session = await asyncio.wait_for(
+            page.context.new_cdp_session(page), EVALUATE_RECOVERY_TIMEOUT_SECONDS
+        )
+
+        async def run():
+            result = await page.evaluate(script, isolated_context=False)
+            self._maybe_promote(browser_page.id)
+            return {"result": result, "state": await self._state(browser_page.id)}
+
+        operation = asyncio.create_task(run())
+        aborted = False
+        timeout_error = f"evaluate timed out after {timeout:g} seconds"
+        timed_out = False
+        try:
+            return await asyncio.wait_for(asyncio.shield(operation), timeout)
+        except asyncio.TimeoutError:
+            aborted = timed_out = True
+            raise TimeoutError(timeout_error) from None
+        except asyncio.CancelledError:
+            aborted = True
+            raise
+        finally:
+            cleanup = asyncio.create_task(
+                self._finish_evaluate(browser_page, session, operation, aborted)
+            )
+            cancelled = False
+            while not cleanup.done():
+                try:
+                    await asyncio.shield(cleanup)
+                except asyncio.CancelledError:
+                    cancelled = True
+                except Exception:
+                    break
+            try:
+                recovery_notice = cleanup.result()
+            except Exception as exc:
+                if timed_out:
+                    raise TimeoutError(f"{timeout_error}; {exc}") from None
+                raise
+            if timed_out and recovery_notice:
+                raise TimeoutError(f"{timeout_error}; {recovery_notice}") from None
+            if cancelled:
+                raise asyncio.CancelledError
+
+    async def _finish_evaluate(
+        self, browser_page: BrowserPage, session: Any, operation: asyncio.Task, aborted: bool
+    ) -> str:
+        page = browser_page.page
+        recovery_notice = ""
+
+        async def recover():
+            if operation.done() and not operation.cancelled() and operation.exception() is None:
+                return ""
+            await session.send("Runtime.terminateExecution")
+            done, _ = await asyncio.wait({operation}, timeout=EVALUATE_TERMINATION_GRACE_SECONDS)
+            if done and not operation.cancelled() and not isinstance(
+                operation.exception(), (TimeoutError, asyncio.TimeoutError)
+            ):
+                return ""
+            # An awaited Promise may survive termination. Only that unresolved
+            # execution needs a new document; synchronous scripts keep the page.
+            await page.reload(wait_until="commit", timeout=EVALUATE_RECOVERY_TIMEOUT_SECONDS * 1000)
+            await asyncio.gather(asyncio.shield(operation), return_exceptions=True)
+            return "affected tab reloaded to cancel pending JavaScript"
+
+        try:
+            if aborted and not page.is_closed():
+                try:
+                    recovery_notice = await asyncio.wait_for(recover(), EVALUATE_RECOVERY_TIMEOUT_SECONDS)
+                except Exception:
+                    if not page.is_closed():
+                        try:
+                            await asyncio.wait_for(
+                                page.close(run_before_unload=False), EVALUATE_RECOVERY_TIMEOUT_SECONDS
+                            )
+                        except Exception:
+                            raise RuntimeError(
+                                "Browser evaluate recovery failed; the affected tab could not be closed"
+                            ) from None
+                    await self._unregister_page_async(browser_page.id)
+                    self._persist_browser_tabs()
+                    recovery_notice = "affected tab closed after unsuccessful recovery"
+        finally:
+            if not operation.done():
+                operation.cancel()
+            await asyncio.gather(operation, return_exceptions=True)
+            try:
+                await asyncio.wait_for(session.detach(), EVALUATE_RECOVERY_TIMEOUT_SECONDS)
+            except Exception:
+                if not page.is_closed():
+                    raise RuntimeError("Browser evaluate protocol session cleanup failed") from None
+        return recovery_notice
 
     async def click(
         self,

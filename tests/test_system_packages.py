@@ -62,7 +62,12 @@ def test_desktop_install_script_uses_compatible_architecture_packages(tmp_path, 
     log = tmp_path / "apt.log"
     stubs = r'''
 apt-get() {
-  [[ "$(<"$SIM_ROOT/etc/apt/sources.list")" != *kali-rolling* ]] || return 1
+  [[ "$(<"$SIM_ROOT/etc/apt/sources.list")" == *kali-rolling* ]] || return 1
+  [[ "$*" == *"Dir::Etc::sourcelist=$SIM_ROOT/etc/apt/a0-desktop.list"* ]] || return 1
+  [[ "$*" == *"Dir::Etc::sourceparts=-"* ]] || return 1
+  grep -q "signed-by=$SIM_ROOT/usr/share/keyrings/debian-archive-keyring.gpg" "$SIM_ROOT/etc/apt/a0-desktop.list" || return 1
+  grep -q 'snapshot.debian.org/archive/debian/20260624T000000Z/' "$SIM_ROOT/etc/apt/a0-desktop.list" || return 1
+  while [[ "$1" == -o ]]; do shift 2; done
   printf '%s\0' "$@" >> "$SIM_ROOT/apt.log"
   printf '\0' >> "$SIM_ROOT/apt.log"
 }
@@ -93,3 +98,4 @@ wget() { return 0; }
     assert "gir1.2-atk-1.0=2.60.3-1" in installs[-1]
     assert ("at-spi2-core=2.60.3-1" in installs[-1]) == (arch == "arm64")
     assert f"Architectures: {arch}\n" in (tmp_path / "etc/apt/sources.list.d/xpra.sources").read_text()
+    assert f"arch={arch}" in (tmp_path / "etc/apt/a0-desktop.list").read_text()

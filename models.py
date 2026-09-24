@@ -272,15 +272,19 @@ rate_limiters: dict[str, RateLimiter] = {}
 api_keys_round_robin: dict[str, int] = {}
 
 
-@extensible
-def get_api_key(service: str) -> str:
-    # get api key for the service
-    key = (
+def get_api_key_raw(service: str) -> str:
+    """Read the stored value, including any comma-separated keys."""
+    return (
         dotenv.get_dotenv_value(f"API_KEY_{service.upper()}")
         or dotenv.get_dotenv_value(f"{service.upper()}_API_KEY")
         or dotenv.get_dotenv_value(f"{service.upper()}_API_TOKEN")
         or "None"
     )
+
+
+@extensible
+def get_api_key(service: str) -> str:
+    key = get_api_key_raw(service)
     # if the key contains a comma, use round-robin
     if "," in key:
         api_keys = [k.strip() for k in key.split(",") if k.strip()]
@@ -332,7 +336,10 @@ async def apply_rate_limiter(
         Callable[[str, str, int, int], Awaitable[bool]] | None
     ) = None,
 ):
-    if not model_config:
+    # skip token counting of the whole prompt when no limit is set
+    if not model_config or not (
+        model_config.limit_requests or model_config.limit_input or model_config.limit_output
+    ):
         return
     limiter = get_rate_limiter(
         model_config.provider,
@@ -727,7 +734,8 @@ class LiteLLMChatWrapper(SimpleChatModel):
                         if output["response_delta"]:
                             if response_callback:
                                 stop_response = await response_callback(
-                                    output["response_delta"], result.response
+                                    output["response_delta"],
+                                    parsed.get("response_preview", result.response),
                                 )
                             if tokens_callback:
                                 await tokens_callback(

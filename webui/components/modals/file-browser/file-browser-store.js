@@ -104,7 +104,7 @@ const model = {
       globalThis.toastFrontendError?.(error.message, "File Browser Settings");
     } finally { this.savingTextLimit = false; }
   },
-  fileTree: createFileTree((file) => store.openTreeEntry(file)),
+  fileTree: createFileTree((file) => store.openTreeEntry(file), () => store.preferences.treeRoot),
 
   async openTreeEntry(file) {
     await this.ensureLimits();
@@ -130,7 +130,8 @@ const model = {
     sortBy: "name",
     sortDirection: "asc",
   },
-  history: [], // navigation stack
+  history: [], // back navigation stack
+  forwardHistory: [], // forward navigation stack
   initialPath: "", // Store path for open() call
   closePromise: null,
   isSurfaceHandoff: false,
@@ -139,6 +140,14 @@ const model = {
   pathInput: "",
   pathError: "",
   isPathSubmitting: false,
+  pathEditing: false,
+  pathSuggestions: [],
+  pathSuggestionsStyle: {},
+  pathSuggestionIndex: 0,
+  _pathSuggestionsToken: 0,
+  _pathSuggestionsTimer: null,
+  pathSuggestionsOwner: null,
+  _directoryRequest: 0,
   rememberLastDirectory: DEFAULT_REMEMBER_LAST_DIRECTORY,
   settingsLoadPromise: null,
   settingsUpdatedHandler: null,
@@ -148,6 +157,9 @@ const model = {
   renameTarget: null,
   renameName: "",
   renameMode: "rename",
+  renameInline: false,
+  renameDirectory: "",
+  renameEntries: [],
   isRenaming: false,
   renameError: null,
   renameAfterConfirm: null,
@@ -270,7 +282,23 @@ const model = {
     link.remove();
   },
 
-  preferences: { sortBy: "name", sortDirection: "asc", view: "list", treeShown: false },
+  preferences: { sortBy: "name", sortDirection: "asc", view: "list", treeShown: false, treeRoot: "/a0", pathBar: "buttons" },
+
+  normalizeTreeRoot(value) {
+    if (typeof value !== "string" || !value.trim().startsWith("/")) return "";
+    const path = value.trim().replace(/\/+/g, "/").replace(/\/$/, "") || "/";
+    return !/(?:^|\/)\.\.?(?:\/|$)|[\0\r\n]/.test(path) ? path : "";
+  },
+
+  async saveTreeRoot(value) {
+    const path = this.normalizeTreeRoot(value);
+    if (!path) {
+      globalThis.toastFrontendError?.("Enter an absolute folder path without . or .. segments.", "File Browser Settings");
+      return;
+    }
+    this.preferences.treeRoot = path;
+    await this.savePreferences();
+  },
 
   loadPreferences() {
     try {
@@ -280,6 +308,8 @@ const model = {
         sortDirection: value.sortDirection === "desc" ? "desc" : "asc",
         view: value.view === "icons" ? "icons" : "list",
         treeShown: value.treeShown === true,
+        treeRoot: this.normalizeTreeRoot(value.treeRoot) || "/a0",
+        pathBar: value.pathBar === "raw" ? "raw" : "buttons",
       };
     } catch { /* Storage may be unavailable. Keep the defaults. */ }
     this.browser.sortBy = this.preferences.sortBy;
@@ -302,6 +332,8 @@ const model = {
 
   async loadSettings() {
     try {
+      // Reflect saved UI preferences (e.g. pathBar) before binding settings fields.
+      this.loadPreferences();
       await this.ensureLimits(true);
       this.textLimitMib = this.limits.max_text_bytes / (1024 * 1024);
       this.transferLimitMib = this.limits.max_file_bytes / (1024 * 1024);
@@ -323,6 +355,7 @@ const model = {
   init() {
     this.ensureLimits().catch(() => {});
     if (this.settingsUpdatedHandler) return;
+    this.loadPreferences();
     this.settingsUpdatedHandler = (event) => {
       const value = event?.detail?.file_browser_remember_last_directory;
       if (typeof value !== "boolean") return;
@@ -346,6 +379,14 @@ const model = {
 
   onUnmount(element = null) {
     if (element && element !== this._mountedElement) return;
+    if (!this.isSurfaceHandoff) {
+      this._directoryRequest++;
+      this.isLoading = false;
+      this.pathEditing = false;
+      this.resetPickerState();
+      if (!this.isRenaming) this.resetRenameState();
+    }
+    this.clearPathSuggestions();
     this._mountedElement = null;
     this.closeDropdown();
     this._floatingCleanup?.();
@@ -355,17 +396,42 @@ const model = {
 
   // --- Public API (called from button/link) --------------------------------
   async open(path = "", options = {}) {
-    if (this.isLoading) return; // Prevent double-open
+    if (this.isLoading || this.isRenaming || this.isBulkBusy) return;
+    // Mounted canvas state survives an external picker, even when the panel is hidden.
+    const surfaceActive = Boolean(document.querySelector(".file-browser-root.is-surface"));
+    const retainedPath = surfaceActive ? this.browser.currentPath : "";
     this.resetOpenState(options);
 
     try {
-      // Open modal FIRST (immediate UI feedback)
-      this.closePromise = window.openModal(FILE_BROWSER_MODAL_PATH);
+      if (!window.isModalOpen?.(FILE_BROWSER_MODAL_PATH)) {
+        this.closePromise = window.openModal(FILE_BROWSER_MODAL_PATH, () => !this.isBulkBusy && !this.isRenaming);
+      } else {
+        if (!this.closePromise) {
+          // Surface controls can open the modal without going through this store.
+          this.closePromise = new Promise((resolve) => {
+            const closed = (event) => {
+              if (event.detail?.modalPath?.replace(/^\//, "") !== FILE_BROWSER_MODAL_PATH) return;
+              document.removeEventListener("modal-closed", closed);
+              resolve();
+            };
+            document.addEventListener("modal-closed", closed);
+          });
+        }
+        await window.ensureModalOpen(FILE_BROWSER_MODAL_PATH);
+      }
+      const closePromise = this.closePromise;
       await this.loadOpeningPath(path);
 
-      // await modal close
-      await this.closePromise;
-      if (!this.isSurfaceHandoff) this.destroy();
+      await closePromise;
+      if (this.closePromise !== closePromise) return;
+      this.closePromise = null;
+      if (!this.isSurfaceHandoff) {
+        if (surfaceActive) {
+          await this.openSurface(retainedPath);
+        } else {
+          this.destroy();
+        }
+      }
 
     } catch (error) {
       console.error("File browser error:", error);
@@ -375,7 +441,8 @@ const model = {
   },
 
   async openSurface(path = "") {
-    if (this.isLoading) return false;
+    if (this.isLoading || this.isRenaming || this.isBulkBusy) return false;
+    if (this.isSurfaceHandoff) return true;
     this.resetOpenState();
 
     try {
@@ -419,12 +486,16 @@ const model = {
   },
 
   destroy() {
+    this._directoryRequest++;
+    this.resetPathInput();
+    this.pathEditing = false;
     this._floatingCleanup?.();
     this._floatingCleanup = null;
     this.cancelMountedDefaultLoad();
     // Reset state when modal closes
     this.isLoading = false;
     this.history = [];
+    this.forwardHistory = [];
     this.initialPath = "";
     this.closePromise = null;
     this.isSurfaceHandoff = false;
@@ -483,9 +554,13 @@ const model = {
     this.loadPreferences();
     this.closeDropdown();
     this.cancelMountedDefaultLoad();
+    this.resetRenameState();
+    this.resetPathInput();
+    this.pathEditing = false;
     this.isLoading = true;
     this.error = null;
     this.history = [];
+    this.forwardHistory = [];
     this.searchQuery = "";
     this.isBulkBusy = false;
     this.clearDragState();
@@ -587,7 +662,7 @@ const model = {
       }
     };
 
-    requestAnimationFrame(() => requestAnimationFrame(restore));
+    this.runNextFrame(restore);
   },
 
   formatFileSize(size) {
@@ -708,9 +783,223 @@ const model = {
     this.pathInput = this.browser.currentPath || "";
   },
 
+  // Pin to the right end when unedited or caret at end; blur re-pins through pinPathInputAfterBlur.
+  pinPathInput(element) {
+    if (!element) return;
+    if (!element._pinResizeObserver) {
+      element._pinResizeObserver = new ResizeObserver(() => {
+        this.scrollPathInputNextFrame(element);
+      });
+    }
+    element._pinResizeObserver.observe(element);
+    this.scrollPathInputNextFrame(element);
+  },
+
+  runNextFrame(callback) {
+    requestAnimationFrame(() => requestAnimationFrame(callback));
+  },
+
+  scrollPathInputNextFrame(element) {
+    this.runNextFrame(() => this.scrollPathInputToEnd(element));
+  },
+
+  scrollPathInputToEnd(element) {
+    if (!element || !element.isConnected) return;
+    const atEnd = document.activeElement !== element
+      || (element.selectionStart === element.value.length && element.selectionEnd === element.value.length);
+    if (atEnd) element.scrollLeft = element.scrollWidth;
+  },
+
+  // Chrome resets an input's scrollLeft to 0 when the input blurs, after handlers and microtasks; snap on the first frame (pre-paint, instant) and re-check on the second in case the reset lands between frames.
+  pinPathInputAfterBlur(element) {
+    requestAnimationFrame(() => {
+      this.scrollPathInputToEnd(element);
+      requestAnimationFrame(() => this.scrollPathInputToEnd(element));
+    });
+  },
+
+  // The raw submit slot acts as part of the field: a real click focuses the input.
+  focusPathInput(button) {
+    const input = button?.closest(".path-input-shell")?.querySelector("input");
+    if (input) input.focus();
+  },
+
   resetPathInput() {
     this.syncPathInput();
     this.pathError = "";
+    this.clearPathSuggestions();
+  },
+
+  // --- Path bar: crumbs, edit mode, folder autocomplete --------------------
+  pathCrumbs() {
+    const current = this.normalizeOpeningPath(this.browser.currentPath).replace(/\/+$/, "");
+    const crumbs = [{ name: "/", path: "/" }];
+    if (!current || current === "$WORK_DIR") return crumbs;
+    let acc = "";
+    const parts = current.split("/").filter(Boolean);
+    for (const [index, part] of parts.entries()) {
+      acc += `/${part}`;
+      // Providers are namespace segments, not browsable directories.
+      if (parts[0] === "@connections" && index === 1) continue;
+      crumbs.push({ name: part, path: acc });
+    }
+    return crumbs;
+  },
+
+  startPathEdit() {
+    if (this.isLoading) return;
+    this.pathEditing = true;
+    this.resetPathInput();
+  },
+
+  exitPathEdit(restoreFocus = false) {
+    const input = document.activeElement;
+    const toolbar = input?.closest?.(".path-navigator");
+    this.pathEditing = false;
+    this.resetPathInput();
+    if (restoreFocus) this.runNextFrame(() => toolbar?.querySelector(".path-edit-toggle")?.focus());
+  },
+
+  // Hide crumbs that would render partially; expose an overflow parent menu.
+  measurePathCrumbFit(element, overflow = 0) {
+    if (!element?.isConnected || !element.clientWidth) return 0;
+    const crumbs = [...element.querySelectorAll(".path-crumb")];
+    if (!crumbs.length) return 0;
+    const measure = (available) => {
+      let used = 0;
+      let hidden = 0;
+      for (let i = crumbs.length - 1; i >= 0; i--) {
+        const width = crumbs[i].offsetWidth;
+        // Hide any leading crumb, including root; only current folder must remain.
+        if (used + width > available && i < crumbs.length - 1) {
+          hidden = i + 1;
+          break;
+        }
+        used += width;
+      }
+      return Math.min(hidden, crumbs.length - 1);
+    };
+    // Reset visibility first: hidden crumbs report offsetWidth 0 and corrupt sizing.
+    crumbs.forEach((crumb) => {
+      crumb.style.display = "";
+    });
+    // Measure the full slot first so an old chevron cannot perpetuate overflow.
+    const available = element.clientWidth + (overflow ? 18 : 0);
+    let hidden = measure(available);
+    if (hidden) hidden = measure(available - 18);
+    crumbs.forEach((crumb, index) => {
+      crumb.style.display = index < hidden ? "none" : "";
+    });
+    element.scrollLeft = 0;
+    return hidden;
+  },
+
+  async updatePathSuggestions(element = null) {
+    this.clearPathSuggestions();
+    const token = this._pathSuggestionsToken;
+    this.pathSuggestionsOwner = element;
+    this.pathError = "";
+    const value = String(this.pathInput || "").trim();
+    if (!value || value === "$WORK_DIR") {
+      this.pathSuggestions = [];
+      this.pathSuggestionsStyle = {};
+      return;
+    }
+    const endsWithSlash = /\/$/.test(value);
+    const normalized = this.normalizeSubmittedPath(value).replace(/\/+$/, "") || "/";
+    const connectionRoot = normalized.match(/^\/@(?:connections\/[a-z0-9_]+|ssh)\/[a-f0-9]{32}(?=\/|$)/)?.[0];
+    if (/^\/@(?:connections|ssh)\//.test(normalized) && !connectionRoot) return;
+    const slashIndex = normalized.lastIndexOf("/");
+    // Connection roots have no browsable parent within their provider namespace.
+    const listChildren = endsWithSlash || normalized === connectionRoot;
+    const parent = listChildren ? normalized : (slashIndex <= 0 ? "/" : normalized.slice(0, slashIndex));
+    const prefix = listChildren ? "" : normalized.slice(slashIndex + 1).toLowerCase();
+    try {
+      const response = await fetchApi(`/get_work_dir_files?path=${encodeURIComponent(parent)}`);
+      const data = await response.json().catch(() => ({}));
+      if (token !== this._pathSuggestionsToken) return;
+      if (!response.ok || data.error || data.data?.error) return;
+      const entries = data?.data?.entries || [];
+      const matches = entries
+        .filter((entry) => entry.is_dir && entry.name.toLowerCase().startsWith(prefix) && entry.path !== normalized)
+        .map((entry) => ({ name: entry.name, path: entry.path }));
+      this.pathSuggestions = matches;
+      const style = this.pathSuggestions.length && element
+        ? this.getDropdownStyle(element, Math.max(element.getBoundingClientRect().width, 220), false)
+        : {};
+      // Cap the dropdown at 8 rows while keeping the viewport-aware placement.
+      if (style.maxHeight) {
+        style.maxHeight = `${Math.min(parseInt(style.maxHeight, 10) || 0, 304)}px`;
+      }
+      this.pathSuggestionsStyle = style;
+    } catch {
+      if (token === this._pathSuggestionsToken) {
+        this.pathSuggestions = [];
+        this.pathSuggestionsStyle = {};
+      }
+    }
+  },
+
+  async pickPathSuggestion(suggestion) {
+    this.pathInput = this.normalizeSubmittedPath(suggestion?.path);
+    this.clearPathSuggestions();
+    await this.submitPath();
+  },
+
+  get activePathSuggestion() {
+    return this.pathSuggestions[this.pathSuggestionIndex] || null;
+  },
+
+  selectPathSuggestion(element = null) {
+    const suggestion = this.activePathSuggestion;
+    if (!suggestion) return false;
+    const path = this.normalizeSubmittedPath(suggestion.path);
+    this.pathInput = path.endsWith("/") ? path : `${path}/`;
+    this.pathSuggestions = [];
+    this.updatePathSuggestions(element);
+    return true;
+  },
+
+  movePathSuggestion(delta) {
+    if (!this.pathSuggestions.length) return false;
+    const count = this.pathSuggestions.length;
+    this.pathSuggestionIndex = (this.pathSuggestionIndex + delta + count) % count;
+    this.runNextFrame(() => {
+      for (const container of document.querySelectorAll(".path-suggestions")) {
+        if (container.getClientRects().length === 0) continue;
+        const row = container.querySelectorAll(".path-suggestion")[this.pathSuggestionIndex];
+        row?.scrollIntoView({ block: "nearest" });
+      }
+    });
+    return true;
+  },
+
+  clearPathSuggestions() {
+    clearTimeout(this._pathSuggestionsTimer);
+    this._pathSuggestionsTimer = null;
+    this._pathSuggestionsToken++;
+    this.pathSuggestions = [];
+    this.pathSuggestionsStyle = {};
+    this.pathSuggestionsOwner = null;
+    this.pathSuggestionIndex = 0;
+  },
+
+  // Keystrokes debounce the directory fetch; direct calls (Tab accept, refocus) stay immediate.
+  queuePathSuggestions(element = null) {
+    this.clearPathSuggestions();
+    this.pathError = "";
+    this._pathSuggestionsTimer = setTimeout(() => {
+      this._pathSuggestionsTimer = null;
+      this.updatePathSuggestions(element);
+    }, 200);
+  },
+
+  hidePathSuggestions() {
+    this.exitPathEdit();
+  },
+
+  showPathSuggestions(element = null) {
+    if (this.pathInput) this.updatePathSuggestions(element);
   },
 
   async loadDirectoryPreference() {
@@ -862,7 +1151,7 @@ const model = {
   },
 
   async confirmPicker() {
-    if (!this.isPickerMode() || this.isBulkBusy) return;
+    if (!this.isPickerMode() || this.isBulkBusy || this.isLoading || this.renameInline) return;
     if (this.isSaveAsPicker() && !this.validatePickerFilename(true)) return;
     const payload = this.isSaveAsPicker()
       ? {
@@ -881,7 +1170,8 @@ const model = {
       const result = await this.pickerOnConfirm?.(payload);
       if (result === false) return;
       this.disposeScopedTooltips();
-      window.closeModal(FILE_BROWSER_MODAL_PATH);
+      this.isBulkBusy = false;
+      await this.closeOrRestorePicker();
     } catch (error) {
       const message = error?.message || "File selection failed";
       if (this.isSaveAsPicker()) this.pickerFilenameError = message;
@@ -891,9 +1181,26 @@ const model = {
     }
   },
 
-  cancelPicker() {
+  async cancelPicker() {
     this.disposeScopedTooltips();
-    window.closeModal(FILE_BROWSER_MODAL_PATH);
+    await this.closeOrRestorePicker();
+  },
+
+  async closeOrRestorePicker() {
+    if (window.isModalOpen?.(FILE_BROWSER_MODAL_PATH)) {
+      window.closeModal(FILE_BROWSER_MODAL_PATH);
+    } else {
+      // In-place picker over a live surface: restore the browser listing.
+      await this.restoreBrowserAfterInPlacePicker();
+    }
+  },
+
+  async restoreBrowserAfterInPlacePicker() {
+    // Drop picker state and reload the listing so a live surface returns to normal browsing.
+    this.resetPickerState();
+    this.clearSelection();
+    this.isLoading = false;
+    await this.fetchFiles(this.browser.currentPath, { preserveOnError: true });
   },
 
   handleFileNameClick(file = {}) {
@@ -974,6 +1281,9 @@ const model = {
     this.renameTarget = null;
     this.renameName = "";
     this.renameMode = "rename";
+    this.renameInline = false;
+    this.renameDirectory = "";
+    this.renameEntries = [];
     this.isRenaming = false;
     this.renameError = null;
     this.renameAfterConfirm = null;
@@ -1061,6 +1371,8 @@ const model = {
 
   // --- Navigation ----------------------------------------------------------
   async fetchFiles(path = "", options = {}) {
+    const request = ++this._directoryRequest;
+    this.clearPathSuggestions();
     const preserveOnError = options?.preserveOnError === true;
     const suppressErrorToast = options?.suppressErrorToast === true;
     const requestedPath = this.normalizeOpeningPath(path) || "$WORK_DIR";
@@ -1080,7 +1392,7 @@ const model = {
         `/get_work_dir_files?path=${encodeURIComponent(requestedPath)}`
       );
       const data = await response.json().catch(() => ({}));
-
+      if (request !== this._directoryRequest) return false;
       if (data.limits) this.limits = data.limits;
 
       const result = data.data || {};
@@ -1100,6 +1412,7 @@ const model = {
         );
 
       if (response.ok && !resultError) {
+        if (!isSamePath && this.renameInline && !this.isRenaming) this.resetRenameState();
         if (!isSamePath) this.searchQuery = "";
         this.remotePermissions = result.permissions || null;
         this.browser.entries = this.decorateEntries(
@@ -1129,6 +1442,7 @@ const model = {
         return false;
       }
     } catch (e) {
+      if (request !== this._directoryRequest) return false;
       const message = "Error fetching files: " + e.message;
       if (!suppressErrorToast) {
         window.toastFrontendError(message, "File Browser Error");
@@ -1139,19 +1453,55 @@ const model = {
     }
   },
 
+  pushNavHistory(path) {
+    this.history.push(path);
+    this.forwardHistory = [];
+  },
+
+  async navigateStack(from, to) {
+    if (this.isLoading || this.isRenaming || this.isBulkBusy || !this[from].length) return;
+    const targetPath = this[from].at(-1);
+    const previousPath = this.browser.currentPath;
+    const loaded = await this.fetchFiles(targetPath, { preserveOnError: true });
+    if (loaded) {
+      this[from].pop();
+      this[to].push(previousPath);
+    }
+  },
+
+  navigateBack() {
+    return this.navigateStack("history", "forwardHistory");
+  },
+
+  navigateForward() {
+    return this.navigateStack("forwardHistory", "history");
+  },
+
   async navigateToFolder(path) {
-    if(!path.startsWith("/")) path = "/" + path;
-    if (this.browser.currentPath !== path)
-      this.history.push(this.browser.currentPath);
-    await this.fetchFiles(path);
+    if (this.isLoading || this.isRenaming || this.isBulkBusy) return false;
+    path = this.normalizeSubmittedPath(path).replace(/\/+$/, "") || "/";
+    if (this.browser.currentPath === path) {
+      return true;
+    }
+    const previousPath = this.browser.currentPath;
+    const loaded = await this.fetchFiles(path, { preserveOnError: true });
+    if (loaded && previousPath !== this.browser.currentPath) this.pushNavHistory(previousPath);
+    return loaded;
   },
 
   async submitPath() {
-    if (this.isPathSubmitting || this.isLoading) return;
+    if (this.isPathSubmitting || this.isLoading || this.isRenaming || this.isBulkBusy) return;
 
     const path = this.normalizeSubmittedPath(this.pathInput);
     if (!path) {
       this.pathError = "Enter a directory path.";
+      return;
+    }
+
+    // Submitting the already-current directory is a no-op, like navigateToFolder.
+    const currentPath = String(this.browser.currentPath || "").replace(/\/+$/, "");
+    if (currentPath && path.replace(/\/+$/, "") === currentPath) {
+      this.exitPathEdit(true);
       return;
     }
 
@@ -1167,8 +1517,9 @@ const model = {
 
       if (loaded) {
         if (previousPath && previousPath !== this.browser.currentPath) {
-          this.history.push(previousPath);
+          this.pushNavHistory(previousPath);
         }
+        this.exitPathEdit(true);
         return;
       }
 
@@ -1179,10 +1530,7 @@ const model = {
   },
 
   async navigateUp() {
-    if (this.browser.parentPath) {
-      this.history.push(this.browser.currentPath);
-      await this.fetchFiles(this.browser.parentPath);
-    }
+    if (this.browser.parentPath) return this.navigateToFolder(this.browser.parentPath);
   },
 
   // --- Drag and drop ------------------------------------------------------
@@ -1275,7 +1623,8 @@ const model = {
   },
 
   // --- Rename / Create -----------------------------------------------------
-  async openRenameModal(file, options = {}) {
+  beginRename(file, options = {}) {
+    if (this.isLoading || this.isRenaming || this.isBulkBusy) return false;
     this.resetRenameState();
     this.renameTarget = file;
     this.renameName = file?.name || "";
@@ -1284,29 +1633,43 @@ const model = {
     this.renameAfterConfirm = typeof options.onRenamed === "function" ? options.onRenamed : null;
     this.renamePerformAction = typeof options.performRename === "function" ? options.performRename : null;
     this.renameValidateName = typeof options.validateName === "function" ? options.validateName : null;
-    if (typeof options.currentPath === "string" && options.currentPath) {
-      this.browser.currentPath = options.currentPath;
-    }
-    if (Array.isArray(options.entries)) {
-      this.browser.entries = options.entries;
-    }
-    window.openModal("modals/file-browser/rename-modal.html");
+    this.renameDirectory = typeof options.currentPath === "string" && options.currentPath
+      ? options.currentPath : this.browser.currentPath;
+    this.renameEntries = Array.isArray(options.entries) ? options.entries
+      : this.renameDirectory === this.browser.currentPath ? this.browser.entries : [];
+    this.renameInline = true;
+    return true;
   },
 
-  async openNewFolderModal() {
-    this.resetRenameState();
+  beginNewFolder() {
+    if (!this.beginRename(null)) return false;
     this.renameMode = "create-folder";
-    this.renameName = "";
-    this.renameError = null;
-    window.openModal("modals/file-browser/rename-modal.html");
+    return true;
+  },
+
+  openRenameModal(file, options = {}) {
+    if (!this.beginRename(file, options)) return;
+    this.renameInline = false;
+    window.openModal("modals/file-browser/rename-modal.html", () => !this.isRenaming);
+  },
+
+  openNewFolderModal() {
+    if (!this.beginNewFolder()) return;
+    this.renameInline = false;
+    window.openModal("modals/file-browser/rename-modal.html", () => !this.isRenaming);
   },
 
   closeRenameModal() {
+    if (this.isRenaming) return;
+    if (this.renameInline) {
+      this.resetRenameState();
+      return;
+    }
     window.closeModal("modals/file-browser/rename-modal.html");
   },
 
   async confirmRename() {
-    if (this.isRenaming) return;
+    if (this.isRenaming || this.isLoading) return;
 
     const newName = this.renameName.trim();
     if (!newName) {
@@ -1334,7 +1697,7 @@ const model = {
     }
 
     // UX: pre-validate duplicates so we can show a clean inline error (no toast spam)
-    const duplicate = (this.browser.entries || []).some((entry) => {
+    const duplicate = this.renameEntries.some((entry) => {
       if (!entry?.name) return false;
       if (entry.name !== newName) return false;
       // When renaming, allow keeping the same entry name
@@ -1353,13 +1716,13 @@ const model = {
       const previousPath = this.renameTarget?.path || "";
       const renamedPath =
         this.renameMode === "create-folder"
-          ? this.buildChildPath(newName)
+          ? `${this.renameDirectory.replace(/\/$/, "")}/${newName}`
           : this.siblingPath(previousPath, newName);
       const payload =
         this.renameMode === "create-folder"
           ? {
               action: "create-folder",
-              parentPath: this.browser.currentPath,
+              parentPath: this.renameDirectory,
               currentPath: this.browser.currentPath,
               newName: newName,
             }
@@ -1376,6 +1739,7 @@ const model = {
           path: this.renameMode === "create-folder" ? renamedPath : previousPath, destination:renamedPath,
         });
         await this.fetchFiles(this.browser.currentPath);
+        this.isRenaming = false;
         this.closeRenameModal();
         return;
       }
@@ -1417,6 +1781,7 @@ const model = {
           response: data,
         });
       }
+      this.isRenaming = false;
       this.closeRenameModal();
     } catch (error) {
       const message = error?.message || "Rename failed";
@@ -1435,7 +1800,10 @@ const model = {
   },
 
   async openNewFile() {
-    await this.openSaveAsPicker(this.browser.currentPath, {
+    if (this.isLoading || this.isRenaming || this.isBulkBusy) return;
+    this.resetRenameState();
+    this.configurePicker({
+      pickerMode: PICKER_MODE_SAVE_AS,
       filename: "Untitled.txt",
       defaultExtension: "",
       onConfirm: async ({ path }) => {
@@ -1742,8 +2110,15 @@ window.openFileLink = async function (path) {
       return;
     }
     if (resp.is_dir) {
-      // Set initial path and open via store
-      await store.open(resp.abs_path);
+      // A live browser navigates in place instead of stacking a second window.
+      const { store: canvasStore } = await import("/components/canvas/right-canvas-store.js");
+      const hasLiveBrowser = window.isModalOpen?.(FILE_BROWSER_MODAL_PATH)
+        || (canvasStore.shouldRender?.() && canvasStore.isSurfaceVisible?.("files"));
+      if (hasLiveBrowser) {
+        await store.navigateToFolder(resp.abs_path);
+      } else {
+        await store.open(resp.abs_path);
+      }
     } else {
       store.downloadFile({ path: resp.abs_path, name: resp.file_name });
     }

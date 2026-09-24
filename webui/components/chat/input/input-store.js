@@ -417,10 +417,8 @@ const model = {
   adjustTextareaHeight($event = null) {
     const target = $event?.target || null;
     for (const chatInput of this._composerTextareas(target)) {
+      // Contenteditable grows naturally; freezing scrollHeight can retain a transient layout.
       chatInput.style.height = "auto";
-      chatInput.style.height = chatInput.scrollHeight + "px";
-      // pick up any layout shift triggered by the height assignment
-      chatInput.style.height = Math.max(chatInput.scrollHeight, parseInt(chatInput.style.height)) + "px";
     }
   },
 

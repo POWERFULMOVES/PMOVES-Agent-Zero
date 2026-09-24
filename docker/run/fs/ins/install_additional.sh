@@ -12,7 +12,6 @@ if ! command -v apt-get >/dev/null 2>&1; then
   exit 0
 fi
 
-KALI_SUITE="kali-last-snapshot"
 ATK_VERSION="2.60.3-1"
 LIBREOFFICE_VERSION="4:26.2.4.2-1"
 XPRA_VERSION="6.5.2-r0-1"
@@ -53,12 +52,15 @@ XPRA_PACKAGES=(
   "xpra-html5=$XPRA_HTML5_VERSION"
 )
 
-for source in /etc/apt/sources.list /etc/apt/sources.list.d/kali.sources; do
-  [ ! -f "$source" ] || sed -i "s/kali-rolling/$KALI_SUITE/g" "$source"
-done
+# Keep the Python 3.13 desktop stack on a signed, dated archive. Kali's
+# last-snapshot moves between releases and no longer carries these versions.
+cat >/etc/apt/a0-desktop.list <<EOF
+deb [check-valid-until=no signed-by=/usr/share/keyrings/debian-archive-keyring.gpg] https://snapshot.debian.org/archive/debian/20260624T000000Z/ forky main
+EOF
+APT_OPTIONS=(-o Dir::Etc::sourcelist=/etc/apt/a0-desktop.list -o Dir::Etc::sourceparts=- -o APT::Update::Error-Mode=any)
 
-apt-get update
-DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ca-certificates wget
+apt-get "${APT_OPTIONS[@]}" update
+DEBIAN_FRONTEND=noninteractive apt-get "${APT_OPTIONS[@]}" install -y --no-install-recommends ca-certificates wget
 wget -O /usr/share/keyrings/xpra.asc https://xpra.org/xpra.asc
 cat >/etc/apt/sources.list.d/xpra.sources <<EOF
 Types: deb
@@ -68,8 +70,9 @@ Components: main
 Signed-By: /usr/share/keyrings/xpra.asc
 Architectures: $arch
 EOF
-apt-get update
-DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends --allow-downgrades \
+echo "deb [arch=$arch signed-by=/usr/share/keyrings/xpra.asc] https://xpra.org trixie main" >>/etc/apt/a0-desktop.list
+apt-get "${APT_OPTIONS[@]}" update
+DEBIAN_FRONTEND=noninteractive apt-get "${APT_OPTIONS[@]}" install -y --no-install-recommends --allow-downgrades \
   "${ATK_PACKAGES[@]}" \
   gir1.2-gtk-3.0 \
   "${LIBREOFFICE_PACKAGES[@]}" \

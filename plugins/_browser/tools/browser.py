@@ -80,6 +80,11 @@ class Browser(Tool):
         except Exception as exc:
             PrintStyle.warning(f"Browser model preset could not be activated: {exc}")
         try:
+            if action == "evaluate" and (not isinstance(script, str) or not script.strip()):
+                return Response(
+                    message="Browser evaluate failed: evaluate requires a non-empty 'script' string",
+                    break_loop=False,
+                )
             runtime = await get_runtime(self.agent.context.id, agent=self.agent)
         except Exception as exc:
             return Response(message=f"Browser runtime unavailable: {exc}", break_loop=False)
@@ -566,6 +571,6 @@ class Browser(Tool):
         if action == "content" and isinstance(result, dict):
             if set(result.keys()) == {"document"}:
                 return str(result.get("document") or "")
-            return json.dumps(result, indent=2, ensure_ascii=False)
+            return json.dumps(result, ensure_ascii=False, separators=(",", ":"))
 
-        return json.dumps(result, indent=2, ensure_ascii=False, default=str)
+        return json.dumps(result, ensure_ascii=False, separators=(",", ":"), default=str)

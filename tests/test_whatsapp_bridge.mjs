@@ -15,7 +15,7 @@ const source = fs.readFileSync(bridgePath, 'utf8')
   .split('// Start\n')[0];
 
 // Exercise the real callback and filesystem; stub only transport and HTTP setup.
-async function receive(t, { fileName = 'report.pdf', sender = '123', group = false, mention = false, reply = false, allowed = '123', allowGroup = false, fromMe = false, mode = 'self-chat', lid = false, wrapped = false } = {}) {
+async function receive(t, { fileName = 'report.pdf', sender = '123', group = false, mention = false, reply = false, allowed = '123', allowGroup = false, fromMe = false, mode = 'self-chat', lid = false, wrapped = false, body = '', textOnly = false } = {}) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'a0-wa-test-'));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   const cache = path.join(root, 'tmp/whatsapp/media');
@@ -38,10 +38,10 @@ async function receive(t, { fileName = 'report.pdf', sender = '123', group = fal
     downloadMediaMessage: async () => { downloads++; return Buffer.from('POC_CONFIRMED'); },
   });
   const queue = await vm.runInContext(`(async () => { ${source}\nawait startSocket(); return messageQueue; })()`, sandbox);
-  const document = { documentMessage: { fileName, contextInfo: { mentionedJid: mention ? ['999@s.whatsapp.net'] : [], stanzaId: reply ? 'quoted' : undefined, participant: reply ? '999@s.whatsapp.net' : undefined } } };
+  const document = { documentMessage: { fileName, caption: body, contextInfo: { mentionedJid: mention ? ['999@s.whatsapp.net'] : [], stanzaId: reply ? 'quoted' : undefined, participant: reply ? '999@s.whatsapp.net' : undefined } } };
   await handlers['messages.upsert']({ type: 'notify', messages: [{
     key: { id: 'test-message', remoteJid: group ? '456@g.us' : `${sender}@${lid ? 'lid' : 's.whatsapp.net'}`, participant: group ? `${sender}@s.whatsapp.net` : undefined, fromMe },
-    message: wrapped ? { documentWithCaptionMessage: { message: document } } : document,
+    message: textOnly ? { extendedTextMessage: { text: body, contextInfo: document.documentMessage.contextInfo } } : wrapped ? { documentWithCaptionMessage: { message: document } } : document,
   }] });
   return { downloads, queue, cache, target, contents: fs.readFileSync(target, 'utf8') };
 }
@@ -67,4 +67,18 @@ test('document metadata cannot escape the cache; authorization precedes download
     assert.equal(result.queue.length, 1);
     assert.equal(result.contents, 'ORIGINAL');
   }
+});
+
+
+test('slash commands survive text, captions, wrappers and group mention removal', async t => {
+  for (const body of ['/goal Deliver the report\nKeep the details.', 'Deliver the report /goal', '/permissions core:test block']) {
+    for (const options of [{ textOnly: true }, {}, { wrapped: true }]) {
+      const result = await receive(t, { ...options, body });
+      assert.equal(result.queue.length, 1);
+      assert.equal(result.queue[0].body, body);
+      assert.equal(result.downloads, options.textOnly ? 0 : 1);
+    }
+  }
+  const group = await receive(t, { textOnly: true, body: '@999 /stop', group: true, allowGroup: true, mention: true });
+  assert.equal(group.queue[0].body, '/stop');
 });

@@ -211,6 +211,7 @@ body,
   text-transform: none;
   letter-spacing: normal;
   word-break: normal;
+  overflow-wrap: anywhere;
   white-space: normal;
   opacity: 0;
   pointer-events: none;

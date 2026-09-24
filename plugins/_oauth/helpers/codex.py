@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import errno
 import hashlib
+import http.cookiejar
 import json
 import os
 import secrets
@@ -66,6 +67,9 @@ USAGE_ENDPOINT_PATHS = (
     "/api/codex/usage",
 )
 _AUTH_THREAD_LOCK = threading.RLock()
+# keep-alive pool for upstream calls; cookies are not persisted, so requests keep their explicit shape
+_UPSTREAM_SESSION = requests.Session()
+_UPSTREAM_SESSION.cookies.set_policy(http.cookiejar.DefaultCookiePolicy(allowed_domains=[]))
 
 
 @dataclass(frozen=True)
@@ -603,7 +607,7 @@ def request_codex(
     if client_version:
         request_headers["version"] = client_version
 
-    return requests.request(
+    return _UPSTREAM_SESSION.request(
         method,
         target,
         headers=request_headers,

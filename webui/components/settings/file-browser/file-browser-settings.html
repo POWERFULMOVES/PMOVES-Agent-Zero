@@ -33,11 +33,32 @@
     </div>
     <div class="field">
       <div class="field-label">
+        <label class="field-title" for="files-path-bar">Path bar style</label>
+        <div class="field-description" id="files-path-bar-description">Breadcrumbs with quick parent navigation, or a plain text path with the navigate up button.</div>
+      </div>
+      <div class="field-control">
+        <select id="files-path-bar" aria-describedby="files-path-bar-description" x-model="$store.fileBrowser.preferences.pathBar" @change="$store.fileBrowser.savePreferences()">
+          <option value="buttons">Breadcrumbs</option><option value="raw">Text</option>
+        </select>
+      </div>
+    </div>
+    <div class="field">
+      <div class="field-label">
         <label class="field-title" for="files-default-tree">Show file tree when Files opens</label>
         <div class="field-description" id="files-default-tree-description">Start with the folder tree visible for quick navigation.</div>
       </div>
       <div class="field-control">
         <label class="toggle"><input id="files-default-tree" aria-describedby="files-default-tree-description" type="checkbox" x-model="$store.fileBrowser.preferences.treeShown" @change="$store.fileBrowser.savePreferences()"><span class="toggler"></span></label>
+      </div>
+    </div>
+    <div class="field">
+      <div class="field-label">
+        <label class="field-title" for="files-tree-root">File tree starting folder</label>
+        <div class="field-description" id="files-tree-root-description">Top-level folder in the Files and Editor trees. Default: /a0. Remote folders use their own tree.</div>
+      </div>
+      <div class="field-control">
+        <input id="files-tree-root" type="text" placeholder="/a0" required pattern="/.*" aria-describedby="files-tree-root-description"
+          :value="$store.fileBrowser.preferences.treeRoot" @change="if ($el.reportValidity()) $store.fileBrowser.saveTreeRoot($el.value)">
       </div>
     </div>
     </div>

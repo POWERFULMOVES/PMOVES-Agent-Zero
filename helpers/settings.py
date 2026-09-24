@@ -181,6 +181,9 @@ UI_CONTROL_VISIBILITY_DEFAULTS = {
 
 SETTINGS_FILE = files.get_abs_path("usr/settings.json")
 _settings: Settings | None = None
+_apply_settings_cache: ContextVar[dict[str, str] | None] = ContextVar(
+    "apply_settings_cache", default=None
+)
 _runtime_settings_snapshot: Settings | None = None
 _prompt_settings_snapshot: ContextVar[Settings | None] = ContextVar(
     "prompt_settings_snapshot", default=None
@@ -320,7 +323,7 @@ def convert_out(settings: Settings) -> SettingsOutput:
     providers = get_providers("chat") + get_providers("embedding")
     for provider in providers:
         provider_name = provider["value"]
-        api_key = settings["api_keys"].get(provider_name, models.get_api_key(provider_name))
+        api_key = settings["api_keys"].get(provider_name, models.get_api_key_raw(provider_name))
         settings["api_keys"][provider_name] = API_KEY_PLACEHOLDER if api_key and api_key != "None" else ""
 
     # load auth from dotenv
@@ -356,7 +359,7 @@ def convert_out(settings: Settings) -> SettingsOutput:
     return out
 
 def _get_api_key_field(settings: Settings, provider: str, title: str) -> SettingsField:
-    key = settings["api_keys"].get(provider, models.get_api_key(provider))
+    key = settings["api_keys"].get(provider, models.get_api_key_raw(provider))
     # For API keys, use simple asterisk placeholder for existing keys
     return {
         "id": f"api_key_{provider}",
@@ -424,7 +427,14 @@ def set_settings(settings: Settings, apply: bool = True, browser_timezone: str |
     _settings = normalize_settings(settings)
     _write_settings_file(_settings)
     if apply:
-        _apply_settings(previous, browser_timezone)
+        cached = {"version": _settings["version"]}
+        token = _apply_settings_cache.set(cached)
+        try:
+            _apply_settings(previous, browser_timezone)
+        finally:
+            # Expire the cache in inherited task contexts too.
+            cached.clear()
+            _apply_settings_cache.reset(token)
     return reload_settings()
 
 
@@ -510,7 +520,7 @@ def _load_sensitive_settings(settings: Settings):
     providers = get_providers("chat") + get_providers("embedding")
     for provider in providers:
         provider_name = provider["value"]
-        api_key = settings["api_keys"].get(provider_name) or models.get_api_key(provider_name)
+        api_key = settings["api_keys"].get(provider_name) or models.get_api_key_raw(provider_name)
         if api_key and api_key != "None":
             settings["api_keys"][provider_name] = api_key
 
@@ -854,4 +864,4 @@ def create_auth_token() -> str:
 
 
 def _get_version():
-    return git.get_version()
+    return (_apply_settings_cache.get() or {}).get("version") or git.get_version()

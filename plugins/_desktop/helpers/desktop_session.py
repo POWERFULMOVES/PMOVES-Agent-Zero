@@ -377,6 +377,34 @@ class DesktopSessionManager:
             "save": save_result,
         }
 
+    def rename_open_document(self, source: Path, target: Path) -> bool:
+        with self._lock:
+            session = self.get(SYSTEM_SESSION_ID)
+            if not session:
+                session = self._load_system_desktop_from_manifest_locked()
+                if session:
+                    self._sessions[session.session_id] = session
+                    self._register_virtual_desktop(session)
+            if not session or not self._office_window_id_locked(session, title=source.name, fallback=False):
+                return False
+            result = subprocess.run(
+                [
+                    "/usr/bin/python3",
+                    str(Path(__file__).with_name("rename_office_document.py")),
+                    libreoffice.find_soffice(),
+                    str(session.profile_dir),
+                    str(source),
+                    str(target),
+                ],
+                env=self._display_env(session),
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+            if result.returncode:
+                raise RuntimeError(result.stderr.strip() or "LibreOffice could not rename the open document.")
+            return json.loads(result.stdout)["renamed"]
+
     def retarget_document(self, file_id: str, doc: dict[str, Any]) -> dict[str, Any]:
         session = self._find_by_file_id(file_id)
         if not session:

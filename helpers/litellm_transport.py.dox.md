@@ -34,7 +34,9 @@
 - Treat opaque type-discrimination errors such as `cannot determine type` from OpenAI-compatible Responses endpoints as shape-specific rejections.
 - Fall back to Chat Completions when a Responses endpoint fails before output with an endpoint-specific server error, proxy path-unavailable error, or LiteLLM proxy-extra import error.
 - Fall back to Chat Completions when LiteLLM's Responses mock streaming path tries to JSON-decode a real SSE stream before any output.
-- Preserve Chat Completions tool calls from both non-streaming responses and streaming deltas as canonical `LLMResult` function-call items.
+- Preserve Chat Completions tool calls from both non-streaming responses and streaming deltas as canonical `LLMResult` function-call items. Non-streaming calls stay canonical when accompanied by commentary; retain that commentary as a separate output message.
+- Chat Completions `content_filter` and `refusal` finish reasons raise LiteLLM `ContentPolicyViolationError` on streaming and non-streaming paths; never treat blocked output as an empty success or dispatch partial tool calls. Verify with `tests/test_model_refusal.py`.
+- Responses messages explicitly marked `phase: commentary` produce an incremental `response_preview` with public text in `thoughts`, followed by the native tool preview. Previews reuse parsed call state; multiple calls form one parallel envelope. Only native agent-turn callbacks consume the preview: legacy callbacks, response/reasoning deltas, completed output items and call IDs remain unchanged. Unmarked/final-answer text and reasoning are not reclassified as commentary.
 - Preserve provider usage and LiteLLM response cost for both transports only when the response or stream actually supplies them; do not synthesize unavailable provider accounting.
 - Streaming Chat Completions requests include `stream_options.include_usage` so terminal usage events reach `LLMResult.usage` for OpenAI-compatible endpoints and Messages API providers alike, unless the model configuration previously rejected the option or the request already carries it. A pre-output rejection retries once without the transport-injected `include_usage` and remembers the rejection per model configuration in a process-global cache that naturally clears when the framework process restarts; tests reset it through `clear_transport_capability_cache`. User-provided `stream_options` keys are always passed through untouched, even when the provider rejects them.
 - Recover all Responses output items from stream events when a terminal completed envelope omits them, including encrypted reasoning. Merge by item/call identity in output-index order; terminal non-null fields win without duplicating calls.
@@ -43,6 +45,8 @@
 - Serialize synthesized Responses function-call JSON with literal Unicode so streamed raw-response logs preserve tool arguments.
 - Preserve provider-state metadata when Responses API calls succeed, and fall back to local replay when provider state is unsupported.
 - Keep prompt-cache markers only for providers that accept them.
+- Automatic `cache_control` marker placement is provider-gated; the OpenAI/Codex Responses configuration bypasses it. Skipping a marker target never removes its message, tool call, or reasoning content. Responses `phase: commentary`, encrypted reasoning, native replay, and request flags remain owned by their Responses paths.
+- For supported Chat providers, mark the last leading system/developer message and the last two nonempty assistant messages. Retain the previous assistant boundary as the conversation grows; leave user/tool tails containing rebuilt extras unmarked. Before the first assistant message, cache only the leading context. Do not add markers to empty assistant content or thinking/redacted-thinking blocks. Automatic placement uses at most three message breakpoints, leaving one for tool definitions; this is not a limit on conversation messages or native tool calls. Do not mutate caller messages or stored history.
 
 ## Work Guidance
 
@@ -57,6 +61,7 @@
 ## Verification
 
 - Run `pytest tests/test_stream_tool_early_stop.py tests/test_responses_architecture.py -q` after changing transport normalization or fallback behavior.
+- Run `pytest tests/test_prompt_protocol.py -q` for cache-boundary changes; the multi-turn check covers changing extras, preserved prior boundaries, and deliberate invalidation after a protocol edit.
 - Run local-provider smoke checks when changing OpenAI-compatible request cleanup.
 
 ## Child DOX Index

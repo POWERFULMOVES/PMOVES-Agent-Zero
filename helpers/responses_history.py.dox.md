@@ -11,7 +11,8 @@
 
 - Persist only `history_prefix_hash` in existing result capability metadata, never copies of old prompt inputs or a diagnostic replay counter. Hash system, protocol and prepared history; retain freshly prepared extras in each request.
 - Require canonical visible arguments, original unique call IDs, immediately paired result records, compatible local Responses state and unchanged prefix/scope. Legacy records without digests stay as text.
-- Replay only function calls and encrypted reasoning, with original provider items. Reject known unmasked secrets, textual follow-ups, unsupported items, incomplete pairs and non-text result layouts.
+- Replay function calls, encrypted reasoning and explicitly tagged assistant commentary with text-only content, preserving original provider items and phase. Reject final/unmarked messages, refusals, incomplete commentary, known unmasked secrets, unsupported items, incomplete pairs and non-text result layouts.
+- This helper is a transport adapter over generic rendered records and metadata. Shared history storage/rendering remains API-agnostic; replay only changes copied provider input.
 - Build tool outputs from visible rendered result content, preserving additional fields. Never restore raw tool output metadata or invent a final response-tool result.
 - Preserve summaries, unmatched/custom layouts, attachments and all remaining prepared input. No execution or policy authorization occurs here.
 - Internal history context is removed before every provider request; Chat and fallback messages remain untouched.

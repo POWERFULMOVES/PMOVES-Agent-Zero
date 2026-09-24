@@ -31,6 +31,20 @@ Be careful: if you use your personal number and leave `allowed_numbers` open, ot
 
 Sender and group checks run before media downloads and again before dispatch. Changes to these settings restart the bridge on the next poll. Document filenames are reduced to basenames, and media files are created exclusively inside the cache directory.
 
+## Slash commands
+
+Use `/commands` for a paginated menu, or `/commands 2` for the next page. Built-in commands and commands supplied by enabled plugins, your global scope, and the active project use the same resolver as the WebUI. Custom overrides, arguments, prefix/postfix syntax, and commands in attachment captions are supported.
+
+- `/goal`, `/rename`, `/stop`, `/pause`, `/resume`, `/nudge`, `/queue`, and `/send` control the current chat directly. `/steer <message>` intervenes in an active task.
+- `/new` creates a fresh chat without resetting the previous one. `/sessions` lists chats belonging to this WhatsApp conversation; `/chat <id>` selects one. `/clear` resets the current context.
+- `/project`, `/model` (also `/config`, `/preset`, `/models`, `/presets`), and `/agent` list available choices. Supply a name to switch; `/profile` also supports creating an agent with a name and instructions.
+- `/plugins` lists instance-wide plugin states. Use `/plugins page 2` to continue, or `/plugins <name> on|off` to change one. Required plugins and the WhatsApp connection remain protected.
+- `/permissions` lists the current profile's canonical tool IDs. Use `/permissions page 2`, `/permissions <tool ID> allow|block|default`, `/permissions default allow|block`, `/permissions mcp_default allow|block`, or `/permissions inherit`. Changes use the same writer as Agent Editor and require the active run to be stopped.
+- `/compact` shows statistics and an explicit confirmation command for the current chat. The original conversation is backed up before compaction.
+- `/copy` sends the transcript as a text document. `/attach` explains WhatsApp's native attachment control. `/browser status|host|container` controls the browser backend; host Computer Use permissions remain controlled by A0 Launcher/CLI.
+
+These are text menus over the existing Baileys bridge. Telegram-specific streaming controls and inline keyboards are not used. Unknown commands return help rather than being sent to the model.
+
 ## Configuration
 
 | Setting | Description | Default |
